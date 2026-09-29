@@ -1,0 +1,45 @@
+# --- Secrets / env (never commit real values; only .env.example is tracked) ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- Node / pnpm / Turborepo (TS world, ADR-0002) ---
+node_modules/
+dist/
+build/
+out/
+.turbo/
+*.tsbuildinfo
+.pnpm-store/
+pnpm-debug.log*
+npm-debug.log*
+yarn-error.log*
+
+# --- Python / uv (services/ai, ADR-0002) ---
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# --- Build tools / test / coverage ---
+coverage/
+.vitest/
+playwright-report/
+test-results/
+
+# --- Infra / local runtime ---
+.localstack/
+*.local
+
+# --- Editors / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
