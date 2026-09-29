@@ -1,0 +1,19 @@
+# The contract seam's drift gate (ticket 02, ADR-0008) compares regenerated
+# artifacts byte-for-byte against the committed versions. `generate` always
+# writes LF; git must therefore store AND check these paths out as LF on every
+# OS, or a CRLF checkout on Windows would report false drift.
+#
+# Scoped to the contract seam deliberately: the repo-wide text policy belongs to
+# the root workspace ticket, not here.
+
+# Zod source + codegen scripts + tests
+packages/contracts/src/**        text eol=lf
+packages/contracts/scripts/**    text eol=lf
+packages/contracts/test/**       text eol=lf
+
+# Committed generated artifacts (the drift-gate subjects)
+packages/contracts/schema/**                             text eol=lf
+services/ai/src/tuju_ai/contracts_generated/**           text eol=lf
+
+# Golden fixtures loaded byte-identically by both test suites
+packages/contracts/fixtures/**   text eol=lf

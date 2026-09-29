@@ -13,4 +13,6 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "datamodel-code-generator>=0.25.0",
+    "pydantic>=2.0.0",
 ]

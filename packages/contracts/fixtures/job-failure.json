@@ -1,0 +1,8 @@
+{
+  "correlationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+  "jobId": "fa:MAYBANK:quarterly:2026-09-29T04",
+  "failureClass": "terminal",
+  "retryable": false,
+  "userMessage": "Unknown symbol \"MAYBANK\" for the requested exchange.",
+  "at": "2026-09-29T04:06:00Z"
+}

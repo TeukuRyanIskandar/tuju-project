@@ -4,3 +4,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# esbuild ships a native binary via a postinstall build script; it is a
+# transitive dependency of vitest (contracts test runner, ticket 02). Allow it
+# so `pnpm install` runs clean instead of warning about an ignored build.
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: set this to true or false

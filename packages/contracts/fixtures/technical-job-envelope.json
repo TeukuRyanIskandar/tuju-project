@@ -1,0 +1,11 @@
+{
+  "correlationId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+  "requestedBy": "user_01H8XGJ",
+  "trigger": "user",
+  "asOf": "2026-09-29T04:00:00Z",
+  "payload": {
+    "symbol": "MAYBANK",
+    "timeframe": "1D",
+    "indicators": ["SMA200", "RSI14"]
+  }
+}

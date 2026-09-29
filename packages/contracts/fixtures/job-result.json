@@ -1,0 +1,17 @@
+{
+  "correlationId": "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+  "jobId": "ta:MAYBANK:1D:2026-09-29T04",
+  "pointer": {
+    "bucket": "tuju-artifacts",
+    "key": "analysis/ta/MAYBANK/2026-09-29T04.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 20480,
+    "contentType": "application/json"
+  },
+  "summary": {
+    "verdict": "bullish",
+    "headline": "Price broke above the 200-day SMA on rising volume",
+    "asOf": "2026-09-29T04:00:00Z"
+  },
+  "at": "2026-09-29T04:00:07Z"
+}

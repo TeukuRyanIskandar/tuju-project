@@ -1,0 +1,10 @@
+{
+  "correlationId": "9c5b94b1-35ad-49bb-b118-8e8fc24abf80",
+  "requestedBy": "system",
+  "trigger": "price-move",
+  "asOf": "2026-09-29T04:05:00Z",
+  "payload": {
+    "symbol": "MAYBANK",
+    "period": "quarterly"
+  }
+}

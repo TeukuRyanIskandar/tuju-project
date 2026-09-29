@@ -1,0 +1,7 @@
+{
+  "stepIndex": 1,
+  "stepTotal": 4,
+  "phase": "computing-indicators",
+  "label": "Computing SMA/RSI over 1D window",
+  "at": "2026-09-29T04:00:03Z"
+}
