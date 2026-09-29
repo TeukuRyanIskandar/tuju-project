@@ -38,6 +38,27 @@ Multi-context repo (presence of `CONTEXT-MAP.md` at the root):
         └── docs/adr/
 ```
 
+**This repo is multi-context.** Contexts do not live under `src/<context>/`;
+they are the **workspace members** across the two worlds (ADR-0002). The root
+`CONTEXT-MAP.md` is the index. Actual layout:
+
+```
+/
+├── CONTEXT-MAP.md
+├── docs/adr/                          ← system-wide decisions (ADR-0001–0011)
+├── apps/
+│   ├── backend/CONTEXT.md
+│   └── frontend/CONTEXT.md
+├── packages/
+│   └── contracts/CONTEXT.md
+└── services/
+    └── ai/CONTEXT.md
+```
+
+Context-specific ADRs, if any emerge, live in `<context-path>/docs/adr/`
+(e.g. `apps/backend/docs/adr/`). None exist yet — the root ADR set covers
+every context.
+
 ## Use the glossary's vocabulary
 
 When your output names a domain concept (in an issue title, a refactor proposal, a hypothesis, a test name), use the term as defined in `CONTEXT.md`. Don't drift to synonyms the glossary explicitly avoids.

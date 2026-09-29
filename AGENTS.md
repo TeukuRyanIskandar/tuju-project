@@ -14,4 +14,4 @@ Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. Will migrate to multi-context (`CONTEXT-MAP.md` + per-service `CONTEXT.md`) once the monorepo is scaffolded. See `docs/agents/domain.md`.
+Multi-context: root `CONTEXT-MAP.md` indexes a per-context `CONTEXT.md` at each workspace member (`apps/backend`, `apps/frontend`, `packages/contracts`, `services/ai`). System-wide ADRs stay in `docs/adr/`. See `docs/agents/domain.md`.
