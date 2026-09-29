@@ -2,11 +2,38 @@
   "name": "@tuju/frontend",
   "version": "0.0.0",
   "private": true,
-  "description": "TanStack Start frontend (skeleton placeholder — filled by scaffold ticket 04).",
+  "type": "module",
+  "description": "TanStack Start 1.x frontend for Product A — static SPA build (ADR-0005), SSR-capable but unused. Talks to the NestJS backend over a configurable API base and an httpOnly session cookie.",
+  "imports": {
+    "#/*": "./src/*"
+  },
   "scripts": {
-    "build": "echo \"[frontend] build stub — no app code yet\"",
-    "test": "echo \"[frontend] test stub — no app code yet\"",
-    "lint": "echo \"[frontend] lint stub — no app code yet\"",
-    "typecheck": "echo \"[frontend] typecheck stub — no app code yet\""
+    "dev": "vite dev --port 3000",
+    "generate-routes": "tsr generate",
+    "build": "vite build",
+    "start": "vite preview",
+    "test": "vitest run",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "1.170.40",
+    "@tanstack/react-start": "1.168.59",
+    "@tuju/contracts": "workspace:*",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@tanstack/router-cli": "^1.167.39",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^30.1.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^5.0.2"
   }
 }

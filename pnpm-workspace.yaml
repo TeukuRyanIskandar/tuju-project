@@ -5,10 +5,13 @@ packages:
   - "apps/*"
   - "packages/*"
 
-# esbuild ships a native binary via a postinstall build script; it is a
-# transitive dependency of vitest (contracts test runner, ticket 02). Allow it
-# so `pnpm install` runs clean instead of warning about an ignored build.
+# Native postinstall build scripts we explicitly allow so `pnpm install` runs
+# clean instead of warning about (and failing on) an ignored build:
+#   - esbuild          transitive dep of vitest (ticket 02) + vite (ticket 04)
+#   - lightningcss     transitive native dep of vite 8 (ticket 04 frontend)
+#   - msgpackr-extract optional native dep pulled via @tanstack/react-start's
+#                      nitro/vite pipeline (ticket 04 frontend)
 onlyBuiltDependencies:
   - esbuild
-allowBuilds:
-  esbuild: set this to true or false
+  - lightningcss
+  - msgpackr-extract
