@@ -1,6 +1,7 @@
 # Scaffold: docker-compose local stack (NestJS + Python + Redis + Postgres + LocalStack)
 
-Status: ready-for-agent
+Status: done
+Done in: 9b0957b
 Blocked by: 03, 04, 05
 Implements: ADR-0006
 

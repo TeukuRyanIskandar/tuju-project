@@ -1,6 +1,7 @@
 # Scaffold: root monorepo workspace (pnpm + Turborepo + uv skeleton)
 
-Status: ready-for-agent
+Status: done
+Done in: 863ec86
 Blocked by: (none)
 Implements: ADR-0002
 

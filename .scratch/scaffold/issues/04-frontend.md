@@ -1,6 +1,7 @@
 # Scaffold: apps/frontend — TanStack Start 1.x (static SPA) + contract types
 
-Status: ready-for-agent
+Status: done
+Done in: f0e326b (merged 3a8f608)
 Blocked by: 02
 Implements: ADR-0002, ADR-0005, ADR-0010
 

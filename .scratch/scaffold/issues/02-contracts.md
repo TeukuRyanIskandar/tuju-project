@@ -1,6 +1,7 @@
 # Scaffold: packages/contracts — Zod v4 source + TS/Pydantic codegen + drift gate
 
-Status: ready-for-agent
+Status: done
+Done in: e460b7e
 Blocked by: 01
 Implements: ADR-0007, ADR-0008
 

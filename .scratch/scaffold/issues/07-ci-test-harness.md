@@ -1,6 +1,7 @@
 # Scaffold: CI (GitHub Actions) + drift gate + testcontainers integration harness
 
-Status: ready-for-agent
+Status: done
+Done in: 98b48b2
 Blocked by: 06
 Implements: ADR-0008, ADR-0009, ADR-0011
 

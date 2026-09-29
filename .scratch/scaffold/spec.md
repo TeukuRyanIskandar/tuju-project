@@ -1,6 +1,6 @@
 # Scaffold execution effort — Bursa Platform (Product A)
 
-Status: ready-for-agent
+Status: done
 
 ## What this is
 

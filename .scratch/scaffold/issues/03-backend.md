@@ -1,6 +1,7 @@
 # Scaffold: apps/backend — NestJS 11 + JobBus + Redis/Postgres wiring + auth skeleton
 
-Status: ready-for-agent
+Status: done
+Done in: d435999 (merged f525a04)
 Blocked by: 02
 Implements: ADR-0001, ADR-0003, ADR-0004, ADR-0005, ADR-0006, ADR-0010
 
