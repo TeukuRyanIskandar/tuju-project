@@ -4,11 +4,26 @@ version = "0.1.0"
 description = "Bursa platform AI worker (Python + LangGraph). Its own uv-managed world, outside the pnpm/Turbo graph (ADR-0002)."
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    # JobBus transport — official BullMQ Python bindings (ADR-0001).
+    "bullmq>=3.2.8,<4.0.0",
+    # Trivial graph stub only — no real TA/FA logic yet (ADR-0003 scope).
+    "langgraph>=1.2.12,<2.0.0",
+    # S3 claim-check writer; LocalStack locally (ADR-0004).
+    "boto3>=1.43.104,<2.0.0",
+    # Runtime conformance validation of the wire contract (ADR-0007 / ADR-0011).
+    "pydantic>=2.0.0,<3.0.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.11.9,<0.12.0"]
 build-backend = "uv_build"
+
+[project.scripts]
+# `uv run tuju-ai-worker` boots the worker; `uv run tuju-ai-smoke` runs the
+# offline smoke entrypoint (no live Redis/S3 required).
+tuju-ai-worker = "tuju_ai.worker:main"
+tuju-ai-smoke = "tuju_ai.smoke:main"
 
 [dependency-groups]
 dev = [
@@ -16,3 +31,12 @@ dev = [
     "datamodel-code-generator>=0.25.0",
     "pydantic>=2.0.0",
 ]
+
+[tool.pytest.ini_options]
+# `unit` runs everywhere with no live infra; `integration` is a testcontainers
+# placeholder skipped unless explicitly selected (ADR-0011).
+markers = [
+    "unit: fast tests with no external infra (Redis/S3 not required)",
+    "integration: requires testcontainers (Redis + LocalStack S3); placeholder for now",
+]
+testpaths = ["tests"]

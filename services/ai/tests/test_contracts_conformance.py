@@ -20,6 +20,8 @@ from tuju_ai.contracts_generated import (
     TechnicalJobEnvelope,
 )
 
+pytestmark = pytest.mark.unit
+
 # services/ai/tests -> repo root -> packages/contracts/fixtures
 FIXTURES_DIR = (
     Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
