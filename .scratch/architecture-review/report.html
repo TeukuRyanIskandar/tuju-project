@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Architecture review for tuju-project</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+  </script>
+  <style>
+    .seam { stroke-dasharray: 4 4; }
+    .leak { stroke: #dc2626; }
+    .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+    .dashed-seam { border-style: dashed; }
+    .label { font-size: .68rem; text-transform: uppercase; letter-spacing: .08em; }
+  </style>
+</head>
+<body class="bg-stone-50 text-slate-900 font-sans">
+<main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+
+  <!-- Header -->
+  <header class="space-y-4">
+    <p class="label text-slate-500">Architecture review · 2026-09-29</p>
+    <h1 class="font-serif text-4xl">tuju-project</h1>
+    <p class="text-sm text-slate-600">Scope: hot spots from <code class="font-mono">git log</code>. The JobBus (<code class="font-mono">apps/backend/src/jobbus</code>), the analysis surface, the tier gate, the contract seam and the AI worker's handler. ADR-0001 to 0011 are treated as settled.</p>
+    <div class="flex flex-wrap gap-6 text-xs text-slate-600 pt-2">
+      <span class="flex items-center gap-2"><span class="inline-block w-5 h-4 border border-slate-400 bg-white"></span>module</span>
+      <span class="flex items-center gap-2"><svg width="28" height="6"><line x1="0" y1="3" x2="28" y2="3" stroke="#64748b" stroke-width="2" class="seam"/></svg>seam</span>
+      <span class="flex items-center gap-2"><svg width="28" height="8"><line x1="0" y1="4" x2="22" y2="4" stroke="#dc2626" stroke-width="2"/><polygon points="22,0 28,4 22,8" fill="#dc2626"/></svg>leakage</span>
+      <span class="flex items-center gap-2"><span class="inline-block w-5 h-4 deep border-2 border-slate-900"></span>deep module</span>
+    </div>
+  </header>
+
+  <section id="candidates" class="space-y-10">
+
+    <!-- 1 ─────────────────────────────────────────────────────────── -->
+    <article id="c1" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">01</span>
+        <h2 class="font-serif text-2xl">Deepen the JobBus into the job lifecycle module</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">local-substitutable</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>apps/backend/src/jobbus/job-bus.service.ts: onModuleInit() 'progress' / 'completed' / 'failed'</li>
+        <li>apps/backend/src/analysis/analysis-result.store.ts: persist(), findByCorrelationId()</li>
+        <li>apps/backend/src/jobbus/job-bus.int-spec.ts</li>
+      </ul>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4">
+          <p class="label text-slate-500 mb-2">Before: raw broadcast, routing left to subscribers</p>
+          <pre class="mermaid">
+sequenceDiagram
+  participant U1 as Request A
+  participant U2 as Request B
+  participant JB as JobBus
+  participant R as BullMQ
+  participant S as ResultStore
+  U1->>JB: enqueue(env A)
+  JB->>R: add(jobId=ta-MAYBANK-1D-T05)
+  U2->>JB: enqueue(env B)
+  JB->>R: add(same jobId) → deduped
+  Note over JB: correlationId B never recorded
+  R-->>JB: completed(returnvalue: corr A)
+  JB-->>S: broadcast JobResult
+  S->>S: save row for A only
+  R-->>JB: failed(jobId, failedReason)
+  JB-->>S: JobFailure{correlationId: '', retryable: true, userMessage: stack}
+          </pre>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4">
+          <p class="label text-slate-500 mb-2">After: JobBus resolves jobId → correlationIds</p>
+          <pre class="mermaid">
+sequenceDiagram
+  participant U1 as Request A
+  participant U2 as Request B
+  participant JB as JobBus (deep)
+  participant R as BullMQ
+  participant S as ResultStore
+  U1->>JB: enqueue(env A)
+  U2->>JB: enqueue(env B)
+  Note over JB: registers A, B against jobId
+  R-->>JB: progress / completed / failed
+  JB->>JB: fan out + classify + redact
+  JB-->>S: JobResult for A
+  JB-->>S: JobResult for B
+  JB-->>S: JobFailure{terminal | exhausted, safe msg}
+          </pre>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> ADR-0007's fan-out isn't implemented. A second request that dedupes onto an existing job never gets its result (GET <code class="font-mono">/analysis/:correlationId</code> returns 404 forever). Progress events carry no correlationId, and every failure shows up as <code class="font-mono">transient_exhausted</code> with an empty correlationId and the raw <code class="font-mono">failedReason</code>.</p>
+      <p><span class="font-semibold">Solution.</span> The JobBus owns event routing: it records each correlationId against its jobId at enqueue, resolves them when BullMQ events arrive, classifies each failure as terminal or exhausted, and redacts the user message before anything leaves the module.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>Locality: fan-out lives in one module</li>
+        <li>Leverage: subscribers receive per-correlation events</li>
+        <li>Fixes the silent dedup-collapse bug</li>
+        <li>Tests hit one interface, real Redis</li>
+        <li>Failure classes finally match contract</li>
+      </ul>
+      <p class="text-xs text-slate-500">Tests: the existing testcontainers int-spec extends with "two enqueues, one jobId → both correlationIds notified" and "poison job → terminal JobFailure". The Redis-backed registry is the multi-instance adapter ADR-0007 already anticipates.</p>
+    </article>
+
+    <!-- 2 ─────────────────────────────────────────────────────────── -->
+    <article id="c2" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">02</span>
+        <h2 class="font-serif text-2xl">Make the Enqueue seam actually own the enqueue</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">in-process</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>apps/backend/src/analysis/analysis.controller.ts: enqueue() builds the JobEnvelope by hand</li>
+        <li>apps/backend/src/jobbus/job-bus.service.ts: enqueue(), deriveJobId()</li>
+        <li>apps/backend/src/auth/tier-policy.ts: can() (1 caller: tier.guard.ts)</li>
+        <li>apps/backend/src/auth/tier.guard.ts, requires-job.decorator.ts</li>
+      </ul>
+
+      <!-- Mass diagram -->
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4 h-80 flex flex-col">
+          <p class="label text-slate-500 mb-3">Before: caller knows as much as the module</p>
+          <div class="flex-1 flex items-end gap-6 justify-center">
+            <div class="flex flex-col items-center gap-1">
+              <div class="w-28 h-52 border-2 border-red-400 bg-red-50 flex flex-col justify-center p-2 text-[10px] text-red-800 space-y-1">
+                <span>mint correlationId</span><span>stamp asOf</span><span>requestedBy = 'compose-smoke'</span><span>trigger</span><span>cast timeframe</span><span>remember @RequiresJob</span>
+              </div>
+              <span class="label text-slate-500">interface (caller burden)</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="w-28 h-24 border border-slate-400 bg-slate-100 flex flex-col justify-center p-2 text-[10px] text-slate-700 space-y-1">
+                <span>deriveJobId</span><span>queue.add</span><span class="text-red-600">no can() check</span>
+              </div>
+              <span class="label text-slate-500">implementation</span>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4 h-80 flex flex-col">
+          <p class="label text-slate-500 mb-3">After: small interface, deep implementation</p>
+          <div class="flex-1 flex items-end gap-6 justify-center">
+            <div class="flex flex-col items-center gap-1">
+              <div class="w-28 h-12 border-2 border-emerald-600 bg-emerald-50 flex items-center justify-center p-2 text-[10px] text-emerald-900 text-center">actor + job name + payload</div>
+              <span class="label text-slate-500">interface</span>
+            </div>
+            <div class="flex flex-col items-center gap-1">
+              <div class="w-28 h-52 deep border-2 border-slate-900 flex flex-col justify-center p-2 text-[10px] text-slate-300 space-y-1">
+                <span>can(actor, job) · defense-in-depth</span><span>system caller bypass</span><span>mint envelope</span><span>validate payload (Zod)</span><span>derive jobId</span><span>register correlation</span><span>retry / retention policy</span>
+              </div>
+              <span class="label text-slate-500">implementation</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> Every enqueue caller has to hand-build a correct <code class="font-mono">JobEnvelope</code>, and the ADR-0005 capability check at the enqueue seam doesn't exist. <code class="font-mono">can()</code> runs only in the route guard, so the upcoming price-move trigger, or any route missing <code class="font-mono">@RequiresJob</code>, enqueues without a check.</p>
+      <p><span class="font-semibold">Solution.</span> Callers hand the enqueue seam an actor (a user, or the trusted system caller) plus the job request. The module asks <code class="font-mono">can()</code>, validates the payload against the contract, mints the envelope and applies the queue policy.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>ADR-0005 second check becomes real</li>
+        <li>Leverage: price-move trigger reuses it</li>
+        <li>Controller shrinks to HTTP translation</li>
+        <li>Envelope rules gain locality</li>
+        <li>Unit-testable with a fake queue</li>
+      </ul>
+      <div class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">Implements ADR-0005's defense-in-depth rather than contradicting it. The route-level <code class="font-mono">TierGuard</code> stays.</div>
+    </article>
+
+    <!-- 3 ─────────────────────────────────────────────────────────── -->
+    <article id="c3" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">03</span>
+        <h2 class="font-serif text-2xl">One owner for Job identity (jobId) across both worlds</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">Strong</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">in-process</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>apps/backend/src/jobbus/job-bus.service.ts: deriveJobId() → "ta-MAYBANK-1D-2026-09-29T05"</li>
+        <li>services/ai/src/tuju_ai/handler.py: handle_job() → f"{prefix}:{symbol}:{anchor}:{bucket}"</li>
+        <li>services/ai/src/tuju_ai/worker.py: process(job): has job.id, ignores it</li>
+        <li>packages/contracts/fixtures/job-result.json, job-failure.json (colon form)</li>
+      </ul>
+
+      <!-- Cross-world split, hand-built -->
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4 h-72 relative">
+          <p class="label text-slate-500 mb-3">Before: two derivations, two formats</p>
+          <div class="grid grid-cols-2 gap-3 text-[11px]">
+            <div class="border border-slate-400 p-2 space-y-1"><p class="label text-slate-500">TS · JobBus</p><p class="font-mono">ta-MAYBANK-1D-…T05</p><p class="text-slate-500">→ BullMQ job id</p></div>
+            <div class="border border-slate-400 p-2 space-y-1"><p class="label text-slate-500">Py · handler</p><p class="font-mono text-red-700">ta:MAYBANK:1D:…T05</p><p class="text-slate-500">→ JobResult.jobId</p></div>
+          </div>
+          <div class="mt-4 border border-red-300 bg-red-50 p-2 text-[11px] text-red-800">Postgres <span class="font-mono">analysis_results.job_id</span> ≠ BullMQ id. Goldens use colons, which BullMQ forbids.</div>
+          <svg class="absolute left-0 right-0 bottom-3 mx-auto" width="100%" height="30"><line x1="25%" y1="4" x2="75%" y2="4" class="leak" stroke-width="2"/><text x="50%" y="24" text-anchor="middle" font-size="10" fill="#dc2626">rule re-spelled across the seam</text></svg>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4 h-72">
+          <p class="label text-slate-500 mb-3">After: identity minted once, carried across</p>
+          <div class="deep text-slate-200 p-3 text-[11px] space-y-1 border-2 border-slate-900">
+            <p class="label text-slate-400">Enqueue seam (TS)</p>
+            <p>derives the only jobId → BullMQ job id</p>
+          </div>
+          <svg width="100%" height="34"><line x1="50%" y1="0" x2="50%" y2="34" stroke="#64748b" stroke-width="2" class="seam"/></svg>
+          <div class="border border-slate-400 p-3 text-[11px] space-y-1">
+            <p class="label text-slate-500">Py worker adapter</p>
+            <p>stamps <span class="font-mono">job.id</span> onto JobResult. Handler forgets the id rule.</p>
+          </div>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> ADR-0007 §2 idempotency depends on the jobId, but each world derives it independently: different separators, a copy-pasted hour-bucket rule and prefix map. Each side's tests assert its own format.</p>
+      <p><span class="font-semibold">Solution.</span> The backend enqueue is the only place a jobId is minted. The Python JobBus adapter passes BullMQ's <code class="font-mono">job.id</code> through, and the goldens switch to the legal form.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>Delete the Python derivation outright</li>
+        <li>Locality: one id rule</li>
+        <li>Goldens stop encoding illegal ids</li>
+        <li>Persisted job_id joins BullMQ</li>
+      </ul>
+    </article>
+
+    <!-- 4 ─────────────────────────────────────────────────────────── -->
+    <article id="c4" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">04</span>
+        <h2 class="font-serif text-2xl">Let the contract own each JobName's phase progression</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">Worth exploring</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">in-process</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>packages/contracts/src/enums.ts: TechnicalPhase / FundamentalPhase</li>
+        <li>services/ai/src/tuju_ai/handler.py: phases tuple + literal "synthesizing-verdict" / "done", total = 5</li>
+        <li>services/ai/src/tuju_ai/contracts_generated/models.py: JobProgress.phase = union of both</li>
+        <li>apps/backend/src/jobbus/stub-job.worker.ts: stepTotal: 1</li>
+      </ul>
+
+      <!-- Cross-section -->
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4 space-y-2">
+          <p class="label text-slate-500">Before: phase knowledge sliced across 4 places</p>
+          <div class="h-11 border-l-4 border-slate-400 bg-slate-50 px-3 flex items-center text-xs">contracts enum: per-type set</div>
+          <div class="h-11 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs">generated model: union (tech phase OK on FA job)</div>
+          <div class="h-11 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs">handler: re-typed literals, total = 5</div>
+          <div class="h-11 border-l-4 border-red-400 bg-red-50 px-3 flex items-center text-xs">stub worker: total = 1</div>
+          <div class="h-11 border-l-4 border-slate-400 bg-slate-50 px-3 flex items-center text-xs">test_handler: hand-written order assert</div>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4 space-y-2">
+          <p class="label text-slate-500">After: one band</p>
+          <div class="h-40 deep border-l-8 border-emerald-500 px-4 flex flex-col justify-center text-sm text-slate-200">
+            <p class="label text-slate-400">contract · per-JobName ordered phases</p>
+            <p>worker iterates it; stepTotal derives from it; conformance test checks emitted sequence</p>
+          </div>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> The contract declares the phases, the handler re-types them, and the generated union type lets a worker emit a fundamental phase on a technical job and still pass validation.</p>
+      <p><span class="font-semibold">Solution.</span> The contract publishes the ordered phase sequence for each JobName, and the worker and stub consume that sequence instead of re-spelling it.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>Drift fails a test, not the UI</li>
+        <li>stepTotal stops being a magic number</li>
+        <li>Delete hand-written order asserts</li>
+      </ul>
+      <p class="text-xs text-slate-500">Worth exploring, not Strong: the phase set is still a stub until the real LangGraph graph lands (ADR-0007 risk note).</p>
+    </article>
+
+    <!-- 5 ─────────────────────────────────────────────────────────── -->
+    <article id="c5" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">05</span>
+        <h2 class="font-serif text-2xl">Generate queue/JobName constants into the Python world</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">Worth exploring</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">in-process</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>services/ai/src/tuju_ai/config.py: QUEUE_ANALYSIS, JOB_ANALYZE_* ("mirror enums.ts" by comment)</li>
+        <li>apps/backend/src/jobbus/job-names.ts: ANALYSIS_QUEUE, JobNames</li>
+        <li>packages/contracts/scripts/generate.mjs</li>
+      </ul>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4">
+          <p class="label text-slate-500 mb-2">Before</p>
+          <pre class="mermaid">
+flowchart LR
+  Z[contracts enums.ts] -->|types only| T[job-names.ts]
+  Z -.->|comment: mirror| P[config.py]
+  Z ==>|codegen| M[models.py]
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class P leak
+          </pre>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4">
+          <p class="label text-slate-500 mb-2">After</p>
+          <pre class="mermaid">
+flowchart LR
+  Z[contracts enums.ts] ==>|codegen| M[models.py + names]
+  Z ==> T[job-names.ts]
+  M --> P[config.py imports]
+  classDef deep fill:#0f172a,color:#e2e8f0,stroke:#0f172a;
+  class Z deep
+          </pre>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> The queue and JobName strings reach Python only through a code comment, so a rename breaks consumption silently. Neither the drift gate nor the goldens cover them.</p>
+      <p><span class="font-semibold">Solution.</span> Extend the existing codegen so these constants are emitted alongside the Pydantic models, making them part of what the drift gate checks.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>Drift gate covers names too</li>
+        <li>Reuses existing codegen pipeline</li>
+      </ul>
+    </article>
+
+    <!-- 6 ─────────────────────────────────────────────────────────── -->
+    <article id="c6" class="rounded-xl border border-slate-200 bg-white p-6 space-y-5 shadow-sm">
+      <div class="flex flex-wrap items-center gap-3">
+        <span class="font-mono text-slate-400">06</span>
+        <h2 class="font-serif text-2xl">Stop the result writer parsing the claim-check key</h2>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="px-2 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">Speculative</span>
+        <span class="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">in-process</span>
+      </div>
+      <ul class="font-mono text-sm text-slate-600 space-y-0.5">
+        <li>apps/backend/src/analysis/analysis-result.store.ts: symbolFromKey(): key.split('/')[2] ?? 'unknown'</li>
+        <li>services/ai/src/tuju_ai/handler.py: key_suffix = f"{prefix}/{symbol}/{bucket}.json"</li>
+        <li>services/ai/src/tuju_ai/artifacts.py</li>
+      </ul>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-200 p-4 h-52 relative">
+          <p class="label text-slate-500 mb-3">Before</p>
+          <div class="flex justify-between items-center text-[11px]">
+            <div class="border border-slate-400 p-2 w-36">Py handler<br/><span class="font-mono">builds key grammar</span></div>
+            <div class="border border-red-400 bg-red-50 p-2 w-36">ResultStore<br/><span class="font-mono">re-parses key</span></div>
+          </div>
+          <svg class="absolute left-0 top-24" width="100%" height="60"><line x1="45%" y1="0" x2="45%" y2="60" stroke="#64748b" stroke-width="2" class="seam"/><path d="M 40 20 C 140 50, 240 50, 330 20" fill="none" class="leak" stroke-width="2"/><text x="50%" y="58" text-anchor="middle" font-size="10" fill="#dc2626">key layout leaks across the language seam</text></svg>
+        </div>
+        <div class="rounded-lg border-2 border-slate-900 p-4 h-52">
+          <p class="label text-slate-500 mb-3">After</p>
+          <div class="text-[11px] space-y-2">
+            <div class="deep text-slate-200 p-2">symbol arrives via the job the backend itself enqueued (or on JobResult)</div>
+            <div class="border border-slate-300 text-slate-400 p-2">key is opaque again: <span class="font-mono">symbolFromKey</span> deleted</div>
+          </div>
+        </div>
+      </div>
+
+      <p><span class="font-semibold">Problem.</span> If the key scheme in <code class="font-mono">handler.py</code> changes, every persisted <code class="font-mono">symbol</code> silently becomes <code class="font-mono">'unknown'</code>.</p>
+      <p><span class="font-semibold">Solution.</span> The Postgres writer takes the symbol from what the backend already knows about the job and treats the pointer key as opaque.</p>
+      <ul class="text-sm list-disc pl-5 space-y-0.5 text-slate-700">
+        <li>Artifact stays opaque (ADR-0004)</li>
+        <li>Delete one fragile helper</li>
+      </ul>
+      <div class="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">If this is solved by adding <code class="font-mono">symbol</code> to <code class="font-mono">Summary</code>, that touches ADR-0007's "thin summary". It's a small, additive change, but sourcing the symbol from the enqueued job (falls out of #01) avoids reopening the ADR.</div>
+    </article>
+  </section>
+
+  <!-- Top recommendation -->
+  <section id="top-recommendation" class="rounded-2xl deep text-slate-100 p-8 space-y-3">
+    <p class="label text-emerald-400">Top recommendation</p>
+    <h2 class="font-serif text-3xl"><a href="#c1" class="underline decoration-emerald-500 underline-offset-4">01 · Deepen the JobBus into the job lifecycle module</a></h2>
+    <p class="text-slate-300">It fixes a live correctness bug (a request that dedupes onto an existing job never gets its result) and closes the largest gap between ADR-0007 and the code. It also gives #02, #03 and #06 their natural home, since correlation registration, identity and routing all converge on the same seam.</p>
+  </section>
+
+</main>
+</body>
+</html>
