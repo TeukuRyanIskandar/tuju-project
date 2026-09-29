@@ -30,13 +30,18 @@ dev = [
     "pytest>=8.0.0",
     "datamodel-code-generator>=0.25.0",
     "pydantic>=2.0.0",
+    # Integration lane (ADR-0011): programmatic throwaway Redis + LocalStack S3
+    # containers for the JobBus round-trip. Docker-only; the tests skip cleanly
+    # when no daemon is reachable so the unit lane stays infra-free.
+    "testcontainers[localstack]>=4.0.0,<5.0.0",
 ]
 
 [tool.pytest.ini_options]
-# `unit` runs everywhere with no live infra; `integration` is a testcontainers
-# placeholder skipped unless explicitly selected (ADR-0011).
+# `unit` runs everywhere with no live infra; `integration` spins up real
+# testcontainers (Redis + LocalStack S3) for the JobBus round-trip (ADR-0011)
+# and is deselected from the fast unit/PR lane.
 markers = [
     "unit: fast tests with no external infra (Redis/S3 not required)",
-    "integration: requires testcontainers (Redis + LocalStack S3); placeholder for now",
+    "integration: requires testcontainers (Redis + LocalStack S3); run with -m integration",
 ]
 testpaths = ["tests"]

@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "jest",
+    "test:int": "jest --config jest.int.config.cjs --runInBand",
     "test:watch": "jest --watch",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/data/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/data/data-source.ts"
@@ -40,6 +41,8 @@
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.0",
+    "@testcontainers/postgresql": "^10.16.0",
+    "@testcontainers/redis": "^10.16.0",
     "@types/cookie-parser": "^1.4.8",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",

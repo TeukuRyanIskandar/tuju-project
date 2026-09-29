@@ -1,0 +1,83 @@
+# main lane (ADR-0008 lane 2).
+#
+# On push to main: build the three service images and push them to ECR tagged by
+# the IMMUTABLE git SHA (`:latest` is forbidden per ADR-0008 — the committed
+# compose file is the authoritative record of what prod runs). Auth is OIDC-to-AWS
+# (no long-lived keys). CI's responsibility ENDS at pushing images; it has ZERO
+# prod access — deploy is a separate manual SSM step (ADR-0008), out of scope here.
+#
+# GATED UNTIL INFRA EXISTS: the ECR repos + the OIDC role are provisioned by
+# Terraform in a later infra effort (ADR-0006/0008). Until the repository
+# variables below are set, the push job is skipped — the workflow is authored and
+# valid now, and activates with no code change once infra lands.
+#
+# Required repository variables (set once Terraform provisions them):
+#   vars.ECR_DEPLOY_ENABLED   "true" to enable the image build/push job
+#   vars.AWS_REGION           e.g. ap-southeast-1 (ADR-0006)
+#   vars.AWS_OIDC_ROLE_ARN    arn:aws:iam::<acct>:role/<ci-push-role>
+#   vars.ECR_REGISTRY         <acct>.dkr.ecr.<region>.amazonaws.com
+name: main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: main-images-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for the OIDC token exchange with AWS
+
+jobs:
+  # Build & push each service image tagged by immutable git SHA. The matrix
+  # keeps the three Dockerfiles (already authored in ticket 06) in one place.
+  images:
+    name: Build & push images to ECR (SHA-tagged)
+    runs-on: ubuntu-latest
+    # GATE: only runs once infra is provisioned and the flag variable is set.
+    if: ${{ vars.ECR_DEPLOY_ENABLED == 'true' }}
+    strategy:
+      matrix:
+        include:
+          - service: backend
+            dockerfile: apps/backend/Dockerfile
+          - service: ai-worker
+            dockerfile: services/ai/Dockerfile
+          - service: frontend
+            dockerfile: apps/frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push (immutable SHA tag, never :latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          # Immutable git SHA tag only (ADR-0008: :latest is forbidden).
+          tags: ${{ vars.ECR_REGISTRY }}/tuju-${{ matrix.service }}:${{ github.sha }}
+
+  # A visible, always-green marker so the lane isn't a silent no-op while gated.
+  # Documents WHY nothing was pushed and what unblocks it.
+  gate-notice:
+    name: ECR push gate
+    runs-on: ubuntu-latest
+    if: ${{ vars.ECR_DEPLOY_ENABLED != 'true' }}
+    steps:
+      - name: Explain the gate
+        run: |
+          echo "Image build/push is GATED (ADR-0008): ECR + OIDC role not yet provisioned."
+          echo "Set repository variables to enable:"
+          echo "  ECR_DEPLOY_ENABLED=true, AWS_REGION, AWS_OIDC_ROLE_ARN, ECR_REGISTRY"
+          echo "No images pushed. This is expected until the Terraform infra effort lands."

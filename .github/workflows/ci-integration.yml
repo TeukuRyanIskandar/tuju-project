@@ -1,0 +1,61 @@
+# Integration lane (ADR-0011 integration layer).
+#
+# The two highest-risk seams against REAL infra via testcontainers (throwaway
+# Redis + Postgres + LocalStack — the same stack ADR-0006 runs in compose):
+#   - Python: JobBus enqueue → worker → contract-valid JobResult + S3 artifact
+#     (real Redis + LocalStack).
+#   - Backend (NestJS): JobBus round-trip over real Redis + sole-writer persist
+#     to real Postgres (ADR-0004).
+#
+# Docker-in-CI is a hard requirement here (GitHub-hosted ubuntu runners ship a
+# Docker daemon, which testcontainers drives). This lane is heavier than the PR
+# lane, so it is its own workflow; it still touches NO AWS and builds NO images.
+name: Integration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: integration-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- Python integration (testcontainers: Redis + LocalStack) --------------
+  python-integration:
+    name: Python integration (testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python world
+        uses: ./.github/actions/setup-python-world
+
+      - name: pytest (integration only)
+        working-directory: services/ai
+        # -m integration selects ONLY the testcontainers round-trip; the test
+        # skips cleanly if no Docker daemon is present (it won't be skipped here
+        # — ubuntu runners have Docker — but the guard keeps local runs sane).
+        run: uv run pytest -m integration
+
+  # --- Backend integration (testcontainers: Redis + Postgres) ---------------
+  backend-integration:
+    name: Backend integration (testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up TS world
+        uses: ./.github/actions/setup-ts-world
+
+      # The contract package must be built so @tuju/contracts resolves to dist
+      # when the backend integration spec imports its types.
+      - name: Build contracts
+        run: pnpm --filter @tuju/contracts build
+
+      - name: jest (integration only — *.int-spec.ts)
+        run: pnpm --filter @tuju/backend test:int

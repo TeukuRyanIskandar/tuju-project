@@ -1,0 +1,34 @@
+# gitleaks config (ADR-0009 secret-scan gate).
+#
+# The repo's invariant: no real secret is ever committed. `.env.example` holds
+# FAKE/LOCAL values only (ADR-0009), and prod secrets come from AWS SSM at boot.
+# This config extends gitleaks' default ruleset and allowlists the known-fake
+# local placeholders so they don't trip the gate — while any real-looking token
+# (AWS keys, private keys, provider tokens) still fails CI.
+
+title = "tuju-project gitleaks config"
+
+# Start from the maintained default ruleset, then layer our allowlist on top.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known-fake local/dev placeholders (never real secrets, ADR-0009)."
+
+# Files that only ever contain fake values by design.
+paths = [
+  '''\.env\.example$''',
+  '''docker-compose\.yml$''',
+  '''\.gitleaks\.toml$''',
+]
+
+# Literal fake values used across .env.example / docker-compose / infra so a
+# scanner heuristic can't flag them. Real credentials never look like these.
+regexes = [
+  '''local-dev-password''',
+  '''local-dummy-access-key''',
+  '''local-dummy-secret-key''',
+  '''change-me-fake-local-session-secret''',
+  '''fake-eodhd-key''',
+  '''fake-llm-api-key''',
+]

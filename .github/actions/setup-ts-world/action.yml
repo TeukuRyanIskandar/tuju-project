@@ -1,0 +1,43 @@
+# Composite action: set up the TS world (ADR-0002).
+#
+# Node (version from .nvmrc), pnpm (version from the root package.json
+# `packageManager` field, activated via Corepack), and a frozen-lockfile install
+# with pnpm's store cached across runs. Every TS job (PR/main/tag/integration)
+# reuses this so the toolchain pinning lives in exactly one place.
+name: Setup TS world
+description: >-
+  Install Node + pnpm (pinned via .nvmrc and packageManager) and run a
+  frozen-lockfile pnpm install with the pnpm store cached.
+
+runs:
+  using: composite
+  steps:
+    # Corepack activates the exact pnpm version pinned in package.json
+    # (packageManager: pnpm@11.3.0) — no separate version input to drift.
+    - name: Enable Corepack
+      shell: bash
+      run: corepack enable
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: .nvmrc
+
+    # Cache the pnpm content-addressable store keyed on the lockfile so
+    # unchanged deps restore instantly across runs.
+    - name: Get pnpm store path
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache pnpm store
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
+
+    - name: Install dependencies (frozen lockfile)
+      shell: bash
+      run: pnpm install --frozen-lockfile

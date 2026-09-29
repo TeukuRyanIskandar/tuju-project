@@ -26,3 +26,15 @@ packages/contracts/fixtures/**   text eol=lf
 **/Dockerfile                    text eol=lf
 docker-compose.yml               text eol=lf
 apps/frontend/nginx.conf         text eol=lf
+
+
+# CI (ticket 07, ADR-0008/0009/0011). Workflows + composite actions run on Linux
+# runners; the `run: |` blocks are bash (`set -euo pipefail`). A CRLF checkout
+# would break those shebangs/shell semantics, so pin the whole CI surface to LF
+# on every OS. The integration test files are authored on Windows but exercised
+# in the Linux CI integration lane — keep them LF for byte-stable diffs too.
+.github/**                       text eol=lf
+.gitleaks.toml                   text eol=lf
+apps/backend/src/**/*.int-spec.ts        text eol=lf
+apps/backend/jest.int.config.cjs         text eol=lf
+services/ai/tests/**             text eol=lf

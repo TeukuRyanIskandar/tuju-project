@@ -1,0 +1,28 @@
+# Composite action: set up the Python world (ADR-0002).
+#
+# services/ai is a self-owned uv-managed world, deliberately OUTSIDE the pnpm
+# workspace and the Turbo graph. uv installs the Python version pinned in
+# services/ai/.python-version and syncs the locked dev environment (pytest +
+# datamodel-code-generator, needed by both the pytest job and the drift gate).
+name: Setup Python world
+description: >-
+  Install uv and sync services/ai's locked environment (Python pinned via
+  services/ai/.python-version), with the uv cache enabled.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        # uv reads services/ai/.python-version; keep uv itself pinned for
+        # reproducibility (matches the local dev pin in the baseline).
+        version: "0.11.9"
+        enable-cache: true
+        cache-dependency-glob: services/ai/uv.lock
+
+    - name: Sync the Python world (locked dev deps)
+      shell: bash
+      # --frozen fails if uv.lock is out of date with pyproject.toml, mirroring
+      # the TS --frozen-lockfile guarantee. --dev pulls pytest + codegen.
+      run: uv sync --project services/ai --frozen --dev

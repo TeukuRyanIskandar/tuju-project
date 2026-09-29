@@ -13,7 +13,16 @@ packages:
 #   - lightningcss     transitive native dep of vite 8 (ticket 04 frontend)
 #   - msgpackr-extract transitive native dep of bullmq (ticket 03 backend) and
 #                      @tanstack/react-start's nitro/vite pipeline (ticket 04)
+# The `false` entries are optional native addons pulled in transitively by
+# @testcontainers/* (via ssh2/dockerode), used only by the integration lane.
+# We deliberately DO NOT build them — they are perf-only optionals and
+# testcontainers works without them. Marking them false (not leaving them
+# undecided) keeps `pnpm install --frozen-lockfile` exiting 0 in CI instead of
+# erroring on an ignored build (ERR_PNPM_IGNORED_BUILDS).
 allowBuilds:
+  cpu-features: false
   esbuild: true
   lightningcss: true
   msgpackr-extract: true
+  protobufjs: false
+  ssh2: false

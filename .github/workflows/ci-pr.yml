@@ -1,0 +1,106 @@
+# PR lane (ADR-0008 lane 1 / ADR-0011 PR layer).
+#
+# Fast, no-infra gate on every PR and every push to main: lint + typecheck +
+# build + unit + contract tests on BOTH worlds, the cross-language contract-drift
+# gate, and a gitleaks secret scan (ADR-0009). NO images are built and NO AWS is
+# touched — CI has zero prod access at this lane (ADR-0008).
+#
+# The integration lane (testcontainers) lives in a separate workflow so this gate
+# stays quick; image build/push lives in the main/tag lanes.
+name: PR
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# One in-flight run per ref; a new push cancels the previous run.
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # --- TS world (pnpm + Turborepo) ------------------------------------------
+  # apps/frontend, apps/backend, packages/contracts. Turbo runs lint/typecheck/
+  # build/test across the graph; the unit lane needs no Docker (integration
+  # *.int-spec.ts are excluded by jest.config.cjs testPathIgnorePatterns).
+  ts:
+    name: TS world (lint/typecheck/build/test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up TS world
+        uses: ./.github/actions/setup-ts-world
+
+      # Turbo caches per-task locally; keep its cache across runs keyed on the
+      # lockfile + source so unchanged packages are restored.
+      - name: Cache Turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Lint + typecheck + build + unit/contract test
+        run: pnpm turbo run lint typecheck build test
+
+  # --- Python world (uv, outside the Turbo graph, ADR-0002) -----------------
+  # Runs as a separate parallel job. pytest runs from services/ai so the
+  # pyproject markers register; the default selection excludes `integration`
+  # (that runs in the integration lane against testcontainers).
+  python:
+    name: Python world (pytest unit/contract)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python world
+        uses: ./.github/actions/setup-python-world
+
+      - name: pytest (unit + contract)
+        working-directory: services/ai
+        # -m "not integration" keeps this lane infra-free; the integration
+        # marker's tests run in ci-integration.yml against real containers.
+        run: uv run pytest -m "not integration"
+
+  # --- Contract-drift gate (ADR-0008) ---------------------------------------
+  # The single cross-language safety net: regenerate the JSON Schema + Pydantic
+  # models from the Zod source and fail on any git diff. Needs BOTH worlds —
+  # scripts/generate.mjs step 3 shells out to `uv run datamodel-codegen`.
+  drift-gate:
+    name: Contract drift gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up TS world
+        uses: ./.github/actions/setup-ts-world
+
+      - name: Set up Python world
+        uses: ./.github/actions/setup-python-world
+
+      - name: Regenerate contracts and fail on drift
+        run: pnpm --filter @tuju/contracts check
+
+  # --- gitleaks secret scan (ADR-0009) --------------------------------------
+  # No real secret ever enters the repo (.env.example holds fake values only).
+  # gitleaks scans the tree + history; config in .gitleaks.toml allowlists the
+  # known-fake local values so they don't trip the gate.
+  gitleaks:
+    name: gitleaks secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so the scan covers past commits, not just the tip.
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml

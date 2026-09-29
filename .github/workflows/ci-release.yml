@@ -1,0 +1,93 @@
+# tag `v*` lane (ADR-0008 lane 3).
+#
+# On a pushed semver tag (v1.2.3): generate release notes from Conventional
+# Commits into a GitHub Release, and apply the version tag to the ECR images that
+# were already built by the main lane under the tagged commit's SHA (retag, not
+# rebuild — the SHA image is the immutable artifact; the version is an alias).
+#
+# GATED UNTIL INFRA EXISTS (same as the main lane): the ECR retag job runs only
+# once the repository variables are set. The release-notes job needs no AWS and
+# runs immediately on any v* tag.
+#
+# Required repository variables (shared with ci-main.yml):
+#   vars.ECR_DEPLOY_ENABLED, vars.AWS_REGION, vars.AWS_OIDC_ROLE_ARN,
+#   vars.ECR_REGISTRY
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # create the GitHub Release
+  id-token: write # OIDC for the ECR retag job
+
+jobs:
+  # --- Release notes from Conventional Commits (no AWS) ----------------------
+  release-notes:
+    name: GitHub Release (Conventional Commits notes)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so the notes span the whole tag range
+
+      - name: Create the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # GitHub derives the changelog from Conventional-Commit messages
+          # between the previous tag and this one.
+          generate_release_notes: true
+
+  # --- Version-tag the already-built SHA images in ECR -----------------------
+  # Retags the immutable SHA image (built by ci-main.yml) with the release
+  # version — the SHA image is the artifact; the version is an alias to it.
+  retag-images:
+    name: Version-tag ECR images
+    runs-on: ubuntu-latest
+    if: ${{ vars.ECR_DEPLOY_ENABLED == 'true' }}
+    strategy:
+      matrix:
+        service: [backend, ai-worker, frontend]
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Retag SHA image with the release version
+        env:
+          REGISTRY: ${{ vars.ECR_REGISTRY }}
+          REPO: tuju-${{ matrix.service }}
+          # For a tag push, github.ref_name is already the bare tag (vX.Y.Z).
+          VERSION: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          # Pull the manifest for the SHA image and put it back under the version
+          # tag — no rebuild, so the bytes are provably identical (ADR-0008).
+          MANIFEST="$(aws ecr batch-get-image \
+            --repository-name "$REPO" \
+            --image-ids imageTag="$SHA" \
+            --query 'images[0].imageManifest' --output text)"
+          aws ecr put-image \
+            --repository-name "$REPO" \
+            --image-tag "$VERSION" \
+            --image-manifest "$MANIFEST"
+          echo "Retagged $REGISTRY/$REPO:$SHA as :$VERSION"
+
+  gate-notice:
+    name: ECR retag gate
+    runs-on: ubuntu-latest
+    if: ${{ vars.ECR_DEPLOY_ENABLED != 'true' }}
+    steps:
+      - name: Explain the gate
+        run: |
+          echo "ECR version-retag is GATED (ADR-0008): infra not yet provisioned."
+          echo "The GitHub Release (release notes) still runs. Image retag activates"
+          echo "once ECR_DEPLOY_ENABLED=true and the AWS_* / ECR_REGISTRY vars are set."
