@@ -1,0 +1,12 @@
+{
+  "name": "@tuju/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared job/result/progress schema — cross-language contract seam (ADR-0002/0007; filled by scaffold ticket 02).",
+  "scripts": {
+    "build": "echo \"[contracts] build stub — seam reserved, ticket 02 fills it\"",
+    "test": "echo \"[contracts] test stub — seam reserved, ticket 02 fills it\"",
+    "lint": "echo \"[contracts] lint stub — seam reserved, ticket 02 fills it\"",
+    "typecheck": "echo \"[contracts] typecheck stub — seam reserved, ticket 02 fills it\""
+  }
+}

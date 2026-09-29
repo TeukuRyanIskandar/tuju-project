@@ -1,0 +1,6 @@
+# pnpm workspace — TS world only (ADR-0002).
+# services/ai is deliberately NOT listed: Python is its own uv-managed
+# world, outside the pnpm workspace and the Turbo task graph.
+packages:
+  - "apps/*"
+  - "packages/*"

@@ -1,0 +1,12 @@
+{
+  "name": "@tuju/backend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "NestJS backend (skeleton placeholder — filled by scaffold ticket 03).",
+  "scripts": {
+    "build": "echo \"[backend] build stub — no app code yet\"",
+    "test": "echo \"[backend] test stub — no app code yet\"",
+    "lint": "echo \"[backend] lint stub — no app code yet\"",
+    "typecheck": "echo \"[backend] typecheck stub — no app code yet\""
+  }
+}

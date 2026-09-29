@@ -1,0 +1,22 @@
+{
+  "name": "tuju-project",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Bursa Malaysia intelligence platform monorepo (Product A). TS world managed by pnpm + Turborepo; Python AI worker is its own uv world (ADR-0002).",
+  "packageManager": "pnpm@11.3.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "ai:sync": "uv sync --project services/ai",
+    "ai:test": "uv run --project services/ai pytest"
+  },
+  "devDependencies": {
+    "turbo": "2.11.5"
+  }
+}

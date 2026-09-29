@@ -1,0 +1,12 @@
+{
+  "name": "@tuju/frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TanStack Start frontend (skeleton placeholder — filled by scaffold ticket 04).",
+  "scripts": {
+    "build": "echo \"[frontend] build stub — no app code yet\"",
+    "test": "echo \"[frontend] test stub — no app code yet\"",
+    "lint": "echo \"[frontend] lint stub — no app code yet\"",
+    "typecheck": "echo \"[frontend] typecheck stub — no app code yet\""
+  }
+}
