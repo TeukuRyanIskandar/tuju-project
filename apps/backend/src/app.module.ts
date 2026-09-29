@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { AuthGuard } from './auth/auth.guard';
 import { TierGuard } from './auth/tier.guard';
 import { HealthModule } from './health/health.module';
+import { AnalysisModule } from './analysis/analysis.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -26,6 +27,7 @@ import { HealthModule } from './health/health.module';
     JobBusModule,
     AuthModule,
     HealthModule,
+    AnalysisModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

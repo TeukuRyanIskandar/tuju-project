@@ -132,8 +132,12 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Content-derived, idempotent job id (ADR-0007 §2).
-   * e.g. `ta:{symbol}:{...}:{asOfBucket}`. The scaffold derives a stable id from
+   * e.g. `ta-{symbol}-{...}-{asOfBucket}`. The scaffold derives a stable id from
    * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
+   *
+   * NB: BullMQ forbids `:` in a custom job id (it namespaces Redis keys with
+   * `:`), so every segment is joined with `-` and any stray separator chars in
+   * the derived parts (e.g. the ISO `asOf`) are normalised to `-`.
    */
   private deriveJobId<P>(jobName: JobName, env: JobEnvelope<P>): string {
     const payload = env.payload as Record<string, unknown>;
@@ -141,8 +145,10 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
     const discriminator = String(
       payload.timeframe ?? payload.period ?? 'default',
     );
-    const asOfBucket = env.asOf.slice(0, 13); // hour bucket
+    const asOfBucket = env.asOf.slice(0, 13); // hour bucket, e.g. 2026-09-29T05
     const prefix = jobName === 'analyze-technical' ? 'ta' : 'fa';
-    return `${prefix}:${symbol}:${discriminator}:${asOfBucket}`;
+    return [prefix, symbol, discriminator, asOfBucket]
+      .join('-')
+      .replace(/:/g, '-');
   }
 }

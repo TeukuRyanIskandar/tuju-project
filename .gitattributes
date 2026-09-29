@@ -17,3 +17,12 @@ services/ai/src/tuju_ai/contracts_generated/**           text eol=lf
 
 # Golden fixtures loaded byte-identically by both test suites
 packages/contracts/fixtures/**   text eol=lf
+
+
+# Container runtime files (ticket 06, ADR-0006). These are executed INSIDE Linux
+# images; a CRLF checkout on Windows breaks shell shebangs (`bad interpreter`)
+# and is unsafe for Dockerfiles/compose. Pin them to LF on every OS.
+*.sh                             text eol=lf
+**/Dockerfile                    text eol=lf
+docker-compose.yml               text eol=lf
+apps/frontend/nginx.conf         text eol=lf

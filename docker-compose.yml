@@ -1,0 +1,148 @@
+# tuju-project — local runtime (ticket 06, ADR-0006).
+#
+# One command (`docker compose up`) brings up the whole stack with ZERO AWS
+# credentials: NestJS backend + Python AI worker + Redis (AOF) + Postgres +
+# LocalStack (S3). This is the local mirror of the prod single-EC2 stack; the
+# same containers repackage up the ADR-0006 scale ladder (RDS/S3 externalised,
+# Redis to ElastiCache) with no code change because every dependency is reached
+# by a connection-URL env var (ADR-0006 invariant) — never a hardcoded host.
+
+name: tuju
+
+services:
+  # --- Redis: BullMQ broker + session store + cache (ADR-0001/0004/0005) ------
+  # AOF persistence ON so a restart doesn't drop the queue/sessions (ADR-0006).
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # --- Postgres: system of record (ADR-0004). RDS in prod; container locally. --
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tuju
+      POSTGRES_PASSWORD: local-dev-password
+      POSTGRES_DB: tuju
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tuju -d tuju"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # --- LocalStack: S3 emulator (ADR-0006, supersedes MinIO) -------------------
+  # The init hook (infra/localstack/init/ready.d) creates the artifact bucket.
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3
+      AWS_DEFAULT_REGION: ap-southeast-1
+      S3_BUCKET: tuju-local
+      AWS_REGION: ap-southeast-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./infra/localstack/init:/etc/localstack/init
+    healthcheck:
+      # LocalStack's health endpoint reports service readiness.
+      test: ["CMD-SHELL", "curl -sf http://localhost:4566/_localstack/health | grep -q '\"s3\": \"available\"' || curl -sf http://localhost:4566/_localstack/health | grep -q '\"s3\": \"running\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  # --- NestJS backend: identity authority, sole Postgres writer, job producer -
+  # Runs migrations on boot (analysis_results table) then serves HTTP (ADR-0004).
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      # Connection-URL-by-env (ADR-0006) — targets are service names on the
+      # compose network; the interface is identical to prod (only targets differ).
+      DATABASE_URL: postgres://tuju:local-dev-password@postgres:5432/tuju
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://localstack:4566
+      S3_BUCKET: tuju-local
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: local-dummy-access-key
+      AWS_SECRET_ACCESS_KEY: local-dummy-secret-key
+      SESSION_SECRET: change-me-fake-local-session-secret
+      COOKIE_SECURE: "false"
+      LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # --- Python AI worker: stateless BullMQ consumer (ADR-0002/0003) ------------
+  # Consumes `analysis`, runs the LangGraph stub, claim-checks artifact to S3,
+  # returns the pointer over the JobBus. Scales wide (`--scale ai-worker=N`).
+  ai-worker:
+    build:
+      context: .
+      dockerfile: services/ai/Dockerfile
+    environment:
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://localstack:4566
+      S3_BUCKET: tuju-local
+      S3_ARTIFACTS_PREFIX: analysis
+      AWS_REGION: ap-southeast-1
+      AWS_ACCESS_KEY_ID: local-dummy-access-key
+      AWS_SECRET_ACCESS_KEY: local-dummy-secret-key
+    depends_on:
+      redis:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      # Liveness: the worker can reach Redis (its only hard boot dependency).
+      test: ["CMD-SHELL", "python -c \"import os,redis; redis.Redis.from_url(os.environ['REDIS_URL']).ping()\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # --- Frontend: static SPA build served by nginx (ADR-0005) ------------------
+  # A CDN artifact in prod; here a static container so the full stack is present.
+  # Talks to the backend over the env-configured API base.
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  redis-data:
+  postgres-data:

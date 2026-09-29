@@ -1,0 +1,36 @@
+# Keep Docker build contexts lean and reproducible (ticket 06).
+# Never ship host node_modules / venvs / build output / secrets into an image;
+# images install from the committed lockfiles instead.
+
+**/node_modules
+**/.venv
+**/dist
+**/build
+**/.output
+**/.turbo
+**/.tanstack
+**/*.tsbuildinfo
+
+# Python caches
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/*.egg-info
+
+# Secrets / local env (only .env.example is ever tracked)
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+
+# VCS / editors / OS / scratch
+.git
+.idea
+.vscode
+**/.DS_Store
+**/Thumbs.db
+.scratch
+docs
