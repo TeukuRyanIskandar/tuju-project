@@ -6,12 +6,14 @@ packages:
   - "packages/*"
 
 # Native postinstall build scripts we explicitly allow so `pnpm install` runs
-# clean instead of warning about (and failing on) an ignored build:
+# clean instead of warning about (and failing on) an ignored build.
+# pnpm 11 replaced pnpm-10's `onlyBuiltDependencies` list with the `allowBuilds`
+# map (name: true|false); the old key is silently ignored under pnpm 11.
 #   - esbuild          transitive dep of vitest (ticket 02) + vite (ticket 04)
 #   - lightningcss     transitive native dep of vite 8 (ticket 04 frontend)
-#   - msgpackr-extract optional native dep pulled via @tanstack/react-start's
-#                      nitro/vite pipeline (ticket 04 frontend)
-onlyBuiltDependencies:
-  - esbuild
-  - lightningcss
-  - msgpackr-extract
+#   - msgpackr-extract transitive native dep of bullmq (ticket 03 backend) and
+#                      @tanstack/react-start's nitro/vite pipeline (ticket 04)
+allowBuilds:
+  esbuild: true
+  lightningcss: true
+  msgpackr-extract: true
