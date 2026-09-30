@@ -1,7 +1,7 @@
 # Build ticket: Free-tier domain model foundation (entities + migration)
 
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: (none)
 
 > Execution effort breaking down
@@ -74,4 +74,13 @@ Reconciliation / purge / cadence integration tests belong to the generator + wor
 
 ## Answer
 
-(implemented — see commit on `main`)
+Implemented on `main` (commit `3b0b2bf`). 18 TypeORM entities + `enums.ts` in
+`apps/backend/src/data/entities/`, one boot migration
+(`1727700000000-FreeTierDomainModel.ts`) creating all 16 tables + 6 native
+Postgres enum types + `pg_trgm` GIN indexes on the instrument name columns,
+wired into `data.module.ts` and `data-source.ts`. Unit tests
+(`domain-model.spec.ts`) assert the model shape via TypeORM metadata (no DB):
+provenance lineage on every sourced table, Company/Instrument split, STI
+discriminator, native enum columns, watchlist as the only account-bound entity.
+Verified: typecheck clean; 46/46 backend unit tests pass. Code-reviewed
+(Standards + Spec axes); the one substantive finding (DB enums vs varchar) fixed.
