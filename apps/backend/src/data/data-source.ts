@@ -1,7 +1,27 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { AnalysisResult } from './entities/analysis-result.entity';
+import {
+  Announcement,
+  Company,
+  CorporateAction,
+  FundamentalsSnapshot,
+  IndicatorSnapshot,
+  IngestionRun,
+  Instrument,
+  IpoListing,
+  NewsArticle,
+  NewsArticleTag,
+  PriceBar,
+  QuarterlyFinancials,
+  Sector,
+  ShariahStatus,
+  SyntheticRun,
+  Watchlist,
+  WatchlistItem,
+} from './entities';
 import { InitialSchema1727600000000 } from './migrations/1727600000000-InitialSchema';
+import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-FreeTierDomainModel';
 
 /**
  * Standalone TypeORM DataSource used by the CLI (migration:run/revert).
@@ -15,6 +35,25 @@ export const AppDataSource = new DataSource({
   url: process.env.DATABASE_URL,
   synchronize: false,
   logging: false,
-  entities: [AnalysisResult],
-  migrations: [InitialSchema1727600000000],
+  entities: [
+    AnalysisResult,
+    IngestionRun,
+    SyntheticRun,
+    Sector,
+    Company,
+    Instrument,
+    PriceBar,
+    QuarterlyFinancials,
+    FundamentalsSnapshot,
+    IndicatorSnapshot,
+    CorporateAction,
+    ShariahStatus,
+    Announcement,
+    NewsArticle,
+    NewsArticleTag,
+    IpoListing,
+    Watchlist,
+    WatchlistItem,
+  ],
+  migrations: [InitialSchema1727600000000, FreeTierDomainModel1727700000000],
 });
