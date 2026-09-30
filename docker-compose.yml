@@ -102,6 +102,36 @@ services:
       retries: 20
       start_period: 15s
 
+  # --- Ingestion worker: dedicated second NestJS process (ADR-0012) -----------
+  # Same apps/backend image + entities/migrations/DB connection as `backend`, but
+  # booted headless via NestFactory.createApplicationContext (worker-main.ts). The
+  # @nestjs/schedule crons (nightly EOD+fundamentals→indicators; 5-min intraday
+  # replay to Redis only) live ONLY here — the API process registers none, so
+  # nothing double-fires (spec 01 / ADR-0012). ADR-0004 sole-writer holds: both
+  # NestJS processes are the same Postgres writer.
+  ingestion-worker:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    # The backend image's ENTRYPOINT runs migrations then boots the API; the
+    # worker instead boots the headless ingestion context. `backend` (below)
+    # already owns the boot migration, so the worker only needs to start.
+    entrypoint: ["node", "dist/worker-main.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://tuju:local-dev-password@postgres:5432/tuju
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: change-me-fake-local-session-secret
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        # Wait for the API's boot migration to own the schema before ingesting.
+        condition: service_healthy
+
   # --- Python AI worker: stateless BullMQ consumer (ADR-0002/0003) ------------
   # Consumes `analysis`, runs the LangGraph stub, claim-checks artifact to S3,
   # returns the pointer over the JobBus. Scales wide (`--scale ai-worker=N`).
