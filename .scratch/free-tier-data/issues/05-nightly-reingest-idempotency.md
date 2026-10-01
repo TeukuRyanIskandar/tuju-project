@@ -1,7 +1,7 @@
 # Build ticket: Nightly re-ingest idempotency (runNightly is single-shot only)
 
 Type: task
-Status: open
+Status: resolved (option B — idempotent upserts on natural keys; implemented, uncommitted)
 Blocked by: (none)
 
 > Filed on the free-tier-data effort (spec-01 scope) from findings made by the
@@ -108,4 +108,66 @@ once the second nightly is clean.
 
 ## Answer
 
-(open)
+**Decided: Option B — idempotent upserts per table** (owner call, overriding the
+A-leaning recommendation). Every `runNightly()` persist is now an
+`upsert` on the table's natural key, so a second nightly against a populated
+DB updates rows in place: no duplicate-key failure, no duplicate rows,
+**stable row ids** (downstream FKs such as news tags survive a re-run), and
+data rows re-point their lineage to the fresh run. `ingestion_runs` rows
+accumulate per nightly (six per run: public-reference, synthetic, disclosure,
+news, shariah, ipo) — the accepted option-B cost, kept as the audit trail.
+
+### Natural keys (existing from ticket 01 + the three added)
+
+| Table | Natural key | Since |
+| ----- | ----------- | ----- |
+| `price_bars` | `(instrument_id, trade_date)` | ticket 01 (already `UQ_price_bars_instrument_date`) |
+| `quarterly_financials` | `(company_id, fiscal_year, fiscal_quarter)` | ticket 01 (already) |
+| `fundamentals_snapshots` | `(company_id)` | ticket 01 (already) |
+| `indicator_snapshots` | `(instrument_id)` | ticket 01 (already) |
+| `shariah_statuses` | `(company_id, effective_date)` | ticket 01 (already — the first hard failure) |
+| `news_articles` | `(url)` | ticket 01 (already) |
+| `announcements` | `(company_id, filed_at, title)` | **new** — `sourceUrl` is NOT the key (nullable in the demo snapshot; a licensed feed may re-serve the same disclosure under a different URL) |
+| `corporate_actions` | `(company_id, type, ex_date)` | **new** — same-type events by one company on one ex-date collapse to one row (acceptable for the calendar + DY feed) |
+| `ipo_listings` | `(company_name, listing_date)` | **new** — `UNIQUE NULLS NOT DISTINCT` (PG15+; stack runs PG16) so an undated (NULL) IPO row re-ingests as an update, not a duplicate |
+
+### What changed (all in `apps/backend`)
+
+- **Migration `1727800000000-ReIngestNaturalKeys`**: the three new unique
+  constraints (up drops them in reverse). Registered in `data-source.ts`,
+  `data.module.ts`, and the ingestion int spec's container bootstrap.
+  `@Unique` decorators added to the three entities to keep entity metadata
+  aligned with the DB (schema truth is the migration; `synchronize` stays off).
+- **`eod-ingest.service.ts`**: every persist (price bars, quarterly,
+  announcements, corporate actions, news, shariah, IPOs, fundamentals
+  snapshots, indicator snapshots) switched from plain `save` INSERTs to
+  `upsert` on the keys above. Price bars chunked at 1,000 rows per statement
+  (TypeORM's `upsert` has no chunk option; a single ~5.3k-row statement would
+  near the 65,535 Postgres bind-parameter limit).
+- **Tests (`ingestion.int.spec.ts`)**: new 5th test runs `runNightly()` twice
+  against the same populated containers, unmodified — asserts run 2 completes,
+  every data-table count equals run 1's, snapshots still one per
+  company/instrument, and lineage grew by exactly 6 runs. The test-only
+  shariah/IPO pre-clear shim in the cache-invalidation test is removed (the
+  second nightly is now genuinely idempotent). Purge + cron-isolation tests
+  untouched and green.
+- **No ADR change**: option B is schema-level idempotency (three natural keys +
+  upserts), not an architectural regen posture — ADR-0012 needed no amendment.
+
+### Verification
+
+`pnpm --filter backend typecheck` clean; `test` 146/146 (15 suites, incl.
+testcontainers Postgres + Redis); `test:int` 2/2; `build` clean.
+
+### Out-of-scope note (per the ticket's instruction, not solved here)
+
+When the aggregator adapters become **non-static** (licensed feed), the same
+upsert machinery handles incremental rows naturally, but two keys deserve a
+revisit then: (1) `announcements` keyed `(company, filedAt, title)` may prefer
+the feed's own item identity (e.g. `sourceUrl` when the licensed feed always
+carries one, or a feed item id) — two different disclosures that share
+company/filedAt/title today would collapse wrongly; (2) licensed IPO calendar
+rows carry richer identity (prospectus/board/offer) than
+`(companyName, listingDate)` — same-company multi-listing events would need a
+wider key. Neither is reachable with the static demo snapshots; both are one
+migration away.

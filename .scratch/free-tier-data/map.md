@@ -11,7 +11,7 @@ into build tickets. Backend only. Ticket work lands in `apps/backend`.
 | 02 | [Source-adapter seam](issues/02-source-adapter-seam.md) | 1 | 01 | **resolved** (committed `7b10846`) |
 | 03 | [Synthetic co-generation generator](issues/03-synthetic-cogeneration-generator.md) | 1 | 01 | **resolved** (committed `7b10846`) |
 | 04 | [Ingestion worker + indicators + ADR-0012](issues/04-ingestion-worker-and-indicators.md) | 2 | 02, 03 | **resolved** (committed `7b10846`; post-review fixes `7fc11ab`) |
-| 05 | [Nightly re-ingest idempotency](issues/05-nightly-reingest-idempotency.md) | — | — | **open** (filed from spec-02 effort findings) |
+| 05 | [Nightly re-ingest idempotency](issues/05-nightly-reingest-idempotency.md) | — | — | **resolved** (option B; implemented, uncommitted) |
 
 ## Wave structure
 
@@ -48,6 +48,17 @@ into build tickets. Backend only. Ticket work lands in `apps/backend`.
   ran `runNightly()` a second time against a populated DB and found re-ingest is
   not idempotent — see the ticket for the full findings (a `UQ` violation fails the
   whole nightly ingest on every night after the first).
+- **Ticket 05 resolved — option B (idempotent upserts on natural keys), not the
+  A-leaning recommendation:** every `runNightly()` persist is now an upsert on its
+  table's natural key (six already existed from ticket 01; migration
+  `1727800000000-ReIngestNaturalKeys` adds the missing three — announcements
+  `(company, filedAt, title)`, corporate actions `(company, type, exDate)`, IPOs
+  `(companyName, listingDate)` with `NULLS NOT DISTINCT`). Re-ingest updates rows
+  in place with stable row ids; lineage rows accumulate per nightly (audit
+  trail, the accepted option-B cost). Full answer incl. the licensed-feed
+  out-of-scope note: [ticket 05 answer](issues/05-nightly-reingest-idempotency.md#answer).
+  Verified: typecheck clean, 146/146 tests (15 suites), `test:int` 2/2, build
+  clean. Spec-01 execution is now fully closed (pending commit).
 
 ## Not yet ticketed (still spec-01 scope)
 
