@@ -202,7 +202,13 @@ export class EodIngestService {
         shariahStatuses,
         ipoListings,
       };
-      this.logger.log(`nightly ingest complete: ${JSON.stringify(result)}`);
+      // ADR-0010: every log line carries a correlationId.  The nightly ingest is
+      // not a JobBus job so there is no envelope id; the SyntheticRun id is the
+      // per-run stitch key that ties every persisted row back to this ingest.
+      this.logger.log(
+        { correlationId: syntheticRun.id, msg: 'nightly-eod-ingest.complete', ...result },
+        'nightly-eod-ingest.complete',
+      );
       return result;
     });
   }

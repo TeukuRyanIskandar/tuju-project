@@ -53,9 +53,9 @@ async function bootstrap(): Promise<void> {
     }
     case 'serve':
     default: {
-      // Crons registered by ScheduleModule in IngestionModule are now live.
+      // `createApplicationContext` above already initialises the context and
+      // registers the @nestjs/schedule crons — no second app.init() needed.
       logger.log({ command: 'serve' }, 'worker.serve.crons-registered');
-      await app.init();
       // Keep the process resident so scheduled jobs fire.
       return;
     }
