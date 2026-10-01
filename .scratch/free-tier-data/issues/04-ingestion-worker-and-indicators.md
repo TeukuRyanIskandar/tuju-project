@@ -159,3 +159,18 @@ Entities in `src/data/entities/` and the migration were NOT modified.
 - `docker compose config` → valid.
 
 Left in the working tree (not committed) per instructions.
+
+## Comments
+
+- **Committed** (map sync, post-hoc): the wave-2 work landed in `7b10846`
+  ("feat(backend): free-tier ingestion seam, synthetic generator, worker (spec
+  01, tickets 02-04)"), followed by `7fc11ab` fixing the two hard violations
+  from the post-implementation code review (double-init in the worker serve
+  path; ADR-0010 structured-log violation). The "not committed" line above is
+  historical.
+- **Follow-up filed:** a second `runNightly()` against a populated DB fails the
+  whole ingest (re-ingest is not idempotent) — discovered later by the
+  spec-02 effort's cache test and filed as
+  [ticket 05 — nightly re-ingest idempotency](05-nightly-reingest-idempotency.md).
+  The verification above (single nightly + purge in fresh containers) never
+  exercised the re-run path, which is why this surfaced late.

@@ -8,20 +8,21 @@ into build tickets. Backend only. Ticket work lands in `apps/backend`.
 | # | Ticket | Wave | Blocked by | Status |
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [Domain model foundation (entities + migration)](issues/01-domain-model-foundation.md) | — | — | **resolved** (committed `3b0b2bf`) |
-| 02 | [Source-adapter seam](issues/02-source-adapter-seam.md) | 1 | 01 | **resolved** (working tree, uncommitted) |
-| 03 | [Synthetic co-generation generator](issues/03-synthetic-cogeneration-generator.md) | 1 | 01 | **resolved** (working tree, uncommitted) |
-| 04 | [Ingestion worker + indicators + ADR-0012](issues/04-ingestion-worker-and-indicators.md) | 2 | 02, 03 | **open** |
+| 02 | [Source-adapter seam](issues/02-source-adapter-seam.md) | 1 | 01 | **resolved** (committed `7b10846`) |
+| 03 | [Synthetic co-generation generator](issues/03-synthetic-cogeneration-generator.md) | 1 | 01 | **resolved** (committed `7b10846`) |
+| 04 | [Ingestion worker + indicators + ADR-0012](issues/04-ingestion-worker-and-indicators.md) | 2 | 02, 03 | **resolved** (committed `7b10846`; post-review fixes `7fc11ab`) |
+| 05 | [Nightly re-ingest idempotency](issues/05-nightly-reingest-idempotency.md) | — | — | **open** (filed from spec-02 effort findings) |
 
 ## Wave structure
 
 - **Wave 1 (done):** ticket 02 (adapter seam) ∥ ticket 03 (synthetic generator) — both
   depend only on ticket 01's entities and were implemented in parallel by fresh-context
   sub-agents, then independently audited (both PASS).
-- **Wave 2 (next):** ticket 04 — the integration join point. Wires the demo adapters
+- **Wave 2 (done):** ticket 04 — the integration join point. Wires the demo adapters
   (02) onto `@nestjs/schedule` crons in a dedicated NestJS ingestion worker process,
   delegates synthetic price/fundamentals to the generator (03), computes indicators in
   TypeScript, materialises ratios, implements the decision-B purge. **ADR-0012 is
-  written here.** Needs testcontainers (Postgres + Redis).
+  written** (`docs/adr/0012-dedicated-nestjs-ingestion-worker-ts-indicators.md`).
 
 ## Decisions / notes so far
 
@@ -32,15 +33,24 @@ into build tickets. Backend only. Ticket work lands in `apps/backend`.
   reconciliation test recomputes every ratio from emitted DTOs and asserts agreement
   (the A1 guarantee), including P/NTA ≠ P/B via an intangibles line.
 - Adapter seam: one interface per data class + demo impls behind DI tokens; the
-  `SyntheticMarketDataAdapter`/`FundamentalsAdapter` are thin and will delegate to the
-  generator when the worker (04) wires them.
+  `SyntheticMarketDataAdapter`/`FundamentalsAdapter` are thin and delegate to the
+  generator (wired by ticket 04).
 - **Verification at end of Wave 1:** `pnpm --filter @tuju/backend test` → 86/86 pass
   (8 suites); `typecheck` clean. Independent auditor confirmed scope isolation + no
   git commit.
-- **Uncommitted:** Wave-1 changes are in the working tree only (not committed), pending
-  your review.
+- **Wave 2 (tickets 02–04) committed together** in `7b10846` ("feat(backend):
+  free-tier ingestion seam, synthetic generator, worker (spec 01, tickets 02-04)"),
+  followed by post-code-review fixes in `7fc11ab` (double-init in the worker serve
+  path; ADR-0010 structured-log violation). Final verification at commit time:
+  typecheck clean; 96/96 tests (11 suites, testcontainers Postgres + Redis);
+  `test:int` 2/2; build clean; `docker compose config` valid.
+- **Ticket 05 filed after the fact:** the spec-02 (free-tier-search) cache test
+  ran `runNightly()` a second time against a populated DB and found re-ingest is
+  not idempotent — see the ticket for the full findings (a `UQ` violation fails the
+  whole nightly ingest on every night after the first).
 
-## Not yet ticketed (still spec-01 scope, deferred by ticket 01)
+## Not yet ticketed (still spec-01 scope)
 
-None beyond ticket 04 — 02/03/04 cover the remaining spec-01 "Out of scope" list
-(seam, generator, worker/indicators/purge/ADR-0012). Specs 02–06 are separate efforts.
+Ticket 05 is the only open item on this effort. When it resolves, spec-01 execution
+is fully closed. (Its fix may graduate into an ADR-0012 amendment or a fresh ADR if
+the regen posture is architectural — the ticket's call to make.)
