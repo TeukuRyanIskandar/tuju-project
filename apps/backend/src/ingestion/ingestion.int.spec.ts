@@ -28,6 +28,7 @@ import {
 
 import { AdaptersModule } from '../data/adapters/adapters.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { ReadCacheService } from '../cache/read-cache.service';
 import { AnalysisResult } from '../data/entities/analysis-result.entity';
 import {
   Announcement,
@@ -117,6 +118,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         { provide: REDIS_CLIENT, useValue: redis },
         IngestionRunService,
         ReferenceDataService,
+        ReadCacheService,
         EodIngestService,
         IntradayReplayService,
         PurgeService,
@@ -256,6 +258,36 @@ describe('IngestionWorker (integration — testcontainers)', () => {
       .getRawMany<{ cls: ProvenanceClass; n: string }>();
     const realRuns = remainingByClass.find((c) => c.cls === ProvenanceClass.Real);
     expect(realRuns).toBeDefined();
+  });
+
+  it('nightly ingest + purge invalidate the class-2 read cache after commit (ticket 01)', async () => {
+    // Seed stale class-2 keys the way the read endpoints will, plus a key
+    // outside both invalidation prefixes that must survive.
+    await redis.set('cache:search:1155:20', 'stale');
+    await redis.set('cache:stocks:1155:core', 'stale');
+    await redis.set('cache:untouched', 'keep-me');
+
+    // A second nightly ingest: data commits, then both prefixes are swept.
+    // The purge above removed the synthetic/aggregator rows (safe re-land) but
+    // KEPT the `real` manual rows (shariah + IPO) — the demo adapters'
+    // static snapshots re-insert them, so clear just those two first to
+    // respect their unique keys (shariah is a history table keyed
+    // company+effectiveDate).
+    await dataSource.getRepository(ShariahStatus).createQueryBuilder().delete().execute();
+    await dataSource.getRepository(IpoListing).createQueryBuilder().delete().execute();
+    const result = await eod.runNightly();
+    expect(result.indicatorSnapshots).toBe(REFERENCE_UNIVERSE.length);
+    expect(await redis.get('cache:search:1155:20')).toBeNull();
+    expect(await redis.get('cache:stocks:1155:core')).toBeNull();
+    expect(await redis.get('cache:untouched')).toBe('keep-me');
+
+    // The decision-B purge sweeps the same prefixes after its commit.
+    await redis.set('cache:stocks:1023:core', 'stale');
+    await redis.set('cache:search:maybnk:20', 'stale');
+    const purged = await purge.purgeUnlicensed();
+    expect(purged.priceBars).toBeGreaterThan(0);
+    expect(await redis.get('cache:stocks:1023:core')).toBeNull();
+    expect(await redis.get('cache:search:maybnk:20')).toBeNull();
   });
 });
 

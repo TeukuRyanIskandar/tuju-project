@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DataModule } from '../data/data.module';
 import { AdaptersModule } from '../data/adapters/adapters.module';
+import { CacheModule } from '../cache/cache.module';
 import { EodIngestService } from './eod-ingest.service';
 import { IngestionRunService } from './ingestion-run.service';
 import { ReferenceDataService } from './reference-data.service';
@@ -26,7 +27,7 @@ import { IngestionScheduler } from './ingestion.scheduler';
  * licensed production adapter swaps in with no worker change.
  */
 @Module({
-  imports: [ScheduleModule.forRoot(), DataModule, AdaptersModule],
+  imports: [ScheduleModule.forRoot(), DataModule, AdaptersModule, CacheModule],
   providers: [
     IngestionRunService,
     ReferenceDataService,

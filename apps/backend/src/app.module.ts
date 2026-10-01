@@ -10,6 +10,8 @@ import { AuthGuard } from './auth/auth.guard';
 import { TierGuard } from './auth/tier.guard';
 import { HealthModule } from './health/health.module';
 import { AnalysisModule } from './analysis/analysis.module';
+import { SearchModule } from './search/search.module';
+import { StocksModule } from './stocks/stocks.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -28,6 +30,10 @@ import { AnalysisModule } from './analysis/analysis.module';
     AuthModule,
     HealthModule,
     AnalysisModule,
+    // Spec-02 anonymous free-tier read endpoints (search + stock page). No
+    // @RequiresJob on any of their routes → TierGuard passes → anonymous.
+    SearchModule,
+    StocksModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

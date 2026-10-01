@@ -25,6 +25,7 @@ import { NewsArticle } from '../data/entities/news-article.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ProvenanceClass } from '../data/entities/enums';
+import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX } from '../cache';
 
 /** Rows deleted per table (returned for logging / test assertions). */
 export interface PurgeResult {
@@ -49,13 +50,23 @@ const PURGED_CLASSES: readonly ProvenanceClass[] = [
 export class PurgeService {
   private readonly logger = new Logger(PurgeService.name);
 
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly readCache: ReadCacheService,
+  ) {}
 
   /** Run the decision-B purge in a single transaction. */
   async purgeUnlicensed(): Promise<PurgeResult> {
-    return this.dataSource.transaction(async (manager) =>
+    const result = await this.dataSource.transaction(async (manager) =>
       this.purgeWithManager(manager),
     );
+
+    // Class-2 cache invalidation AFTER the commit (ADR-0004): the purge just
+    // changed what every cached read page would show — the whole point is
+    // that no stale synthetic/aggregator page survives the licence crossing.
+    await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
+    await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
+    return result;
   }
 
   /** Purge using a caller-supplied manager (lets tests share a data source). */

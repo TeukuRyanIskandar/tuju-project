@@ -45,6 +45,7 @@ import { materialiseSnapshot } from './fundamentals-materialiser';
 import { computeIndicators, WEEK52_WINDOW } from './indicators';
 import { SYNTHETIC_BASE_SEED, instrumentSeed } from './reference-universe';
 import { DEFAULT_PARAMS } from '../data/synthetic';
+import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX } from '../cache';
 
 /** Summary of what a nightly ingest landed (returned for tests / logging). */
 export interface NightlyIngestResult {
@@ -73,6 +74,7 @@ export class EodIngestService {
     @Inject(NEWS_ADAPTER) private readonly news: NewsAdapter,
     @Inject(SHARIAH_LIST_ADAPTER) private readonly shariah: ShariahListAdapter,
     @Inject(IPO_ADAPTER) private readonly ipo: IpoAdapter,
+    private readonly readCache: ReadCacheService,
   ) {}
 
   /**
@@ -81,7 +83,7 @@ export class EodIngestService {
    * (ordered after) ratio materialisation → indicator snapshots.
    */
   async runNightly(): Promise<NightlyIngestResult> {
-    return this.dataSource.transaction(async (manager) => {
+    const result = await this.dataSource.transaction(async (manager) => {
       const ref = await this.reference.ensureReferenceData(manager);
 
       // --- Synthetic price + fundamentals lineage (one SyntheticRun) ---
@@ -211,6 +213,15 @@ export class EodIngestService {
       );
       return result;
     });
+
+    // Class-2 cache invalidation AFTER the transaction commits (ADR-0004): the
+    // demo disclosure snapshot lands inside this same nightly transaction, so
+    // one post-commit sweep covers the EOD-derived AND disclosure-derived
+    // caches. A failure here fails the ingest loudly — a stale page shown
+    // after new data committed is worse than a retried ingest.
+    await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
+    await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
+    return result;
   }
 
   private async persistPriceBars(
