@@ -23,6 +23,7 @@ import {
 } from './entities';
 import { InitialSchema1727600000000 } from './migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-FreeTierDomainModel';
+import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReIngestNaturalKeys';
 
 /**
  * All domain entities managed by the data layer. Registered in both this module
@@ -70,6 +71,7 @@ const ENTITIES = [
         migrations: [
           InitialSchema1727600000000,
           FreeTierDomainModel1727700000000,
+          ReIngestNaturalKeys1727800000000,
         ],
       }),
     }),

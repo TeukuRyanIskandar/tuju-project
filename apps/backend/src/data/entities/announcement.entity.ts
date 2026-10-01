@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { Company } from './company.entity';
 import { IngestionRun } from './ingestion-run.entity';
@@ -23,7 +24,14 @@ import { AnnouncementCategory } from './enums';
  * Owns the `aiSummary` field: the ticket-05 announcement-summaries showcase and
  * ticket-09's prospectus effort write here (inherits `aggregator` provenance).
  */
+/**
+ * Natural key (company, filedAt, title) so a re-ingest of the same disclosure
+ * snapshot is an idempotent upsert (ticket 05). `sourceUrl` is NOT the key: it
+ * is nullable (the demo aggregator snapshot has none), and a licensed feed may
+ * re-serve the same disclosure under a different URL.
+ */
 @Entity({ name: 'announcements' })
+@Unique('UQ_announcements_company_filed_title', ['companyId', 'filedAt', 'title'])
 export class Announcement {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

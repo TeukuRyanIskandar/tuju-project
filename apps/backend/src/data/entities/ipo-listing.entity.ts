@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { IngestionRun } from './ingestion-run.entity';
 import { ListingBoard } from './enums';
@@ -18,7 +19,17 @@ import { ListingBoard } from './enums';
  * FK'd to {@link Company}/{@link Instrument}: the issuer may not exist in the
  * analysed universe yet at listing time.
  */
+/**
+ * Natural key (companyName, listingDate) so a re-ingest of the curated calendar
+ * is an idempotent upsert (ticket 05). `NULLS NOT DISTINCT` (PG15+) in the
+ * migration so a NULL (unknown) date still conflicts — an undated IPO row
+ * re-ingests as an update, not a duplicate.
+ */
 @Entity({ name: 'ipo_listings' })
+@Unique('UQ_ipo_listings_company_name_listing_date', [
+  'companyName',
+  'listingDate',
+])
 export class IpoListing {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

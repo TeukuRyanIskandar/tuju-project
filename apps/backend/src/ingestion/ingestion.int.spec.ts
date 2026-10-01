@@ -13,6 +13,9 @@
  *   2. Intraday replay writes to Redis ONLY — Postgres row counts do not change.
  *   3. The decision-B purge deletes exactly the synthetic/aggregator rows and
  *      leaves the real reference data + the lineage rows intact.
+ *   4. A SECOND nightly against a populated DB is idempotent (ticket 05): rows
+ *      update in place on their natural keys — no duplicate-key failure, no
+ *      duplicate rows, lineage accumulates.
  *
  * This is a `.spec.ts` (runs in the default `test` lane per ticket 04) but requires
  * Docker for testcontainers; the ticket guarantees Docker is available.
@@ -51,6 +54,7 @@ import {
 } from '../data/entities';
 import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
+import { ReIngestNaturalKeys1727800000000 } from '../data/migrations/1727800000000-ReIngestNaturalKeys';
 import { ProvenanceClass } from '../data/entities/enums';
 
 import { EodIngestService } from './eod-ingest.service';
@@ -102,7 +106,11 @@ describe('IngestionWorker (integration — testcontainers)', () => {
       url: pgContainer.getConnectionUri(),
       synchronize: false,
       entities: ALL_ENTITIES,
-      migrations: [InitialSchema1727600000000, FreeTierDomainModel1727700000000],
+      migrations: [
+        InitialSchema1727600000000,
+        FreeTierDomainModel1727700000000,
+        ReIngestNaturalKeys1727800000000,
+      ],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -269,12 +277,9 @@ describe('IngestionWorker (integration — testcontainers)', () => {
 
     // A second nightly ingest: data commits, then both prefixes are swept.
     // The purge above removed the synthetic/aggregator rows (safe re-land) but
-    // KEPT the `real` manual rows (shariah + IPO) — the demo adapters'
-    // static snapshots re-insert them, so clear just those two first to
-    // respect their unique keys (shariah is a history table keyed
-    // company+effectiveDate).
-    await dataSource.getRepository(ShariahStatus).createQueryBuilder().delete().execute();
-    await dataSource.getRepository(IpoListing).createQueryBuilder().delete().execute();
+    // KEPT the `real` manual rows (shariah + IPO) — since ticket 05 the nightly
+    // is idempotent on natural keys, so the demo adapters' static snapshots
+    // upsert those rows in place (no pre-clear shim needed any more).
     const result = await eod.runNightly();
     expect(result.indicatorSnapshots).toBe(REFERENCE_UNIVERSE.length);
     expect(await redis.get('cache:search:1155:20')).toBeNull();
@@ -288,6 +293,47 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(purged.priceBars).toBeGreaterThan(0);
     expect(await redis.get('cache:stocks:1023:core')).toBeNull();
     expect(await redis.get('cache:search:maybnk:20')).toBeNull();
+  });
+
+  it('a second nightly against a populated DB is idempotent (ticket 05)', async () => {
+    // The purge in the previous test removed the synthetic/aggregator rows, so
+    // run 1 re-lands them against the populated reference + `real` rows.
+    const run1 = await eod.runNightly();
+    const counts1 = await tableCounts(dataSource);
+    const runs1 = counts1.ingestionRun;
+
+    // Run 2 — the exact same ingest, unmodified, against a fully populated DB.
+    // Before ticket 05 this failed the whole transaction at persistShariah
+    // (duplicate key on UQ_shariah_statuses_company_effective) and, past that,
+    // at the snapshot tables and the silent-duplication tables.
+    const run2 = await eod.runNightly();
+    const counts2 = await tableCounts(dataSource);
+
+    // The adapter output is identical, so the result summaries agree...
+    expect(run2).toEqual(run1);
+
+    // ...and every DATA table holds exactly the same rows — no duplicates, no
+    // losses (the new natural-key unique constraints make re-landing the same
+    // snapshot an update-in-place instead of a second copy).
+    expect(counts2.priceBar).toBe(counts1.priceBar);
+    expect(counts2.quarterly).toBe(counts1.quarterly);
+    expect(counts2.fundamentals).toBe(counts1.fundamentals);
+    expect(counts2.indicator).toBe(counts1.indicator);
+    expect(counts2.announcement).toBe(counts1.announcement);
+    expect(counts2.corporateAction).toBe(counts1.corporateAction);
+    expect(counts2.news).toBe(counts1.news);
+    expect(counts2.shariah).toBe(counts1.shariah);
+    expect(counts2.ipo).toBe(counts1.ipo);
+
+    // Still exactly one current snapshot per company / instrument.
+    const universe = REFERENCE_UNIVERSE.length;
+    expect(counts2.fundamentals).toBe(universe);
+    expect(counts2.indicator).toBe(universe);
+
+    // Lineage accumulates per nightly on purpose (option B audit trail): one
+    // fresh run row each for public-reference, synthetic, disclosure, news,
+    // shariah, and ipo.
+    expect(counts2.ingestionRun).toBe(runs1 + 6);
   });
 });
 

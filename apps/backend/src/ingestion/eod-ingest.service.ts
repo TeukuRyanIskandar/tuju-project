@@ -11,6 +11,14 @@
  * ADR-0004 sole-writer holds: this runs in the second NestJS process but is the
  * same Postgres writer. All writes are wrapped in one transaction so a failed
  * ingest leaves no half-written lineage.
+ *
+ * Re-ingest is idempotent on natural keys (ticket 05): every persist is an
+ * upsert against the table's unique natural key (the ones ticket 01 already
+ * created, plus the three `ReIngestNaturalKeys` added), so a second nightly
+ * against a populated DB updates rows in place — no duplicate-key failure, no
+ * duplicate rows, stable row ids (FKs like news tags survive), lineage
+ * re-pointed to the fresh run. `ingestion_runs` rows accumulate per nightly on
+ * purpose (audit trail), which is the accepted cost of option B.
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -177,12 +185,16 @@ export class EodIngestService {
           (a) => ({ exDate: a.exDate, amount: a.amount }),
         );
         const snap = materialiseSnapshot(fund, companyBars, dividends);
-        await manager.getRepository(FundamentalsSnapshot).save(
-          manager.getRepository(FundamentalsSnapshot).create({
+        const snapshotRepo = manager.getRepository(FundamentalsSnapshot);
+        // Upsert on (company) — one current snapshot per company, re-ingest
+        // recomputes it in place.
+        await snapshotRepo.upsert(
+          snapshotRepo.create({
             companyId,
             ...snap,
             ingestionRunId: syntheticRun.id,
           }),
+          ['companyId'],
         );
         fundamentalsSnapshots++;
       }
@@ -247,7 +259,12 @@ export class EodIngestService {
         });
       })
       .filter((r): r is PriceBar => r !== null);
-    await repo.save(rows, { chunk: 500 });
+    // Upsert on (instrument, tradeDate) so a re-ingest updates in place; chunked
+    // because TypeORM's upsert has no chunk option and a single statement would
+    // approach the 65,535 Postgres bind-parameter limit at demo scale.
+    for (const part of chunk(rows, PRICE_BAR_UPSERT_CHUNK)) {
+      await repo.upsert(part, ['instrumentId', 'tradeDate']);
+    }
     return rows.length;
   }
 
@@ -281,7 +298,8 @@ export class EodIngestService {
         );
       }
     }
-    await repo.save(rows, { chunk: 500 });
+    // Upsert on (company, fiscalYear, fiscalQuarter) — re-ingest updates in place.
+    await repo.upsert(rows, ['companyId', 'fiscalYear', 'fiscalQuarter']);
     return rows.length;
   }
 
@@ -306,7 +324,10 @@ export class EodIngestService {
         });
       })
       .filter((r): r is Announcement => r !== null);
-    await repo.save(rows);
+    // Upsert on (company, filedAt, title) — re-ingest updates in place.
+    if (rows.length > 0) {
+      await repo.upsert(rows, ['companyId', 'filedAt', 'title']);
+    }
     return rows.length;
   }
 
@@ -330,7 +351,10 @@ export class EodIngestService {
         });
       })
       .filter((r): r is CorporateAction => r !== null);
-    await repo.save(rows);
+    // Upsert on (company, type, exDate) — re-ingest updates in place.
+    if (rows.length > 0) {
+      await repo.upsert(rows, ['companyId', 'type', 'exDate']);
+    }
     return rows.length;
   }
 
@@ -349,7 +373,11 @@ export class EodIngestService {
         ingestionRunId: runId,
       }),
     );
-    await repo.save(rows);
+    // Upsert on the canonical url — re-ingesting the RSS feed is idempotent
+    // (stable row ids, so news tags survive a re-run).
+    if (rows.length > 0) {
+      await repo.upsert(rows, ['url']);
+    }
     return rows.length;
   }
 
@@ -372,7 +400,11 @@ export class EodIngestService {
         });
       })
       .filter((r): r is ShariahStatus => r !== null);
-    await repo.save(rows);
+    // Upsert on the history-table key (company, effectiveDate) — the ticket-05
+    // first hard failure; re-ingest updates the verdict in place.
+    if (rows.length > 0) {
+      await repo.upsert(rows, ['companyId', 'effectiveDate']);
+    }
     return rows.length;
   }
 
@@ -392,7 +424,11 @@ export class EodIngestService {
         ingestionRunId: runId,
       }),
     );
-    await repo.save(rows);
+    // Upsert on (companyName, listingDate) — re-ingest updates in place; the
+    // constraint is NULLS NOT DISTINCT so an undated row still conflicts.
+    if (rows.length > 0) {
+      await repo.upsert(rows, ['companyName', 'listingDate']);
+    }
     return rows.length;
   }
 
@@ -435,7 +471,7 @@ export class EodIngestService {
       const week52High: string | null = window[0]?.high ?? null;
       const week52Low: string | null = window[0]?.low ?? null;
 
-      await snapshotRepo.save(
+      await snapshotRepo.upsert(
         snapshotRepo.create({
           instrumentId,
           latestClose: indicators.latestClose,
@@ -449,6 +485,9 @@ export class EodIngestService {
           week52Low: week52Low !== null ? Number(week52Low).toFixed(6) : indicators.week52Low,
           ingestionRunId: runId,
         }),
+        // Upsert on (instrument) — one current snapshot per instrument,
+        // re-ingest recomputes it in place.
+        ['instrumentId'],
       );
       count++;
     }
@@ -466,4 +505,16 @@ function groupBy<T>(items: readonly T[], key: (t: T) => string): Map<string, T[]
     else map.set(k, [item]);
   }
   return map;
+}
+
+/** Price bars per upsert statement (keeps bind parameters well under the 65,535 Postgres limit). */
+const PRICE_BAR_UPSERT_CHUNK = 1_000;
+
+/** Split an array into fixed-size chunks. */
+function chunk<T>(items: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    out.push(items.slice(i, i + size));
+  }
+  return out;
 }

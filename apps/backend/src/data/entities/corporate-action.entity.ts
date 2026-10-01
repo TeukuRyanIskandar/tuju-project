@@ -6,6 +6,7 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { Company } from './company.entity';
 import { IngestionRun } from './ingestion-run.entity';
@@ -18,7 +19,17 @@ import { CorporateActionType } from './enums';
  * for `DIVIDEND` actions, the trailing-12-month dividend-yield ratio. Dividends
  * live here, never on {@link QuarterlyFinancials}.
  */
+/**
+ * Natural key (company, type, exDate) so a re-ingest of the same entitlement
+ * event is an idempotent upsert (ticket 05). Same-type events by one company
+ * on one ex-date collapse to one row — acceptable for the calendar + DY feed.
+ */
 @Entity({ name: 'corporate_actions' })
+@Unique('UQ_corporate_actions_company_type_ex_date', [
+  'companyId',
+  'type',
+  'exDate',
+])
 export class CorporateAction {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
