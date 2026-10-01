@@ -7,5 +7,6 @@
  */
 export * from './dto';
 export * from './adapter.interfaces';
+export * from './announcement-labels';
 export * from './demo-adapters';
 export * from './adapters.module';

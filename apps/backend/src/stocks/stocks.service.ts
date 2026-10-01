@@ -25,7 +25,7 @@
  */
 
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, In } from 'typeorm';
 import { ReadCacheService, STOCKS_CACHE_PREFIX } from '../cache';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
@@ -34,7 +34,11 @@ import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
-import { ProvenanceClass } from '../data/entities/enums';
+import {
+  AnnouncementCategory,
+  CorporateActionType,
+  ProvenanceClass,
+} from '../data/entities/enums';
 import { pctChange, toNumber } from './serialisation';
 import type {
   AnnouncementsPage,
@@ -68,10 +72,11 @@ export class StocksService {
     stockCode: string,
     offset: number,
     limit: number,
+    categories: readonly AnnouncementCategory[] = [],
   ): Promise<AnnouncementsPage> {
     return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:announcements:${offset}:${limit}`,
-      () => this.loadAnnouncements(stockCode, offset, limit),
+      `${STOCKS_CACHE_PREFIX}${stockCode}:announcements:${normaliseEnumKey(categories)}:${offset}:${limit}`,
+      () => this.loadAnnouncements(stockCode, offset, limit, categories),
     );
   }
 
@@ -80,10 +85,11 @@ export class StocksService {
     stockCode: string,
     offset: number,
     limit: number,
+    types: readonly CorporateActionType[] = [],
   ): Promise<CorporateActionsPage> {
     return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:corporate-actions:${offset}:${limit}`,
-      () => this.loadCorporateActions(stockCode, offset, limit),
+      `${STOCKS_CACHE_PREFIX}${stockCode}:corporate-actions:${normaliseEnumKey(types)}:${offset}:${limit}`,
+      () => this.loadCorporateActions(stockCode, offset, limit, types),
     );
   }
 
@@ -208,12 +214,18 @@ export class StocksService {
     stockCode: string,
     offset: number,
     limit: number,
+    categories: readonly AnnouncementCategory[],
   ): Promise<AnnouncementsPage> {
     const instrument = await this.requireInstrument(stockCode);
     const [rows, total] = await this.dataSource
       .getRepository(Announcement)
       .findAndCount({
-        where: { companyId: instrument.companyId },
+        where: {
+          companyId: instrument.companyId,
+          // One-or-more category filter (spec 04 §1); flat rows carry the
+          // category field — no server-side grouped payload.
+          ...(categories.length > 0 ? { category: In(categories) } : {}),
+        },
         relations: { ingestionRun: true },
         // id as the deterministic tiebreaker — equal filedAt rows must not
         // shuffle across pages.
@@ -230,6 +242,7 @@ export class StocksService {
       filedAt: a.filedAt.toISOString(),
       sourceUrl: a.sourceUrl,
       aiSummary: a.aiSummary,
+      aiSummaryAsOf: a.aiSummaryAsOf === null ? null : a.aiSummaryAsOf.toISOString(),
     }));
     return { items, total, offset, limit };
   }
@@ -238,12 +251,16 @@ export class StocksService {
     stockCode: string,
     offset: number,
     limit: number,
+    types: readonly CorporateActionType[],
   ): Promise<CorporateActionsPage> {
     const instrument = await this.requireInstrument(stockCode);
     const [rows, total] = await this.dataSource
       .getRepository(CorporateAction)
       .findAndCount({
-        where: { companyId: instrument.companyId },
+        where: {
+          companyId: instrument.companyId,
+          ...(types.length > 0 ? { type: In(types) } : {}),
+        },
         relations: { ingestionRun: true },
         order: { exDate: 'ASC', id: 'ASC' },
         skip: offset,
@@ -269,4 +286,13 @@ export class StocksService {
     }
     return instrument;
   }
+}
+
+/**
+ * Deterministic cache-key fragment for an enum filter: order-insensitive
+ * (sorted) so `?category=A,B` and `?category=B,A` share one entry; empty when
+ * unfiltered.
+ */
+function normaliseEnumKey<T extends string>(values: readonly T[]): string {
+  return [...values].sort().join(',');
 }

@@ -109,6 +109,8 @@ export interface AnnouncementItem extends ProvenanceBlock {
   sourceUrl: string | null;
   /** Null until the spec-06 summaries populate it. */
   aiSummary: string | null;
+  /** When the AI summary was generated; null until then (spec 04 field). */
+  aiSummaryAsOf: string | null;
 }
 
 /** One corporate-action row, with its own lineage provenance (`aggregator`). */

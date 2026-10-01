@@ -20,10 +20,10 @@ type PriceBarSourceColumns = Omit<
   'id' | 'createdAt' | 'instrument' | 'instrumentId' | 'ingestionRun' | 'ingestionRunId'
 >;
 
-/** The entity columns the worker owns from `AnnouncementDto` (aiSummary is AI-owned). */
+/** The entity columns the worker owns from `AnnouncementDto` (AI fields are spec-06-owned). */
 type AnnouncementSourceColumns = Omit<
   Announcement,
-  'id' | 'createdAt' | 'company' | 'companyId' | 'ingestionRun' | 'ingestionRunId' | 'aiSummary'
+  'id' | 'createdAt' | 'company' | 'companyId' | 'ingestionRun' | 'ingestionRunId' | 'aiSummary' | 'aiSummaryAsOf'
 >;
 
 describe('adapter DTO shapes feed their entities', () => {

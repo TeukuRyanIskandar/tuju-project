@@ -18,8 +18,8 @@ import { NewsArticle } from './news-article.entity';
  * Produced by matching the headline against the company's alias set
  * (`shortName`/`fullName`/curated `aliases`). Deterministic (not an AI job); one
  * article may tag several companies. Modelled as an explicit join entity (rather
- * than an implicit `@ManyToMany` join table) so a match can later carry metadata
- * (matched alias, confidence) without a reshape.
+ * than an implicit `@ManyToMany` join table) carrying the matched alias (spec 04
+ * auditability), so a match can later carry more metadata without a reshape.
  */
 @Entity({ name: 'news_article_tags' })
 @Unique('UQ_news_article_tags_article_company', ['newsArticleId', 'companyId'])
@@ -45,6 +45,14 @@ export class NewsArticleTag {
   @Index()
   @Column({ type: 'uuid', name: 'company_id' })
   companyId!: string;
+
+  /**
+   * The alias that whole-word-matched the headline (spec 04 §2 auditability).
+   * `shortName` is tried first, so a shortName/alias hit is what gets recorded
+   * ("match primarily on shortName/alias").
+   */
+  @Column({ type: 'varchar', name: 'matched_alias', length: 256 })
+  matchedAlias!: string;
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;

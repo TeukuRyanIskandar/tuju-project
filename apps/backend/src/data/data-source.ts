@@ -23,6 +23,7 @@ import {
 import { InitialSchema1727600000000 } from './migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-FreeTierDomainModel';
 import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReIngestNaturalKeys';
+import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-DisclosureReadModel';
 
 /**
  * Standalone TypeORM DataSource used by the CLI (migration:run/revert).
@@ -60,5 +61,6 @@ export const AppDataSource = new DataSource({
     InitialSchema1727600000000,
     FreeTierDomainModel1727700000000,
     ReIngestNaturalKeys1727800000000,
+    DisclosureReadModel1727900000000,
   ],
 });

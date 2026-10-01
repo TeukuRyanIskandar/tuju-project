@@ -62,6 +62,10 @@ export class Announcement {
   @Column({ type: 'text', name: 'ai_summary', nullable: true })
   aiSummary!: string | null;
 
+  /** When the AI summary was generated (spec 04/06); null until generated. */
+  @Column({ type: 'timestamptz', name: 'ai_summary_as_of', nullable: true })
+  aiSummaryAsOf!: Date | null;
+
   @ManyToOne(() => IngestionRun, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'ingestion_run_id' })
   ingestionRun!: IngestionRun;

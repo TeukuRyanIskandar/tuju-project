@@ -22,7 +22,7 @@
  */
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { DataSource, type EntityManager } from 'typeorm';
+import { DataSource, In, type EntityManager } from 'typeorm';
 import {
   DISCLOSURE_ADAPTER,
   FUNDAMENTALS_ADAPTER,
@@ -44,6 +44,8 @@ import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.ent
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
 import { NewsArticle } from '../data/entities/news-article.entity';
+import { NewsArticleTag } from '../data/entities/news-article-tag.entity';
+import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
@@ -53,7 +55,8 @@ import { materialiseSnapshot } from './fundamentals-materialiser';
 import { computeIndicators, WEEK52_WINDOW } from './indicators';
 import { SYNTHETIC_BASE_SEED, instrumentSeed } from './reference-universe';
 import { DEFAULT_PARAMS } from '../data/synthetic';
-import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX } from '../cache';
+import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX } from '../cache';
+import { matchCompanyTags, type TaggableCompany } from './news-tagging';
 
 /** Summary of what a nightly ingest landed (returned for tests / logging). */
 export interface NightlyIngestResult {
@@ -64,6 +67,8 @@ export interface NightlyIngestResult {
   announcements: number;
   corporateActions: number;
   newsArticles: number;
+  /** Deterministic alias-match tags written for the ingested headlines (spec 04). */
+  newsArticleTags: number;
   shariahStatuses: number;
   ipoListings: number;
 }
@@ -146,6 +151,9 @@ export class EodIngestService {
       );
       const headlines = await this.news.fetchHeadlines();
       const newsArticles = await this.persistNews(manager, headlines, newsRun.id);
+      // Deterministic ticker-tagging (spec 04 §2): a step inside the RSS ingest
+      // cadence — not an AI job, not a separate run.
+      const newsArticleTags = await this.tagNews(manager, headlines);
 
       // --- Manual reference (real) Shariah + IPO ---
       const shariahRun = await this.runs.openRun(
@@ -213,6 +221,7 @@ export class EodIngestService {
         announcements,
         corporateActions,
         newsArticles,
+        newsArticleTags,
         shariahStatuses,
         ipoListings,
       };
@@ -227,12 +236,13 @@ export class EodIngestService {
     });
 
     // Class-2 cache invalidation AFTER the transaction commits (ADR-0004): the
-    // demo disclosure snapshot lands inside this same nightly transaction, so
-    // one post-commit sweep covers the EOD-derived AND disclosure-derived
-    // caches. A failure here fails the ingest loudly — a stale page shown
-    // after new data committed is worse than a retried ingest.
+    // demo disclosure + RSS snapshot lands inside this same nightly
+    // transaction, so one post-commit sweep covers the EOD-derived AND
+    // disclosure/news-derived caches. A failure here fails the ingest loudly —
+    // a stale page shown after new data committed is worse than a retried ingest.
     await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
     await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
+    await this.readCache.invalidatePrefix(DISCLOSURES_CACHE_PREFIX);
     return result;
   }
 
@@ -379,6 +389,75 @@ export class EodIngestService {
       await repo.upsert(rows, ['url']);
     }
     return rows.length;
+  }
+
+  /**
+   * Deterministic news ticker-tagging (spec 04 §2): whole-word alias-match each
+   * ingested headline against every listed company and write the
+   * {@link NewsArticleTag} rows with the matched alias. Tags are DERIVED rows —
+   * this replaces an article's tag set (delete + reinsert) rather than
+   * upserting, so a re-ingest whose headline changed drops the stale tags;
+   * article ids are stable (the url natural key), so unchanged tag rows simply
+   * land again. No confident match → the article stays untagged (market-level).
+   */
+  private async tagNews(
+    manager: EntityManager,
+    dtos: Awaited<ReturnType<NewsAdapter['fetchHeadlines']>>,
+  ): Promise<number> {
+    if (dtos.length === 0) return 0;
+    const companies = await this.loadTaggableCompanies(manager);
+    if (companies.length === 0) return 0;
+
+    const articleRepo = manager.getRepository(NewsArticle);
+    const articles = await articleRepo.find({
+      where: { url: In(dtos.map((d) => d.url)) },
+    });
+    const byUrl = new Map(articles.map((a) => [a.url, a]));
+
+    const tagRepo = manager.getRepository(NewsArticleTag);
+    let written = 0;
+    for (const dto of dtos) {
+      const article = byUrl.get(dto.url);
+      if (!article) continue;
+      const matches = matchCompanyTags(article.headline, companies);
+      await tagRepo.delete({ newsArticleId: article.id });
+      if (matches.length === 0) continue;
+      await tagRepo.insert(
+        matches.map((m) =>
+          tagRepo.create({
+            newsArticleId: article.id,
+            companyId: m.companyId,
+            matchedAlias: m.matchedAlias,
+          }),
+        ),
+      );
+      written += matches.length;
+    }
+    return written;
+  }
+
+  /**
+   * Company ⋈ Instrument alias sets for the tagger (`shortName` lives on the
+   * Instrument, `fullName` + curated `aliases` on the Company; one entry per
+   * company — the first instrument's shortName).
+   */
+  private async loadTaggableCompanies(
+    manager: EntityManager,
+  ): Promise<TaggableCompany[]> {
+    const instruments = await manager.getRepository(Instrument).find({
+      relations: { company: true },
+    });
+    const byCompany = new Map<string, TaggableCompany>();
+    for (const instrument of instruments) {
+      if (byCompany.has(instrument.companyId)) continue;
+      byCompany.set(instrument.companyId, {
+        companyId: instrument.companyId,
+        shortName: instrument.shortName,
+        fullName: instrument.company.fullName,
+        aliases: instrument.company.aliases,
+      });
+    }
+    return [...byCompany.values()];
   }
 
   private async persistShariah(

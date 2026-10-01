@@ -55,6 +55,7 @@ import {
 import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
 import { ReIngestNaturalKeys1727800000000 } from '../data/migrations/1727800000000-ReIngestNaturalKeys';
+import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
 import { ProvenanceClass } from '../data/entities/enums';
 
 import { EodIngestService } from './eod-ingest.service';
@@ -110,6 +111,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         InitialSchema1727600000000,
         FreeTierDomainModel1727700000000,
         ReIngestNaturalKeys1727800000000,
+        DisclosureReadModel1727900000000,
       ],
     });
     await dataSource.initialize();
@@ -186,12 +188,52 @@ describe('IngestionWorker (integration — testcontainers)', () => {
       expect(Number(f.ttmRevenue)).toBeGreaterThan(0);
     }
 
-    // Aggregator + real rows also landed (used by the purge test).
-    expect(result.announcements).toBe(universe);
-    expect(result.corporateActions).toBe(universe);
-    expect(result.newsArticles).toBe(universe);
+    // Aggregator + real rows also landed (used by the purge test). The demo
+    // snapshot (spec 04, ticket 01) files 11 disclosures + 5 corporate actions
+    // per company and 10 headlines.
+    expect(result.announcements).toBe(universe * 11);
+    expect(result.corporateActions).toBe(universe * 5);
+    expect(result.newsArticles).toBe(10);
     expect(result.shariahStatuses).toBe(universe);
     expect(result.ipoListings).toBe(1);
+
+    // Deterministic ticker-tagging (spec 04 §2): 5 shortName hits + 1 curated
+    // alias hit (TNB) + 2 tags for the multi-company headline = 8 tags; the
+    // substring non-match (TenagaX) and the market-level rows stay untagged.
+    expect(result.newsArticleTags).toBe(8);
+    expect(
+      await dataSource.getRepository(NewsArticleTag).count(),
+    ).toBe(result.newsArticleTags);
+
+    const tagRepo = dataSource.getRepository(NewsArticleTag);
+    const maybank = await dataSource
+      .getRepository(Company)
+      .findOneByOrFail({ fullName: 'Malayan Banking Berhad' });
+    // A shortName headline is tagged, with the shortName as matchedAlias.
+    const maybankTag = await tagRepo.findOneByOrFail({
+      companyId: maybank.id,
+    });
+    expect(maybankTag.matchedAlias).toBe('MAYBANK');
+    const maybankArticle = await dataSource
+      .getRepository(NewsArticle)
+      .findOneByOrFail({ id: maybankTag.newsArticleId });
+    expect(maybankArticle.headline).toBe('MAYBANK posts record quarterly profit');
+    // The multi-company headline tags both companies.
+    const multi = await dataSource
+      .getRepository(NewsArticle)
+      .findOneByOrFail({ headline: 'Maybank and CIMB lead banks higher' });
+    const multiTags = await tagRepo.find({ where: { newsArticleId: multi.id } });
+    expect(multiTags.length).toBe(2);
+    // A substring non-match is not tagged (market-level).
+    const tenagaX = await dataSource
+      .getRepository(NewsArticle)
+      .findOneByOrFail({ headline: 'New fintech platform TenagaX launches' });
+    expect(await tagRepo.count({ where: { newsArticleId: tenagaX.id } })).toBe(0);
+    // A market-level row has no tags at all.
+    const market = await dataSource
+      .getRepository(NewsArticle)
+      .findOneByOrFail({ headline: 'Bursa Malaysia closes higher on regional rally' });
+    expect(await tagRepo.count({ where: { newsArticleId: market.id } })).toBe(0);
 
     // Every sourced row FKs an IngestionRun (lineage), and a SyntheticRun exists.
     const syntheticRuns = await dataSource
@@ -235,7 +277,8 @@ describe('IngestionWorker (integration — testcontainers)', () => {
 
     const res = await purge.purgeUnlicensed();
 
-    // Synthetic + aggregator DATA rows are gone.
+    // Synthetic + aggregator DATA rows are gone — including the derived news
+    // tags, which cascade with their aggregator articles (spec 04).
     expect(await dataSource.getRepository(PriceBar).count()).toBe(0);
     expect(await dataSource.getRepository(QuarterlyFinancials).count()).toBe(0);
     expect(await dataSource.getRepository(FundamentalsSnapshot).count()).toBe(0);
@@ -243,6 +286,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(await dataSource.getRepository(Announcement).count()).toBe(0);
     expect(await dataSource.getRepository(CorporateAction).count()).toBe(0);
     expect(await dataSource.getRepository(NewsArticle).count()).toBe(0);
+    expect(await dataSource.getRepository(NewsArticleTag).count()).toBe(0);
     expect(res.priceBars).toBeGreaterThan(0);
     expect(res.announcements).toBeGreaterThan(0);
 
@@ -273,6 +317,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     // outside both invalidation prefixes that must survive.
     await redis.set('cache:search:1155:20', 'stale');
     await redis.set('cache:stocks:1155:core', 'stale');
+    await redis.set('cache:disclosures:announcements', 'stale');
     await redis.set('cache:untouched', 'keep-me');
 
     // A second nightly ingest: data commits, then both prefixes are swept.
@@ -284,15 +329,18 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(result.indicatorSnapshots).toBe(REFERENCE_UNIVERSE.length);
     expect(await redis.get('cache:search:1155:20')).toBeNull();
     expect(await redis.get('cache:stocks:1155:core')).toBeNull();
+    expect(await redis.get('cache:disclosures:announcements')).toBeNull();
     expect(await redis.get('cache:untouched')).toBe('keep-me');
 
     // The decision-B purge sweeps the same prefixes after its commit.
     await redis.set('cache:stocks:1023:core', 'stale');
     await redis.set('cache:search:maybnk:20', 'stale');
+    await redis.set('cache:disclosures:news', 'stale');
     const purged = await purge.purgeUnlicensed();
     expect(purged.priceBars).toBeGreaterThan(0);
     expect(await redis.get('cache:stocks:1023:core')).toBeNull();
     expect(await redis.get('cache:search:maybnk:20')).toBeNull();
+    expect(await redis.get('cache:disclosures:news')).toBeNull();
   });
 
   it('a second nightly against a populated DB is idempotent (ticket 05)', async () => {
@@ -322,6 +370,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(counts2.announcement).toBe(counts1.announcement);
     expect(counts2.corporateAction).toBe(counts1.corporateAction);
     expect(counts2.news).toBe(counts1.news);
+    expect(counts2.newsTag).toBe(counts1.newsTag);
     expect(counts2.shariah).toBe(counts1.shariah);
     expect(counts2.ipo).toBe(counts1.ipo);
 
@@ -352,6 +401,7 @@ async function tableCounts(ds: DataSource): Promise<Record<string, number>> {
     ['shariah', ShariahStatus],
     ['announcement', Announcement],
     ['news', NewsArticle],
+    ['newsTag', NewsArticleTag],
     ['ipo', IpoListing],
   ];
   const out: Record<string, number> = {};

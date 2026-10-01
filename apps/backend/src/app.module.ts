@@ -12,6 +12,7 @@ import { HealthModule } from './health/health.module';
 import { AnalysisModule } from './analysis/analysis.module';
 import { SearchModule } from './search/search.module';
 import { StocksModule } from './stocks/stocks.module';
+import { DisclosuresModule } from './disclosures/disclosures.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -34,6 +35,9 @@ import { StocksModule } from './stocks/stocks.module';
     // @RequiresJob on any of their routes → TierGuard passes → anonymous.
     SearchModule,
     StocksModule,
+    // Spec-04 anonymous free-tier disclosure reads (market feed, dealings,
+    // calendars, news) — same anonymous posture as search/stocks.
+    DisclosuresModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

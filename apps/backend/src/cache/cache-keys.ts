@@ -16,3 +16,10 @@ export const SEARCH_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}search:`;
 
 /** `/stocks/:code` pages + lists — invalidated on nightly ingest / purge. */
 export const STOCKS_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}stocks:`;
+
+/**
+ * Spec-04 disclosure reads (market announcements feed, dealings view,
+ * calendars, news feed) — invalidated on the disclosure/RSS ingest cadence
+ * (the demo folds both into the nightly ingest) and on purge.
+ */
+export const DISCLOSURES_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}disclosures:`;

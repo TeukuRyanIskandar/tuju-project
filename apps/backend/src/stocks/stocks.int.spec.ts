@@ -59,6 +59,7 @@ import {
 } from '../data/entities';
 import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
+import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
 import {
   AnnouncementCategory,
   CorporateActionType,
@@ -196,7 +197,7 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
       url: pgContainer.getConnectionUri(),
       synchronize: false,
       entities: ALL_ENTITIES,
-      migrations: [InitialSchema1727600000000, FreeTierDomainModel1727700000000],
+      migrations: [InitialSchema1727600000000, FreeTierDomainModel1727700000000, DisclosureReadModel1727900000000],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -360,6 +361,7 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
       filedAt: '2026-09-28T10:00:00.000Z',
       sourceUrl: MAYBANK_ANNOUNCEMENTS[0].sourceUrl,
       aiSummary: MAYBANK_ANNOUNCEMENTS[0].aiSummary,
+      aiSummaryAsOf: null,
     });
     expect(page.items[2].sourceUrl).toBeNull();
     expect(page.items[2].aiSummary).toBeNull();
@@ -425,6 +427,53 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
     );
     expect(sliced).toMatchObject({ total: 3, offset: 2, limit: 10 });
     expect(sliced.items.map((c) => c.exDate)).toEqual(['2026-06-12']);
+  });
+
+  it('per-company list filters (spec 04): announcement ?category=, corporate-action ?type=', async () => {
+    // One-or-more categories; invalid tokens dropped (never a 400).
+    const dealings = await controller.getAnnouncements(
+      MAYBANK.stockCode,
+      '0',
+      '10',
+      'SHAREHOLDING_CHANGE,NOT_A_CATEGORY',
+    );
+    expect(dealings.total).toBe(1);
+    expect(dealings.items[0].category).toBe(AnnouncementCategory.ShareholdingChange);
+    expect(dealings.items[0].title).toBe(MAYBANK_ANNOUNCEMENTS[2].title);
+
+    const multi = await controller.getAnnouncements(
+      MAYBANK.stockCode,
+      '0',
+      '10',
+      'ENTITLEMENT,SHAREHOLDING_CHANGE',
+    );
+    expect(multi.total).toBe(2);
+    expect(new Set(multi.items.map((a) => a.category))).toEqual(
+      new Set([AnnouncementCategory.Entitlement, AnnouncementCategory.ShareholdingChange]),
+    );
+
+    // No filter → all rows (cache keys differ per normalised filter).
+    const all = await controller.getAnnouncements(MAYBANK.stockCode, '0', '10');
+    expect(all.total).toBe(3);
+
+    // Corporate-action type filter.
+    const dividends = await controller.getCorporateActions(
+      MAYBANK.stockCode,
+      '0',
+      '10',
+      'DIVIDEND',
+    );
+    expect(dividends.total).toBe(2);
+    expect(
+      dividends.items.every((c) => c.type === CorporateActionType.Dividend),
+    ).toBe(true);
+    const unfiltered = await controller.getCorporateActions(
+      MAYBANK.stockCode,
+      '0',
+      '10',
+      'BOGUS',
+    );
+    expect(unfiltered.total).toBe(3); // all-invalid token → no filter
   });
 
   it('unknown code 404s on all three endpoints', async () => {
