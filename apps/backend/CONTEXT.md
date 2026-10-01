@@ -99,6 +99,18 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
 - **Corporate action** — an announced entitlement or capital event (dividend, bonus,
   split, rights). The single source for the corporate-actions calendar; trailing-12-
   month dividend actions feed the dividend-yield ratio.
+- **Screener** — the anonymous free-tier filter surface over the analysed
+  universe: one pure-SQL read model (`Instrument ⋈ Company ⋈ Sector ⋈
+  FundamentalsSnapshot ⋈ IndicatorSnapshot ⋈ latest ShariahStatus ⋈ latest
+  two PriceBars`) behind the `ScreenerQuery` seam. Ratios are read from
+  materialised columns, never computed at query time — except
+  `yoyProfitGrowth` and `profitableYears`, which the spec-01 materialiser
+  does not write and the screener aggregates at query time from
+  `QuarterlyFinancials` (lateral joins, no window functions; the resolution
+  of the spec-03 gap). NULL ratios never satisfy a band (a loss-maker is
+  absent from any P/E screen) and sort last; `%change`/`volume` are read-time
+  from the two latest EOD bars (the stock-page precedent). Rows carry
+  per-numeric-class provenance (price / fundamentals / technicals lineage).
 - **Sector** — Bursa's own sector/subsector classification (real public reference
   data), modelled as a reference entity the Company FKs to. No vendor global
   taxonomy (demo is KLSE-only).
