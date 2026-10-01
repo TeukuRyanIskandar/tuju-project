@@ -64,6 +64,21 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
   and a later licensed Bursa feed both land on the same categories with no consumer
   change. `SHAREHOLDING_CHANGE` is the substantial-shareholder/director-dealings feed;
   `FINANCIAL_RESULTS` feeds the (backward-looking, when-filed) results calendar.
+- **Dealings feed** — the substantial-shareholder/director-dealings surface: a
+  *filtered view* of `Announcement` rows where `category = SHAREHOLDING_CHANGE`
+  (not a new entity). Exposes only reliably-present list-level fields
+  (company, filedAt, title, sourceUrl, provenance); structured
+  buyer/seller/volume/price fields wait for the licensed Bursa structured form.
+- **Corporate-actions calendar** — a derived read (no entity) over `CorporateAction`
+  keyed on `exDate` (the primary axis): dividends, bonuses, splits, rights.
+  Default window = next 30 days + 7 back; dividends here are the same rows DY
+  reads (single source).
+- **Results calendar** — a derived backward-looking read over
+  `QuarterlyFinancials` answering *when results were filed*: `reportedAt` is the
+  filedAt of the company's own earliest `FINANCIAL_RESULTS` announcement at/after
+  the quarter's `periodEnd` (a read-time link, not an FK). Quarters with no
+  filed announcement are not on it. Forward earnings-date estimation needs a
+  licensed source and is out of scope.
 - **News article** — third-party media coverage about a company or the market.
   Not an official disclosure. Stored as headline + link + source + publish time only
   (no body). Tagged to companies in-house by a conservative whole-word alias match
