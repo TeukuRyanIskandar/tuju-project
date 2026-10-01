@@ -55,7 +55,7 @@ import { materialiseSnapshot } from './fundamentals-materialiser';
 import { computeIndicators, WEEK52_WINDOW } from './indicators';
 import { SYNTHETIC_BASE_SEED, instrumentSeed } from './reference-universe';
 import { DEFAULT_PARAMS } from '../data/synthetic';
-import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX } from '../cache';
+import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX, SCREENER_CACHE_PREFIX } from '../cache';
 import { matchCompanyTags, type TaggableCompany } from './news-tagging';
 
 /** Summary of what a nightly ingest landed (returned for tests / logging). */
@@ -243,6 +243,7 @@ export class EodIngestService {
     await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
     await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
     await this.readCache.invalidatePrefix(DISCLOSURES_CACHE_PREFIX);
+    await this.readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
     return result;
   }
 

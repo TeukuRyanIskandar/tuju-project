@@ -25,7 +25,7 @@ import { NewsArticle } from '../data/entities/news-article.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ProvenanceClass } from '../data/entities/enums';
-import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX } from '../cache';
+import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX, SCREENER_CACHE_PREFIX } from '../cache';
 
 /** Rows deleted per table (returned for logging / test assertions). */
 export interface PurgeResult {
@@ -67,6 +67,7 @@ export class PurgeService {
     await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
     await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
     await this.readCache.invalidatePrefix(DISCLOSURES_CACHE_PREFIX);
+    await this.readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
     return result;
   }
 

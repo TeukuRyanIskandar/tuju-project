@@ -23,3 +23,6 @@ export const STOCKS_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}stocks:`;
  * (the demo folds both into the nightly ingest) and on purge.
  */
 export const DISCLOSURES_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}disclosures:`;
+
+/** Spec-03 screener screens — invalidated on the nightly ingest / purge. */
+export const SCREENER_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}screener:`;

@@ -318,6 +318,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     await redis.set('cache:search:1155:20', 'stale');
     await redis.set('cache:stocks:1155:core', 'stale');
     await redis.set('cache:disclosures:announcements', 'stale');
+    await redis.set('cache:screener:screen', 'stale');
     await redis.set('cache:untouched', 'keep-me');
 
     // A second nightly ingest: data commits, then both prefixes are swept.
@@ -330,17 +331,20 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(await redis.get('cache:search:1155:20')).toBeNull();
     expect(await redis.get('cache:stocks:1155:core')).toBeNull();
     expect(await redis.get('cache:disclosures:announcements')).toBeNull();
+    expect(await redis.get('cache:screener:screen')).toBeNull();
     expect(await redis.get('cache:untouched')).toBe('keep-me');
 
     // The decision-B purge sweeps the same prefixes after its commit.
     await redis.set('cache:stocks:1023:core', 'stale');
     await redis.set('cache:search:maybnk:20', 'stale');
     await redis.set('cache:disclosures:news', 'stale');
+    await redis.set('cache:screener:fields', 'stale');
     const purged = await purge.purgeUnlicensed();
     expect(purged.priceBars).toBeGreaterThan(0);
     expect(await redis.get('cache:stocks:1023:core')).toBeNull();
     expect(await redis.get('cache:search:maybnk:20')).toBeNull();
     expect(await redis.get('cache:disclosures:news')).toBeNull();
+    expect(await redis.get('cache:screener:fields')).toBeNull();
   });
 
   it('a second nightly against a populated DB is idempotent (ticket 05)', async () => {
