@@ -10,7 +10,9 @@
  *
  *   1. A nightly ingest lands price/fundamentals snapshots AND per-instrument
  *      indicator rows in Postgres.
- *   2. Intraday replay writes to Redis ONLY — Postgres row counts do not change.
+ *   2. Intraday replay writes to Redis ONLY — Postgres row counts do not change
+ *      (spec 05, ticket 03 extends the tick with the live index levels + the
+ *      precomputed movers boards — still Redis-only, class 3).
  *   3. The decision-B purge deletes exactly the synthetic/aggregator rows and
  *      leaves the real reference data + the lineage rows intact.
  *   4. A SECOND nightly against a populated DB is idempotent (ticket 05): rows
@@ -298,7 +300,89 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(oneTick).not.toBeNull();
     expect(Number(oneTick!.price)).toBeGreaterThan(0);
 
-    // Postgres is byte-for-byte unchanged — intraday never lands there.
+    // --- Movers boards (spec 05, ticket 03): the whole analysed universe, no floor. ---
+    const universe = REFERENCE_UNIVERSE.length;
+    const gainers = (await intraday.moversBoard('gainers'))!;
+    const losers = (await intraday.moversBoard('losers'))!;
+    const actives = (await intraday.moversBoard('actives'))!;
+    for (const board of [gainers, losers, actives]) {
+      expect(board).not.toBeNull();
+      expect(board).toHaveLength(universe);
+    }
+
+    // Ordering: gainers %change desc, losers asc, actives by cumulative volume
+    // desc (ties deterministic — pinned by the unit lane on the pure model).
+    for (let i = 1; i < universe; i++) {
+      expect(gainers[i - 1]!.pctChange!).toBeGreaterThanOrEqual(gainers[i]!.pctChange!);
+      expect(losers[i - 1]!.pctChange!).toBeLessThanOrEqual(losers[i]!.pctChange!);
+      expect(actives[i - 1]!.volume).toBeGreaterThanOrEqual(actives[i]!.volume);
+    }
+
+    // Board entries reconcile byte-for-byte with the per-instrument ticks —
+    // one intraday layer, not two sources of live truth.
+    const tickByCode = new Map(ticks.map((t) => [t.stockCode, t]));
+    for (const entry of gainers) {
+      const tick = tickByCode.get(entry.stockCode)!;
+      expect(entry.price).toBe(tick.price);
+      const company = REFERENCE_UNIVERSE.find(
+        (c) => c.stockCode === entry.stockCode,
+      )!;
+      expect(entry.shortName).toBe(company.shortName);
+    }
+
+    // --- Live index levels (spec 05, ticket 03): one per index (headline + sectors). ---
+    const sectorNames = new Set(REFERENCE_UNIVERSE.map((c) => c.sectorName));
+    const headline = (await intraday.liveIndexLevel(MarketIndexKind.Headline, null))!;
+    expect(headline).not.toBeNull();
+    expect(Number(headline.level)).toBeGreaterThan(0);
+    for (const sectorName of sectorNames) {
+      const sectorLevel = await intraday.liveIndexLevel(
+        MarketIndexKind.Sector,
+        sectorName,
+      );
+      expect(sectorLevel).not.toBeNull();
+    }
+
+    // prevLevel reconciles with the nightly-stored headline series (the same
+    // pure cap-weighted maths over the same generator data): the live level
+    // and the stored series are provably ONE series, not two truths.
+    const headlineIndex = await dataSource
+      .getRepository(MarketIndex)
+      .findOneByOrFail({ kind: MarketIndexKind.Headline });
+    const latestStored = await dataSource.getRepository(IndexLevel).findOne({
+      where: { indexId: headlineIndex.id },
+      order: { levelDate: 'DESC' },
+    });
+    expect(Number(headline.prevLevel)).toBeCloseTo(Number(latestStored!.level), 6);
+    expect(headline.pctChange).toBeCloseTo(
+      ((Number(headline.level) - Number(latestStored!.level)) /
+        Number(latestStored!.level)) *
+        100,
+      4,
+    );
+
+    // Boards update through the trading day: a later tick rewrites them (the
+    // 12:00 → 12:05 MYT volume ramp alone moves every board).
+    const activesAtTick1 = await redis.get(
+      IntradayReplayService.moversKey('actives'),
+    );
+    await intraday.replayTick(new Date('2025-06-02T04:05:00Z'));
+    const activesAtTick2 = await redis.get(
+      IntradayReplayService.moversKey('actives'),
+    );
+    expect(activesAtTick2).not.toBe(activesAtTick1);
+
+    // The market-hours guard bounds the EXTENDED replay exactly as it bounds
+    // the per-instrument replay: the extension lives inside the same guarded
+    // `replayTick` call (window pinned by cron-isolation.spec).
+
+    // Full intraday key census: per-instrument ticks + 3 boards + live levels
+    // (headline + one per sector WITH constituents).
+    const intradayKeys = await redis.keys('intraday:*');
+    expect(intradayKeys.length).toBe(universe + 3 + sectorNames.size + 1);
+
+    // Postgres is byte-for-byte unchanged across BOTH ticks — intraday never
+    // lands there (the ADR-0004 invariant, integration-pinned).
     const after = await tableCounts(dataSource);
     expect(after).toEqual(before);
   });

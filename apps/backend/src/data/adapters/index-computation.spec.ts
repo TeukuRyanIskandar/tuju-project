@@ -11,8 +11,10 @@
 import { MarketIndexKind } from '../entities/enums';
 import {
   computeCapWeightedIndices,
+  computeLiveIndexLevels,
   INDEX_BASE_LEVEL,
   type ConstituentInput,
+  type LiveIndexLevel,
 } from './index-computation';
 
 /** Fixture dates (ISO, date-only — the level series axis). */
@@ -143,6 +145,104 @@ describe('computeCapWeightedIndices', () => {
     for (const s of await computeCapWeightedIndices(KNOWN_CONSTITUENTS)) {
       const dates = s.levels.map((l) => l.levelDate);
       expect([...dates].sort()).toEqual(dates);
+    }
+  });
+});
+
+describe('computeLiveIndexLevels', () => {
+  /**
+   * Live prices on D3 (closes 12 / 4 / 21):
+   *
+   * | constituent | live | live cap contribution |
+   * |------------:|-----:|----------------------:|
+   * | C1 (100 sh) |   13 | 1300 |
+   * | C2 (200 sh) |    5 | 1000 |
+   * | C3 ( 50 sh) |   19 |  950 |
+   *
+   * Headline live cap 3250 → live level 100 × 3250 / 3000 = 108.333333
+   * (prevLevel = the D3 EOD level 101.666667).
+   * Financial live cap 2300 → 115 (prevLevel 100). Technology 950 → 95 (105).
+   */
+  const LIVE: ReadonlyMap<string, number> = new Map([
+    ['C1', 13],
+    ['C2', 5],
+    ['C3', 19],
+  ]);
+
+  const live = (levels: readonly LiveIndexLevel[]) =>
+    (kind: MarketIndexKind, sectorName: string | null) =>
+      levels.find(
+        (l) => l.kind === kind && l.sectorName === sectorName,
+      )!;
+
+  it('computes the live level as the same cap-weighted maths over live prices', async () => {
+    const levels = await computeLiveIndexLevels(KNOWN_CONSTITUENTS, LIVE);
+    const at = live(levels);
+
+    const headline = at(MarketIndexKind.Headline, null);
+    expect(headline.level).toBeCloseTo(INDEX_BASE_LEVEL * (3250 / 3000), 6);
+    // prevLevel = the same series' latest EOD level (the %change basis).
+    expect(headline.prevLevel).toBeCloseTo(INDEX_BASE_LEVEL * (3050 / 3000), 6);
+
+    const financial = at(MarketIndexKind.Sector, 'Financial Services');
+    expect(financial.level).toBeCloseTo(INDEX_BASE_LEVEL * (2300 / 2000), 6); // 115
+    expect(financial.prevLevel).toBeCloseTo(100, 6);
+
+    const technology = at(MarketIndexKind.Sector, 'Technology');
+    expect(technology.level).toBeCloseTo(INDEX_BASE_LEVEL * (950 / 1000), 6); // 95
+    expect(technology.prevLevel).toBeCloseTo(105, 6);
+  });
+
+  it('scopes each per-Sector live level to that Sector’s live constituents', async () => {
+    const levels = await computeLiveIndexLevels(KNOWN_CONSTITUENTS, LIVE);
+    // C3 (Technology) falls to 19 while the Financial index rises to 115 —
+    // the live scope mirrors the stored-series scope, per Sector.
+    expect(live(levels)(MarketIndexKind.Sector, 'Technology')!.level)
+      .toBeCloseTo(95, 6);
+    expect(live(levels)(MarketIndexKind.Sector, 'Financial Services')!.level)
+      .toBeCloseTo(115, 6);
+  });
+
+  it('emits one live level per stored index (headline + sectors with constituents)', async () => {
+    const levels = await computeLiveIndexLevels(
+      [...KNOWN_CONSTITUENTS, BARLESS_CONSTITUENT],
+      LIVE,
+    );
+    expect(levels).toHaveLength(3);
+    expect(
+      levels.some((l) => l.sectorName === 'Consumer Products & Services'),
+    ).toBe(false);
+  });
+
+  it('carries the index identity the read surface joins the MarketIndex row on', async () => {
+    const levels = await computeLiveIndexLevels(KNOWN_CONSTITUENTS, LIVE);
+    const headline = live(levels)(MarketIndexKind.Headline, null);
+    expect(headline.name).toBe('Tuju Composite Index');
+    expect(headline.kind).toBe(MarketIndexKind.Headline);
+    expect(headline.sectorName).toBeNull();
+  });
+
+  it('falls back to a constituent’s EOD close when it has no live price', async () => {
+    // C3 missing from the live map: it contributes its D3 EOD close (21).
+    const partial = await computeLiveIndexLevels(
+      KNOWN_CONSTITUENTS,
+      new Map([
+        ['C1', 13],
+        ['C2', 5],
+      ]),
+    );
+    const headline = live(partial)(MarketIndexKind.Headline, null);
+    // Live cap 1300 + 1000 + 1050 = 3350 → 111.666667.
+    expect(headline.level).toBeCloseTo(INDEX_BASE_LEVEL * (3350 / 3000), 6);
+    // Technology falls back entirely (no live member) → live = prev.
+    expect(live(partial)(MarketIndexKind.Sector, 'Technology')!.level)
+      .toBeCloseTo(105, 6);
+  });
+
+  it('with no live prices the live level equals the latest EOD level', async () => {
+    const levels = await computeLiveIndexLevels(KNOWN_CONSTITUENTS, new Map());
+    for (const l of levels) {
+      expect(l.level).toBeCloseTo(l.prevLevel, 9);
     }
   });
 });

@@ -117,3 +117,70 @@ function computeSeries(
   }));
   return { kind, sectorName, name, levels };
 }
+
+/**
+ * One index's live (intraday) cap-weighted level against the same series'
+ * latest EOD level (spec 05, ticket 03) — the Redis class-3 payload the 5-min
+ * replay writes and the market-overview endpoints read.
+ */
+export interface LiveIndexLevel {
+  /** Headline vs per-Sector index (joins the `MarketIndex` row). */
+  readonly kind: MarketIndexKind;
+  /** The Bursa Sector name the index scopes to; null on the headline. */
+  readonly sectorName: string | null;
+  /** Display name (same naming as the stored series). */
+  readonly name: string;
+  /** Live cap-weighted level from the substituted live prices. */
+  readonly level: number;
+  /** Latest EOD level of the same series — the %change basis. */
+  readonly prevLevel: number;
+}
+
+/**
+ * Compute the LIVE cap-weighted level for every index (headline + per-Sector)
+ * from the current intraday prices — the exact same divisor methodology as the
+ * stored nightly series, run over constituent bars whose LAST close is
+ * substituted with the live price (a constituent with no live price contributes
+ * its EOD close). Production recomputes the live level over real licensed
+ * intraday prices with the same function; a `LicensedIndexAdapter` that serves
+ * official levels replaces this whole path at the seam.
+ */
+export function computeLiveIndexLevels(
+  constituents: readonly ConstituentInput[],
+  livePrices: ReadonlyMap<string, number>,
+): LiveIndexLevel[] {
+  const eodSeries = computeCapWeightedIndices(constituents);
+  const substituted = constituents.map((c) => {
+    const live = livePrices.get(c.stockCode);
+    if (live === undefined || c.bars.length === 0) return c;
+    const bars = c.bars.slice();
+    const last = bars[bars.length - 1]!;
+    bars[bars.length - 1] = { tradeDate: last.tradeDate, close: live };
+    return { ...c, bars };
+  });
+  const liveSeries = computeCapWeightedIndices(substituted);
+  const eodByKey = new Map(
+    eodSeries.map((s) => [seriesKey(s.kind, s.sectorName), s]),
+  );
+
+  const out: LiveIndexLevel[] = [];
+  for (const s of liveSeries) {
+    const eod = eodByKey.get(seriesKey(s.kind, s.sectorName));
+    const eodLast = eod?.levels[eod.levels.length - 1];
+    const liveLast = s.levels[s.levels.length - 1];
+    if (!eodLast || !liveLast) continue;
+    out.push({
+      kind: s.kind,
+      sectorName: s.sectorName,
+      name: s.name,
+      level: liveLast.level,
+      prevLevel: eodLast.level,
+    });
+  }
+  return out;
+}
+
+/** Stable identity key of one index series (kind ⋈ sector). */
+function seriesKey(kind: MarketIndexKind, sectorName: string | null): string {
+  return `${kind}|${sectorName ?? ''}`;
+}
