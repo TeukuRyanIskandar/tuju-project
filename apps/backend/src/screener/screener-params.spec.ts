@@ -18,6 +18,7 @@ import {
   parseScreenerQuery,
   parseScreenerSort,
   parseSectorIds,
+  rawScreenerParams,
   type RawScreenerParams,
 } from './params';
 
@@ -195,5 +196,54 @@ describe('parseScreenerQuery', () => {
       offset: 25,
       limit: 10,
     });
+  });
+});
+
+describe('rawScreenerParams (ticket 02 picker)', () => {
+  it('keeps the 29 known string params and drops unknown keys', () => {
+    const raw: RawScreenerParams = {
+      board: 'ACE',
+      sector: '00000000-0000-0000-0000-0000000000aa',
+      shariah: 'true',
+      priceMin: '1',
+      priceMax: '2',
+      volumeMin: '3',
+      marketCapMin: '4',
+      marketCapMax: '5',
+      peMin: '6',
+      peMax: '7',
+      dyMin: '0.01',
+      dyMax: '0.02',
+      pNtaMin: '8',
+      pNtaMax: '9',
+      roeMin: '0.1',
+      roeMax: '0.2',
+      deMin: '10',
+      deMax: '11',
+      profitableYearsMin: '3',
+      yoyProfitGrowthMin: '0.05',
+      consecutiveGrowthQuartersMin: '4',
+      rsi14Min: '30',
+      rsi14Max: '70',
+      aboveSma50: 'true',
+      aboveSma200: 'false',
+      sort: 'pe',
+      dir: 'asc',
+      offset: '25',
+      limit: '10',
+    };
+    expect(rawScreenerParams({ ...raw, hack: 'DROP TABLE' })).toEqual(raw);
+  });
+
+  it('drops non-string values (repeated params / nested objects), never a 400', () => {
+    expect(
+      rawScreenerParams({ peMin: ['1', '2'], filter: { peMin: '1' } }),
+    ).toEqual({});
+  });
+
+  it('absent / non-object query → all-optional raw params', () => {
+    expect(rawScreenerParams(undefined)).toEqual({});
+    expect(rawScreenerParams('peMin=1')).toEqual({});
+    expect(rawScreenerParams({})).toEqual({});
   });
 });

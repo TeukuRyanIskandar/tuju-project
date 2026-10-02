@@ -49,7 +49,7 @@ export const SCREENER_BOARDS: readonly ListingBoard[] = [
 ];
 
 /**
- * The raw query params the `GET /screener` endpoint (ticket 02) will receive.
+ * The raw query params the `GET /screener` endpoint (ticket 02) receives.
  * All optional; `undefined` = absent.
  */
 export interface RawScreenerParams {
@@ -82,6 +82,55 @@ export interface RawScreenerParams {
   dir?: string;
   offset?: string;
   limit?: string;
+}
+
+/**
+ * The endpoint's whole `@Query()` object → the known raw params. The ONE
+ * place the HTTP param-name mapping lives (ticket 02): only the 29 known
+ * keys pass, and only their plain-string values — a repeated param (an
+ * array) or a nested object is dropped, never a 400 (the clamp/drop
+ * posture, applied before any parsing).
+ */
+export function rawScreenerParams(query: unknown): RawScreenerParams {
+  const raw: RawScreenerParams = {};
+  if (typeof query !== 'object' || query === null) return raw;
+  const record = query as Record<string, unknown>;
+  const keys: readonly (keyof RawScreenerParams)[] = [
+    'board',
+    'sector',
+    'shariah',
+    'priceMin',
+    'priceMax',
+    'volumeMin',
+    'marketCapMin',
+    'marketCapMax',
+    'peMin',
+    'peMax',
+    'dyMin',
+    'dyMax',
+    'pNtaMin',
+    'pNtaMax',
+    'roeMin',
+    'roeMax',
+    'deMin',
+    'deMax',
+    'profitableYearsMin',
+    'yoyProfitGrowthMin',
+    'consecutiveGrowthQuartersMin',
+    'rsi14Min',
+    'rsi14Max',
+    'aboveSma50',
+    'aboveSma200',
+    'sort',
+    'dir',
+    'offset',
+    'limit',
+  ];
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string') raw[key] = value;
+  }
+  return raw;
 }
 
 /** One numeric filter param → a finite number; anything else → `null` (ignored). */

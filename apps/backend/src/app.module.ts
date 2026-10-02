@@ -13,6 +13,7 @@ import { AnalysisModule } from './analysis/analysis.module';
 import { SearchModule } from './search/search.module';
 import { StocksModule } from './stocks/stocks.module';
 import { DisclosuresModule } from './disclosures/disclosures.module';
+import { ScreenerModule } from './screener/screener.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -38,6 +39,9 @@ import { DisclosuresModule } from './disclosures/disclosures.module';
     // Spec-04 anonymous free-tier disclosure reads (market feed, dealings,
     // calendars, news) — same anonymous posture as search/stocks.
     DisclosuresModule,
+    // Spec-03 anonymous free-tier screener (GET /screener) — same anonymous
+    // posture as the other read surfaces.
+    ScreenerModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

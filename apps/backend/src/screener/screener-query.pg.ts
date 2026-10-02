@@ -30,7 +30,9 @@
  */
 
 import { Injectable } from '@nestjs/common';
-import type { DataSource } from 'typeorm';
+// Value import (not `import type`): the constructor's DI metadata needs the
+// DataSource class at runtime — ticket 02 wires this class into the module.
+import { DataSource } from 'typeorm';
 import {
   ListingBoard,
   ShariahComplianceStatus,
