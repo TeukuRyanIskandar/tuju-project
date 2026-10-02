@@ -9,12 +9,15 @@ tickets. Backend only. Ticket work lands in `apps/backend`.
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [Cache seam + screener query read model](issues/01-cache-seam-screener-read-model.md) | 1 | — | **resolved** (committed `307ba6b`) |
 | 02 | [Screener endpoint (`GET /screener`)](issues/02-screener-endpoint.md) | 2 | 01 | **resolved** (committed `97e59e5`) |
-| 03 | [Screener fields endpoint (`GET /screener/fields`)](issues/03-screener-fields.md) | 2 | 01 | **ready-for-agent** (frontier) |
+| 03 | [Screener fields endpoint (`GET /screener/fields`)](issues/03-screener-fields.md) | 2 | 01 | **resolved** (working tree) |
 
 Wave 1 resolved and verified, committed as `307ba6b`. Ticket 02 (wave 2)
 resolved and verified, committed as `97e59e5` — typecheck + build clean; full
 suite **278/278** across 24 suites incl. all testcontainers suites;
-`test:int` 2/2. Ticket 03 remains on the frontier.
+`test:int` 2/2. Ticket 03 resolved and verified (working tree) — typecheck +
+build clean; full suite **288/288** across 26 suites; `test:int` 2/2. The
+effort is complete: ticket 03 landed as a second route on the ticket-02
+endpoint trio (no new module → no orchestrator wiring left to do).
 
 ## Wave structure
 
@@ -37,6 +40,16 @@ suite **278/278** across 24 suites incl. all testcontainers suites;
   `import type { DataSource }` left the constructor's DI token unresolved
   (invisible while ticket 01's spec instantiated it standalone) — fixed to a
   value import.
+- **Ticket 03 resolved (working tree):** second route `GET /screener/fields`
+  on the SAME controller/module — no new module, so the post-wave
+  orchestrator wiring step is empty. Pure `fields.ts` vocabulary (a
+  kind-discriminated union; descriptor params typed `keyof RawScreenerParams`
+  so drift does not compile), drift-guarded by a unit suite against the
+  parse layer (exact-pin + coverage + probe-flip) and integration-pinned
+  through the composed module (sector domain name-ordered from Postgres,
+  one `cache:screener:fields` entry, sweep → newly-ingested sector appears).
+  `params.ts` picker allowlist hoisted to an exported compile-exhaustive
+  `RAW_SCREENER_PARAM_KEYS` Record — no behaviour change.
 
 ## Decisions / notes so far
 
