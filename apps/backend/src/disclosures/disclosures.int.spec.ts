@@ -46,10 +46,12 @@ import {
   Company,
   CorporateAction,
   FundamentalsSnapshot,
+  IndexLevel,
   IndicatorSnapshot,
   IngestionRun,
   Instrument,
   IpoListing,
+  MarketIndex,
   NewsArticle,
   NewsArticleTag,
   PriceBar,
@@ -64,6 +66,7 @@ import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-Ini
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
 import { ReIngestNaturalKeys1727800000000 } from '../data/migrations/1727800000000-ReIngestNaturalKeys';
 import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
+import { MarketIndexModel1728000000000 } from '../data/migrations/1728000000000-MarketIndexModel';
 import {
   AnnouncementCategory,
   CorporateActionType,
@@ -95,6 +98,8 @@ const ALL_ENTITIES = [
   NewsArticle,
   NewsArticleTag,
   IpoListing,
+  MarketIndex,
+  IndexLevel,
   Watchlist,
   WatchlistItem,
 ];
@@ -141,6 +146,7 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
         FreeTierDomainModel1727700000000,
         ReIngestNaturalKeys1727800000000,
         DisclosureReadModel1727900000000,
+        MarketIndexModel1728000000000,
       ],
     });
     await dataSource.initialize();

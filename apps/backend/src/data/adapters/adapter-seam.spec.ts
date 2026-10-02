@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { ProvenanceClass } from '../entities/enums';
+import { MarketIndexKind, ProvenanceClass } from '../entities/enums';
 import {
+  INDEX_ADAPTER,
   MARKET_DATA_ADAPTER,
+  type IndexAdapter,
   type MarketDataAdapter,
 } from './adapter.interfaces';
-import type { PriceBarDto } from './dto';
+import type { IndexLevelsDto, PriceBarDto } from './dto';
 
 /**
  * Seam contract test (ticket 02 Testing seam).
@@ -15,6 +17,11 @@ import type { PriceBarDto } from './dto';
  * adapter. Swapping the fake for a *second* fake changes only the data the
  * consumer sees — never the consumer's code — which proves a licensed production
  * adapter swaps in behind the token transparently.
+ *
+ * The second describe block (spec 05, ticket 02) pins the same contract for the
+ * {@link IndexAdapter}: a fake `LicensedIndexAdapter` producing `real` levels
+ * feeds the exact same consumer as the synthetic one — the demo/production
+ * boundary the market-overview machinery rides on.
  */
 
 /** A minimal consumer of the seam — the shape the ingestion worker (ticket 04) takes. */
@@ -67,6 +74,76 @@ async function buildConsumer(
   return moduleRef.get<BarCountingConsumer>(CONSUMER);
 }
 
+/** A minimal consumer of the index seam — the shape the ingestion worker takes. */
+@Injectable()
+class LevelReadingConsumer {
+  constructor(private readonly index: IndexAdapter) {}
+
+  async headlineSeriesLevels(): Promise<number[]> {
+    const series = await this.index.fetchIndexLevels();
+    const headline = series.find((s) => s.kind === MarketIndexKind.Headline);
+    return (headline?.levels ?? []).map((l) => l.level);
+  }
+}
+
+const INDEX_CONSUMER = Symbol('LevelReadingConsumer');
+
+/** First fake: the demo synthetic adapter — computed cap-weighted levels. */
+class FakeSyntheticIndexAdapter implements IndexAdapter {
+  readonly provenanceClass = ProvenanceClass.Synthetic;
+  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
+    return Promise.resolve([
+      {
+        kind: MarketIndexKind.Headline,
+        sectorName: null,
+        name: 'Tuju Composite Index',
+        levels: [
+          { levelDate: '2026-01-05', level: 100 },
+          { levelDate: '2026-01-06', level: 101.5 },
+        ],
+      },
+    ]);
+  }
+}
+
+/**
+ * Second fake: the licensed-feed production adapter — a published `real`
+ * level series. Stands in for the licensed swap: different provenance, different
+ * numbers, IDENTICAL interface and consumers.
+ */
+class FakeLicensedIndexAdapter implements IndexAdapter {
+  readonly provenanceClass = ProvenanceClass.Real;
+  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
+    return Promise.resolve([
+      {
+        kind: MarketIndexKind.Headline,
+        sectorName: null,
+        name: 'FBM KLCI (licensed)',
+        levels: [
+          { levelDate: '2026-01-05', level: 1590.42 },
+          { levelDate: '2026-01-06', level: 1595.1 },
+        ],
+      },
+    ]);
+  }
+}
+
+async function buildIndexConsumer(
+  adapter: IndexAdapter,
+): Promise<LevelReadingConsumer> {
+  const moduleRef = await Test.createTestingModule({
+    providers: [
+      { provide: INDEX_ADAPTER, useValue: adapter },
+      {
+        provide: INDEX_CONSUMER,
+        useFactory: (i: IndexAdapter) => new LevelReadingConsumer(i),
+        inject: [INDEX_ADAPTER],
+      },
+    ],
+  }).compile();
+  return moduleRef.get<LevelReadingConsumer>(INDEX_CONSUMER);
+}
+
 describe('source-adapter seam contract', () => {
   it('a consumer given a fake adapter gets the expected read model', async () => {
     const consumer = await buildConsumer(new FakeMarketDataAdapterA());
@@ -88,5 +165,32 @@ describe('source-adapter seam contract', () => {
     // Same consumer implementation produced both — the swap is transparent.
     expect(consumerA).toBeInstanceOf(BarCountingConsumer);
     expect(consumerB).toBeInstanceOf(BarCountingConsumer);
+  });
+});
+
+describe('index-adapter seam contract (spec 05, ticket 02)', () => {
+  it('a consumer given the fake synthetic adapter gets the expected levels', async () => {
+    const consumer = await buildIndexConsumer(new FakeSyntheticIndexAdapter());
+    await expect(consumer.headlineSeriesLevels()).resolves.toEqual([100, 101.5]);
+  });
+
+  it('a fake LicensedIndexAdapter producing real levels feeds the identical consumer', async () => {
+    // Exact same consumer class, exact same injection — only the bound provider
+    // differs: the demo/production swap the market-overview machinery rides on.
+    const syntheticConsumer = await buildIndexConsumer(
+      new FakeSyntheticIndexAdapter(),
+    );
+    const licensedConsumer = await buildIndexConsumer(
+      new FakeLicensedIndexAdapter(),
+    );
+
+    await expect(syntheticConsumer.headlineSeriesLevels()).resolves.toEqual([
+      100, 101.5,
+    ]);
+    await expect(licensedConsumer.headlineSeriesLevels()).resolves.toEqual([
+      1590.42, 1595.1,
+    ]);
+    expect(syntheticConsumer).toBeInstanceOf(LevelReadingConsumer);
+    expect(licensedConsumer).toBeInstanceOf(LevelReadingConsumer);
   });
 });

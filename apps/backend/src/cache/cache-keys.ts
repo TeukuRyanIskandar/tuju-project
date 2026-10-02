@@ -26,3 +26,22 @@ export const DISCLOSURES_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}disclosures:`;
 
 /** Spec-03 screener screens — invalidated on the nightly ingest / purge. */
 export const SCREENER_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}screener:`;
+
+/**
+ * Spec-05 market-overview reads (index panels, sector performance) —
+ * invalidated on the nightly ingest (fresh `IndexLevel`s land) / purge.
+ */
+export const MARKET_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}market:`;
+
+/**
+ * Every read-cache prefix — the wholesale invalidation set the nightly ingest
+ * and the decision-B purge sweep after their commits. Adding a prefix here is
+ * the whole wiring: no call site ever pins an invalidation key by hand.
+ */
+export const READ_CACHE_PREFIXES = [
+  SEARCH_CACHE_PREFIX,
+  STOCKS_CACHE_PREFIX,
+  DISCLOSURES_CACHE_PREFIX,
+  SCREENER_CACHE_PREFIX,
+  MARKET_CACHE_PREFIX,
+] as const;

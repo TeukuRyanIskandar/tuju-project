@@ -39,9 +39,12 @@ import {
   CorporateAction,
   FundamentalsSnapshot,
   IndicatorSnapshot,
+  IndexLevel,
   IngestionRun,
   Instrument,
   IpoListing,
+  MarketIndex,
+  MarketIndexKind,
   NewsArticle,
   NewsArticleTag,
   PriceBar,
@@ -56,6 +59,7 @@ import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-Ini
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
 import { ReIngestNaturalKeys1727800000000 } from '../data/migrations/1727800000000-ReIngestNaturalKeys';
 import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
+import { MarketIndexModel1728000000000 } from '../data/migrations/1728000000000-MarketIndexModel';
 import { ProvenanceClass } from '../data/entities/enums';
 
 import { EodIngestService } from './eod-ingest.service';
@@ -84,6 +88,8 @@ const ALL_ENTITIES = [
   NewsArticle,
   NewsArticleTag,
   IpoListing,
+  MarketIndex,
+  IndexLevel,
   Watchlist,
   WatchlistItem,
 ];
@@ -112,6 +118,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         FreeTierDomainModel1727700000000,
         ReIngestNaturalKeys1727800000000,
         DisclosureReadModel1727900000000,
+        MarketIndexModel1728000000000,
       ],
     });
     await dataSource.initialize();
@@ -196,6 +203,41 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(result.newsArticles).toBe(10);
     expect(result.shariahStatuses).toBe(universe);
     expect(result.ipoListings).toBe(1);
+
+    // Cap-weighted index series landed (spec 05, ticket 02): one headline +
+    // one per Sector WITH constituents - the curated universe spans 4 of the
+    // 5 reference sectors ('Consumer Products & Services' has none, so no row).
+    const sectorCount = new Set(
+      REFERENCE_UNIVERSE.map((c) => c.sectorName),
+    ).size;
+    expect(result.marketIndices).toBe(sectorCount + 1);
+    expect(result.indexLevels).toBe(
+      (sectorCount + 1) * (result.priceBars / universe),
+    );
+    expect(await dataSource.getRepository(MarketIndex).count()).toBe(
+      result.marketIndices,
+    );
+    expect(await dataSource.getRepository(IndexLevel).count()).toBe(
+      result.indexLevels,
+    );
+
+    // The headline series opens at the 100-point base, ordered by date, and
+    // carries run lineage (the join the read surface labels "illustrative" via).
+    const headlineIndex = await dataSource
+      .getRepository(MarketIndex)
+      .findOneByOrFail({ kind: MarketIndexKind.Headline });
+    const levelRepo = dataSource.getRepository(IndexLevel);
+    const headlineLevels = await levelRepo.find({
+      where: { indexId: headlineIndex.id },
+      order: { levelDate: 'ASC' },
+    });
+    expect(headlineLevels).toHaveLength(result.indexLevels / (sectorCount + 1));
+    expect(headlineLevels[0].level).toBe('100.000000');
+    const withRun = await levelRepo.findOne({
+      where: { id: headlineLevels[0].id },
+      relations: { ingestionRun: true },
+    });
+    expect(withRun!.ingestionRun.provenanceClass).toBe(ProvenanceClass.Synthetic);
 
     // Deterministic ticker-tagging (spec 04 §2): 5 shortName hits + 1 curated
     // alias hit (TNB) + 2 tags for the multi-company headline = 8 tags; the
@@ -287,8 +329,11 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(await dataSource.getRepository(CorporateAction).count()).toBe(0);
     expect(await dataSource.getRepository(NewsArticle).count()).toBe(0);
     expect(await dataSource.getRepository(NewsArticleTag).count()).toBe(0);
+    expect(await dataSource.getRepository(IndexLevel).count()).toBe(0);
+    expect(await dataSource.getRepository(MarketIndex).count()).toBe(0);
     expect(res.priceBars).toBeGreaterThan(0);
     expect(res.announcements).toBeGreaterThan(0);
+    expect(res.indexLevels).toBeGreaterThan(0);
 
     // Real reference data survives untouched.
     expect(await dataSource.getRepository(Instrument).count()).toBe(realBefore.instruments);
@@ -319,6 +364,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     await redis.set('cache:stocks:1155:core', 'stale');
     await redis.set('cache:disclosures:announcements', 'stale');
     await redis.set('cache:screener:screen', 'stale');
+    await redis.set('cache:market:overview', 'stale');
     await redis.set('cache:untouched', 'keep-me');
 
     // A second nightly ingest: data commits, then both prefixes are swept.
@@ -332,6 +378,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(await redis.get('cache:stocks:1155:core')).toBeNull();
     expect(await redis.get('cache:disclosures:announcements')).toBeNull();
     expect(await redis.get('cache:screener:screen')).toBeNull();
+    expect(await redis.get('cache:market:overview')).toBeNull();
     expect(await redis.get('cache:untouched')).toBe('keep-me');
 
     // The decision-B purge sweeps the same prefixes after its commit.
@@ -339,12 +386,14 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     await redis.set('cache:search:maybnk:20', 'stale');
     await redis.set('cache:disclosures:news', 'stale');
     await redis.set('cache:screener:fields', 'stale');
+    await redis.set('cache:market:indices', 'stale');
     const purged = await purge.purgeUnlicensed();
     expect(purged.priceBars).toBeGreaterThan(0);
     expect(await redis.get('cache:stocks:1023:core')).toBeNull();
     expect(await redis.get('cache:search:maybnk:20')).toBeNull();
     expect(await redis.get('cache:disclosures:news')).toBeNull();
     expect(await redis.get('cache:screener:fields')).toBeNull();
+    expect(await redis.get('cache:market:indices')).toBeNull();
   });
 
   it('a second nightly against a populated DB is idempotent (ticket 05)', async () => {
@@ -353,6 +402,16 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     const run1 = await eod.runNightly();
     const counts1 = await tableCounts(dataSource);
     const runs1 = counts1.ingestionRun;
+    // Row ids before run 2 — the natural-key upserts must update in place,
+    // never mint fresh rows (ticket 02 AC: "stable ids").
+    const idsOf = async (
+      entity: typeof MarketIndex | typeof IndexLevel,
+    ): Promise<string[]> =>
+      (await dataSource.getRepository(entity).find({ select: { id: true } }))
+        .map((r) => r.id)
+        .sort();
+    const indexIds1 = await idsOf(MarketIndex);
+    const levelIds1 = await idsOf(IndexLevel);
 
     // Run 2 — the exact same ingest, unmodified, against a fully populated DB.
     // Before ticket 05 this failed the whole transaction at persistShariah
@@ -377,6 +436,11 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     expect(counts2.newsTag).toBe(counts1.newsTag);
     expect(counts2.shariah).toBe(counts1.shariah);
     expect(counts2.ipo).toBe(counts1.ipo);
+    expect(counts2.marketIndex).toBe(counts1.marketIndex);
+    expect(counts2.indexLevel).toBe(counts1.indexLevel);
+    // Same rows, not just same counts — ids are unchanged across the re-ingest.
+    expect(await idsOf(MarketIndex)).toEqual(indexIds1);
+    expect(await idsOf(IndexLevel)).toEqual(levelIds1);
 
     // Still exactly one current snapshot per company / instrument.
     const universe = REFERENCE_UNIVERSE.length;
@@ -385,8 +449,8 @@ describe('IngestionWorker (integration — testcontainers)', () => {
 
     // Lineage accumulates per nightly on purpose (option B audit trail): one
     // fresh run row each for public-reference, synthetic, disclosure, news,
-    // shariah, and ipo.
-    expect(counts2.ingestionRun).toBe(runs1 + 6);
+    // shariah, ipo, and index.
+    expect(counts2.ingestionRun).toBe(runs1 + 7);
   });
 });
 
@@ -407,6 +471,8 @@ async function tableCounts(ds: DataSource): Promise<Record<string, number>> {
     ['news', NewsArticle],
     ['newsTag', NewsArticleTag],
     ['ipo', IpoListing],
+    ['marketIndex', MarketIndex],
+    ['indexLevel', IndexLevel],
   ];
   const out: Record<string, number> = {};
   for (const [name, entity] of entities) {

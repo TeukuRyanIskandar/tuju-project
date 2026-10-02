@@ -19,13 +19,15 @@ import { DataSource, In, type EntityManager } from 'typeorm';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
+import { IndexLevel } from '../data/entities/index-level.entity';
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { IngestionRun } from '../data/entities/ingestion-run.entity';
+import { MarketIndex } from '../data/entities/market-index.entity';
 import { NewsArticle } from '../data/entities/news-article.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ProvenanceClass } from '../data/entities/enums';
-import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX, SCREENER_CACHE_PREFIX } from '../cache';
+import { ReadCacheService } from '../cache';
 
 /** Rows deleted per table (returned for logging / test assertions). */
 export interface PurgeResult {
@@ -36,6 +38,10 @@ export interface PurgeResult {
   announcements: number;
   corporateActions: number;
   newsArticles: number;
+  /** Synthetic market-index rows (the reference rows naming an index). */
+  marketIndices: number;
+  /** Synthetic index levels (the chartable series). */
+  indexLevels: number;
   /** Number of ingestion-run rows deliberately LEFT intact (lineage survives). */
   runsPreserved: number;
 }
@@ -64,10 +70,7 @@ export class PurgeService {
     // Class-2 cache invalidation AFTER the commit (ADR-0004): the purge just
     // changed what every cached read page would show — the whole point is
     // that no stale synthetic/aggregator page survives the licence crossing.
-    await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(DISCLOSURES_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
+    await this.readCache.invalidateReadCaches();
     return result;
   }
 
@@ -88,6 +91,8 @@ export class PurgeService {
       announcements: 0,
       corporateActions: 0,
       newsArticles: 0,
+      marketIndices: 0,
+      indexLevels: 0,
       runsPreserved: purgedRuns.length,
     };
 
@@ -119,6 +124,12 @@ export class PurgeService {
       runIds,
     );
     result.newsArticles = await this.deleteByRun(manager, NewsArticle, runIds);
+    // Index rows go levels-first so the per-run level count is exact (levels
+    // also cascade with their index row, but the levels are already gone);
+    // the synthetic index rows then leave with their lineage, and a `real`
+    // licensed index + its levels survive untouched.
+    result.indexLevels = await this.deleteByRun(manager, IndexLevel, runIds);
+    result.marketIndices = await this.deleteByRun(manager, MarketIndex, runIds);
 
     this.logger.warn(
       `decision-B purge complete (lineage preserved): ${JSON.stringify(result)}`,

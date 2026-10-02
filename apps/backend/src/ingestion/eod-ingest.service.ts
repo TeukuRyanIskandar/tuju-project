@@ -26,36 +26,41 @@ import { DataSource, In, type EntityManager } from 'typeorm';
 import {
   DISCLOSURE_ADAPTER,
   FUNDAMENTALS_ADAPTER,
+  INDEX_ADAPTER,
   IPO_ADAPTER,
   MARKET_DATA_ADAPTER,
   NEWS_ADAPTER,
   SHARIAH_LIST_ADAPTER,
   type DisclosureAdapter,
   type FundamentalsAdapter,
+  type IndexAdapter,
   type IpoAdapter,
   type MarketDataAdapter,
   type NewsAdapter,
   type ShariahListAdapter,
 } from '../data/adapters';
-import type { PriceBarDto } from '../data/adapters/dto';
+import type { IndexLevelsDto, PriceBarDto } from '../data/adapters/dto';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
+import { IndexLevel } from '../data/entities/index-level.entity';
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
+import { MarketIndex } from '../data/entities/market-index.entity';
 import { NewsArticle } from '../data/entities/news-article.entity';
 import { NewsArticleTag } from '../data/entities/news-article-tag.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
+import { Sector } from '../data/entities/sector.entity';
 import { IngestionRunService } from './ingestion-run.service';
 import { ReferenceDataService } from './reference-data.service';
 import { materialiseSnapshot } from './fundamentals-materialiser';
 import { computeIndicators, WEEK52_WINDOW } from './indicators';
 import { SYNTHETIC_BASE_SEED, instrumentSeed } from './reference-universe';
 import { DEFAULT_PARAMS } from '../data/synthetic';
-import { ReadCacheService, SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX, DISCLOSURES_CACHE_PREFIX, SCREENER_CACHE_PREFIX } from '../cache';
+import { ReadCacheService } from '../cache';
 import { matchCompanyTags, type TaggableCompany } from './news-tagging';
 
 /** Summary of what a nightly ingest landed (returned for tests / logging). */
@@ -71,6 +76,10 @@ export interface NightlyIngestResult {
   newsArticleTags: number;
   shariahStatuses: number;
   ipoListings: number;
+  /** Reference MarketIndex rows upserted (headline + per-Sector, spec 05). */
+  marketIndices: number;
+  /** IndexLevel series rows upserted (one per index per day, spec 05). */
+  indexLevels: number;
 }
 
 @Injectable()
@@ -87,6 +96,7 @@ export class EodIngestService {
     @Inject(NEWS_ADAPTER) private readonly news: NewsAdapter,
     @Inject(SHARIAH_LIST_ADAPTER) private readonly shariah: ShariahListAdapter,
     @Inject(IPO_ADAPTER) private readonly ipo: IpoAdapter,
+    @Inject(INDEX_ADAPTER) private readonly index: IndexAdapter,
     private readonly readCache: ReadCacheService,
   ) {}
 
@@ -213,6 +223,23 @@ export class EodIngestService {
         syntheticRun.id,
       );
 
+      // --- Ordered AFTER EOD: cap-weighted index levels (spec 05, ticket 02) ---
+      // The index adapter reads the seam (the demo impl cap-weights the same
+      // co-generated constituent bars; production ingests a licensed published
+      // level), and the worker upserts the reference index rows + one
+      // IndexLevel per index per day, lineage-stamped like every sourced row.
+      const indexRun = await this.runs.openRun(
+        manager,
+        'SyntheticIndexAdapter',
+        this.index.provenanceClass,
+      );
+      const indexSeries = await this.index.fetchIndexLevels();
+      const { marketIndices, indexLevels } = await this.persistIndexLevels(
+        manager,
+        indexSeries,
+        indexRun.id,
+      );
+
       const result: NightlyIngestResult = {
         priceBars,
         quarterlyRows,
@@ -224,6 +251,8 @@ export class EodIngestService {
         newsArticleTags,
         shariahStatuses,
         ipoListings,
+        marketIndices,
+        indexLevels,
       };
       // ADR-0010: every log line carries a correlationId.  The nightly ingest is
       // not a JobBus job so there is no envelope id; the SyntheticRun id is the
@@ -240,10 +269,7 @@ export class EodIngestService {
     // transaction, so one post-commit sweep covers the EOD-derived AND
     // disclosure/news-derived caches. A failure here fails the ingest loudly —
     // a stale page shown after new data committed is worse than a retried ingest.
-    await this.readCache.invalidatePrefix(SEARCH_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(STOCKS_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(DISCLOSURES_CACHE_PREFIX);
-    await this.readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
+    await this.readCache.invalidateReadCaches();
     return result;
   }
 
@@ -510,6 +536,73 @@ export class EodIngestService {
       await repo.upsert(rows, ['companyName', 'listingDate']);
     }
     return rows.length;
+  }
+
+  /**
+   * Persist the index series the {@link IndexAdapter} served (spec 05, ticket
+   * 02): upsert the reference {@link MarketIndex} row on its `(kind, sectorId)`
+   * natural key (resolving the DTO's sector name onto the real reference
+   * Sector; the headline row is the one with a null Sector), then upsert that
+   * index's {@link IndexLevel} series on `(index, date)` — so a re-ingest
+   * updates levels in place: stable row ids, lineage re-pointed to the fresh
+   * run. The live intraday level is Redis-only (class 3) and never lands here.
+   */
+  private async persistIndexLevels(
+    manager: EntityManager,
+    series: IndexLevelsDto[],
+    runId: string,
+  ): Promise<{ marketIndices: number; indexLevels: number }> {
+    const indexRepo = manager.getRepository(MarketIndex);
+    const levelRepo = manager.getRepository(IndexLevel);
+    const sectorRepo = manager.getRepository(Sector);
+
+    let marketIndices = 0;
+    let indexLevels = 0;
+    for (const s of series) {
+      let sectorId: string | null = null;
+      if (s.sectorName !== null) {
+        const sector = await sectorRepo.findOne({
+          where: { name: s.sectorName },
+        });
+        if (!sector) {
+          throw new Error(
+            `persistIndexLevels: unknown sector ${s.sectorName}`,
+          );
+        }
+        sectorId = sector.id;
+      }
+      await indexRepo.upsert(
+        indexRepo.create({
+          kind: s.kind,
+          name: s.name,
+          sectorId,
+          ingestionRunId: runId,
+        }),
+        ['kind', 'sectorId'],
+      );
+      marketIndices++;
+      // Upsert returns no id — re-read on the natural key for the level FKs
+      // (the headline row is the only row of its kind, so kind alone locates it).
+      const indexRow =
+        sectorId === null
+          ? await indexRepo.findOneOrFail({ where: { kind: s.kind } })
+          : await indexRepo.findOneOrFail({
+              where: { kind: s.kind, sectorId },
+            });
+      const rows = s.levels.map((l) =>
+        levelRepo.create({
+          indexId: indexRow.id,
+          levelDate: l.levelDate,
+          level: l.level.toFixed(6),
+          ingestionRunId: runId,
+        }),
+      );
+      if (rows.length > 0) {
+        await levelRepo.upsert(rows, ['indexId', 'levelDate']);
+      }
+      indexLevels += rows.length;
+    }
+    return { marketIndices, indexLevels };
   }
 
   /**

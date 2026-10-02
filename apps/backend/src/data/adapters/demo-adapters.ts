@@ -28,9 +28,11 @@ import {
   instrumentSeed,
 } from '../../ingestion/reference-universe';
 import { mapAnnouncementLabel } from './announcement-labels';
+import { computeCapWeightedIndices } from './index-computation';
 import type {
   DisclosureAdapter,
   FundamentalsAdapter,
+  IndexAdapter,
   IpoAdapter,
   MarketDataAdapter,
   NewsAdapter,
@@ -40,6 +42,7 @@ import type {
   AnnouncementDto,
   CorporateActionDto,
   FundamentalsDto,
+  IndexLevelsDto,
   IpoListingDto,
   NewsArticleDto,
   PriceBarDto,
@@ -119,6 +122,39 @@ export class SyntheticFundamentalsAdapter implements FundamentalsAdapter {
       });
     }
     return Promise.resolve(out);
+  }
+}
+
+/**
+ * Demo index adapter (spec 05, ticket 02).
+ *
+ * Declares `synthetic` provenance. Cap-weights the SAME co-generated
+ * constituent bars + shares as the market-data/fundamentals adapters (one
+ * per-instrument seed, A1) using the real FBM KLCI divisor methodology — so
+ * the index series reconciles with the persisted price bars by construction.
+ * The computation is pure (`index-computation.ts`); production is a swap:
+ * `LicensedIndexAdapter` ingests the published level, or a house recompute
+ * runs the same maths over real licensed prices.
+ */
+@Injectable()
+export class SyntheticIndexAdapter implements IndexAdapter {
+  readonly provenanceClass = ProvenanceClass.Synthetic;
+
+  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
+    const constituents = REFERENCE_UNIVERSE.map((company) => {
+      const seed = instrumentSeed(SYNTHETIC_BASE_SEED, company.stockCode);
+      const dataset = generate(seed);
+      return {
+        stockCode: company.stockCode,
+        sectorName: company.sectorName,
+        sharesOutstanding: Number(dataset.snapshot.sharesOutstanding),
+        bars: dataset.priceBars.map((bar) => ({
+          tradeDate: bar.tradeDate,
+          close: Number(bar.close),
+        })),
+      };
+    });
+    return Promise.resolve(computeCapWeightedIndices(constituents));
   }
 }
 

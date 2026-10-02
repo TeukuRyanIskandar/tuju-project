@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import {
   DISCLOSURE_ADAPTER,
   FUNDAMENTALS_ADAPTER,
+  INDEX_ADAPTER,
   IPO_ADAPTER,
   MARKET_DATA_ADAPTER,
   NEWS_ADAPTER,
@@ -13,6 +14,7 @@ import {
   ManualShariahListAdapter,
   RssNewsAdapter,
   SyntheticFundamentalsAdapter,
+  SyntheticIndexAdapter,
   SyntheticMarketDataAdapter,
 } from './demo-adapters';
 
@@ -33,6 +35,7 @@ import {
     { provide: NEWS_ADAPTER, useClass: RssNewsAdapter },
     { provide: SHARIAH_LIST_ADAPTER, useClass: ManualShariahListAdapter },
     { provide: IPO_ADAPTER, useClass: ManualIpoAdapter },
+    { provide: INDEX_ADAPTER, useClass: SyntheticIndexAdapter },
   ],
   exports: [
     MARKET_DATA_ADAPTER,
@@ -41,6 +44,7 @@ import {
     NEWS_ADAPTER,
     SHARIAH_LIST_ADAPTER,
     IPO_ADAPTER,
+    INDEX_ADAPTER,
   ],
 })
 export class AdaptersModule {}

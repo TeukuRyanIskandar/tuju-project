@@ -17,6 +17,7 @@ import type {
   AnnouncementCategory,
   CorporateActionType,
   ListingBoard,
+  MarketIndexKind,
   ShariahComplianceStatus,
 } from '../entities/enums';
 
@@ -134,4 +135,29 @@ export interface IpoListingDto {
   readonly offerPrice: number | null;
   /** S3 key of the stored prospectus PDF, or null. */
   readonly prospectusS3Key: string | null;
+}
+
+/**
+ * One index's level series the {@link IndexAdapter} serves (spec 05, ticket 02):
+ * the index identity + its daily levels, one entry per index (headline +
+ * per-Sector). Shapes {@link MarketIndex} + {@link IndexLevel}; the worker
+ * resolves `sectorName` to the reference Sector and upserts the rows on their
+ * natural keys, stamping the run's lineage.
+ */
+export interface IndexLevelsDto {
+  /** Headline vs per-Sector index (the `MarketIndex` discriminator). */
+  readonly kind: MarketIndexKind;
+  /** The Bursa Sector name the index scopes to; null on the headline series. */
+  readonly sectorName: string | null;
+  /** Display name (persisted verbatim onto the `MarketIndex` row). */
+  readonly name: string;
+  /** The daily levels, ascending by date. */
+  readonly levels: readonly IndexLevelPointDto[];
+}
+
+/** One level point on an {@link IndexLevelsDto} series. */
+export interface IndexLevelPointDto {
+  /** Trading day the level settles, ISO `YYYY-MM-DD`. */
+  readonly levelDate: string;
+  readonly level: number;
 }

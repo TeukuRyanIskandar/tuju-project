@@ -18,6 +18,7 @@ import type {
   AnnouncementDto,
   CorporateActionDto,
   FundamentalsDto,
+  IndexLevelsDto,
   IpoListingDto,
   NewsArticleDto,
   PriceBarDto,
@@ -95,3 +96,17 @@ export interface IpoAdapter extends SourceAdapter {
   fetchIpoListings(): Promise<IpoListingDto[]>;
 }
 export const IPO_ADAPTER = Symbol('IpoAdapter');
+
+/**
+ * Cap-weighted index levels for the market overview (spec 05, ticket 02): the
+ * headline index + one per Bursa Sector. Demo impl `SyntheticIndexAdapter`
+ * (computes cap-weighted over the co-generated constituent bars, `synthetic`);
+ * production `LicensedIndexAdapter` (ingests a licensed published level, `real`)
+ * or a house recompute over real licensed prices — identical entities and
+ * consumers either way, so going live is a provider rebind, not a rebuild.
+ */
+export interface IndexAdapter extends SourceAdapter {
+  /** Fetch the index series to persist this run (one per index, with levels). */
+  fetchIndexLevels(): Promise<IndexLevelsDto[]>;
+}
+export const INDEX_ADAPTER = Symbol('IndexAdapter');

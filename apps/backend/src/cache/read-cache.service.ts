@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { READ_CACHE_KEY_PREFIX } from './cache-keys';
+import { READ_CACHE_KEY_PREFIX, READ_CACHE_PREFIXES } from './cache-keys';
 
 /**
  * Default class-2 TTL (one EOD-derived horizon). Overridable via
@@ -108,5 +108,17 @@ export class ReadCacheService {
       this.logger.log({ msg: 'read-cache.invalidated', prefix, deleted });
     }
     return deleted;
+  }
+
+  /**
+   * Sweep every read-cache prefix ({@link READ_CACHE_PREFIXES}) — the wholesale
+   * post-commit invalidation the nightly ingest and the decision-B purge run.
+   * Sequential so one failing sweep throws before the next (fail loud), and
+   * the caller's ingest/purge surfaces the error.
+   */
+  async invalidateReadCaches(): Promise<void> {
+    for (const prefix of READ_CACHE_PREFIXES) {
+      await this.invalidatePrefix(prefix);
+    }
   }
 }
