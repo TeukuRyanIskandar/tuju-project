@@ -71,3 +71,14 @@ export enum ListingBoard {
   Ace = 'ACE',
   Leap = 'LEAP',
 }
+
+/**
+ * {@link MarketIndex} discriminator (spec 05): the FBM KLCI analogue `headline`
+ * index vs the per-`Sector` indices. A `sector` row FKs its `Sector` (null on
+ * the headline row); membership is derived (headline = the whole analysed
+ * universe, a sector index = that Sector's instruments), never stored.
+ */
+export enum MarketIndexKind {
+  Headline = 'headline',
+  Sector = 'sector',
+}

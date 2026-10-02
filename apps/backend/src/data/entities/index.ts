@@ -21,6 +21,8 @@ export * from './announcement.entity';
 export * from './news-article.entity';
 export * from './news-article-tag.entity';
 export * from './ipo-listing.entity';
+export * from './market-index.entity';
+export * from './index-level.entity';
 export * from './watchlist.entity';
 export * from './watchlist-item.entity';
 
