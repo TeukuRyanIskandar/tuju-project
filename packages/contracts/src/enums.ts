@@ -16,7 +16,11 @@ export const JobName = z.enum(['analyze-technical', 'analyze-fundamental']);
 export type JobName = z.infer<typeof JobName>;
 
 // --- Envelope trigger (ADR-0003: both triggers ride the same queue) --------
-export const Trigger = z.enum(['user', 'price-move']);
+// 'system' is a new trusted-internal-caller path, additive alongside the
+// existing 'price-move' one ADR-0005 names as bypassing tier gating — it
+// extends that same bypass posture to the new system-triggered artifacts
+// (daily market brief, announcement summaries, prospectus at-a-glance).
+export const Trigger = z.enum(['user', 'price-move', 'system']);
 export type Trigger = z.infer<typeof Trigger>;
 
 // --- §3 Technical payload domain enum --------------------------------------

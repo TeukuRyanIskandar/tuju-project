@@ -39,6 +39,10 @@ describe('golden fixtures conform to the Zod contract', () => {
     expect(() => JobResult.parse(load('job-result.json'))).not.toThrow();
   });
 
+  it('job-result-system.json (verdict-less summary)', () => {
+    expect(() => JobResult.parse(load('job-result-system.json'))).not.toThrow();
+  });
+
   it('job-failure.json', () => {
     expect(() => JobFailure.parse(load('job-failure.json'))).not.toThrow();
   });
@@ -53,6 +57,20 @@ describe('the contract rejects malformed payloads', () => {
   it('rejects an out-of-enum verdict', () => {
     const good = load('job-result.json') as { summary: Record<string, unknown> };
     const bad = { ...good, summary: { ...good.summary, verdict: 'mega-bullish' } };
+    expect(() => JobResult.parse(bad)).toThrow();
+  });
+});
+
+describe('the system trigger and verdict-less summary', () => {
+  it('accepts the system trigger on a job envelope', () => {
+    const good = load('technical-job-envelope.json') as object;
+    const withSystemTrigger = { ...good, trigger: 'system' };
+    expect(() => TechnicalJobEnvelope.parse(withSystemTrigger)).not.toThrow();
+  });
+
+  it('rejects a SystemSummary missing its required headline', () => {
+    const good = load('job-result-system.json') as { summary: Record<string, unknown> };
+    const bad = { ...good, summary: { ...good.summary, headline: undefined } };
     expect(() => JobResult.parse(bad)).toThrow();
   });
 });

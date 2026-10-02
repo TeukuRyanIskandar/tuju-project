@@ -28,6 +28,7 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import type { JobEnvelope, JobResult } from '@tuju/contracts';
+import { isVerdictSummary } from './job-result-helpers';
 import { JobBus } from './job-bus.service';
 import { ANALYSIS_QUEUE, STUB_JOB_NAME } from './job-names';
 import { AnalysisResultStore } from '../analysis/analysis-result.store';
@@ -121,6 +122,7 @@ describe('JobBus (integration — testcontainers)', () => {
 
       const result = await received;
       expect(result.correlationId).toBe(correlationId);
+      if (!isVerdictSummary(result.summary)) throw new Error('expected a verdict-bearing summary');
       expect(result.summary.verdict).toBe('bullish');
       expect(result.pointer.bucket).toBe('tuju-artifacts');
     } finally {

@@ -31,8 +31,13 @@ export type ArtifactPointer = z.infer<typeof ArtifactPointer>;
 
 // Thin, stable summary (Option A): enough for a first-glance render without an
 // S3 round-trip. Rich detail lives in the (opaque) S3 artifact.
+//
+// `.strict()` (rejects unknown keys at runtime, matching the JSON Schema's
+// `additionalProperties: false`) is required so `JobResult.summary`'s union
+// below disambiguates correctly — without it, a verdict-bearing payload with
+// a malformed `verdict` would silently strip to a (wrongly) valid SystemSummary.
 export const Summary = z
-  .object({
+  .strictObject({
     verdict: Verdict,
     headline: z.string(),
     asOf: z.iso.datetime(),
@@ -40,13 +45,25 @@ export const Summary = z
   .meta({ id: 'Summary' });
 export type Summary = z.infer<typeof Summary>;
 
+// Verdict-less summary variant for system-triggered artifacts with no
+// bullish/bearish/over/under-valued verdict (e.g. prospectus at-a-glance,
+// daily market brief, announcement summaries). Keeps `Summary` untouched for
+// the existing TA/FA verdict-bearing path.
+export const SystemSummary = z
+  .strictObject({
+    headline: z.string(),
+    asOf: z.iso.datetime(),
+  })
+  .meta({ id: 'SystemSummary' });
+export type SystemSummary = z.infer<typeof SystemSummary>;
+
 // §5 / §7 — the worker's `job.returnvalue`.
 export const JobResult = z
   .object({
     correlationId: z.uuid(),
     jobId: z.string().min(1),
     pointer: ArtifactPointer,
-    summary: Summary,
+    summary: z.union([Summary, SystemSummary]),
     at: z.iso.datetime(), // ISO-8601
   })
   .meta({ id: 'JobResult' });

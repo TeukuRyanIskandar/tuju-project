@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { JobResult } from '@tuju/contracts';
 import { JobBus } from '../jobbus/job-bus.service';
+import { isVerdictSummary } from '../jobbus/job-result-helpers';
 import { AnalysisResult } from '../data/entities/analysis-result.entity';
 
 /**
@@ -35,6 +36,19 @@ export class AnalysisResultStore implements OnModuleInit {
   }
 
   private async persist(result: JobResult): Promise<void> {
+    // This table is TA/FA-only (verdict is a required column): the verdict-less
+    // `SystemSummary` variant belongs to the system-triggered artifacts (market
+    // brief, announcement summaries, prospectus at-a-glance) added by later
+    // tickets, which persist through their own tables, not this one.
+    if (!isVerdictSummary(result.summary)) {
+      this.logger.warn({
+        msg: 'skipped: verdict-less summary is not a TA/FA result',
+        correlationId: result.correlationId,
+        jobId: result.jobId,
+      });
+      return;
+    }
+
     try {
       const row = this.repo.create({
         correlationId: result.correlationId,

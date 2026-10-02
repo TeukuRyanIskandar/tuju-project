@@ -23,6 +23,7 @@ export const modelOrder = [
   'JobProgress',
   'ArtifactPointer',
   'Summary',
+  'SystemSummary',
   'JobResult',
   'JobFailure',
 ] as const;

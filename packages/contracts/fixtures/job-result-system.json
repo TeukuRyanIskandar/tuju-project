@@ -1,0 +1,16 @@
+{
+  "correlationId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "jobId": "prospectus:IPO-001:2026-09-29T04",
+  "pointer": {
+    "bucket": "tuju-artifacts",
+    "key": "analysis/prospectus/IPO-001/2026-09-29T04.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 10240,
+    "contentType": "application/json"
+  },
+  "summary": {
+    "headline": "IPO raises RM320m for capacity expansion across three plants",
+    "asOf": "2026-09-29T04:00:00Z"
+  },
+  "at": "2026-09-29T04:00:07Z"
+}

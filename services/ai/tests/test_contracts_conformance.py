@@ -39,6 +39,7 @@ def _load(name: str) -> dict:
         ("fundamental-job-envelope.json", FundamentalJobEnvelope),
         ("job-progress.json", JobProgress),
         ("job-result.json", JobResult),
+        ("job-result-system.json", JobResult),
         ("job-failure.json", JobFailure),
     ],
 )
@@ -54,6 +55,12 @@ def test_contract_rejects_unknown_trigger() -> None:
     bad["trigger"] = "nope"
     with pytest.raises(ValidationError):
         TechnicalJobEnvelope.model_validate(bad)
+
+
+def test_contract_accepts_system_trigger() -> None:
+    good = _load("technical-job-envelope.json")
+    good["trigger"] = "system"
+    TechnicalJobEnvelope.model_validate(good)
 
 
 def test_contract_rejects_out_of_enum_verdict() -> None:

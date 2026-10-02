@@ -61,6 +61,14 @@ class Summary(BaseModel):
     asOf: AwareDatetime
 
 
+class SystemSummary(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    headline: str
+    asOf: AwareDatetime
+
+
 class TechnicalPayload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -76,7 +84,7 @@ class FundamentalJobEnvelope(BaseModel):
     )
     correlationId: UUID
     requestedBy: constr(min_length=1)
-    trigger: Literal['user', 'price-move']
+    trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: FundamentalPayload
 
@@ -88,7 +96,7 @@ class JobResult(BaseModel):
     correlationId: UUID
     jobId: constr(min_length=1)
     pointer: ArtifactPointer
-    summary: Summary
+    summary: Summary | SystemSummary
     at: AwareDatetime
 
 
@@ -98,6 +106,6 @@ class TechnicalJobEnvelope(BaseModel):
     )
     correlationId: UUID
     requestedBy: constr(min_length=1)
-    trigger: Literal['user', 'price-move']
+    trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: TechnicalPayload
