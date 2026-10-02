@@ -3,12 +3,15 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { DataModule } from '../data/data.module';
 import { AdaptersModule } from '../data/adapters/adapters.module';
 import { CacheModule } from '../cache/cache.module';
+import { S3Module } from '../s3/s3.module';
+import { JobBusModule } from '../jobbus/job-bus.module';
 import { EodIngestService } from './eod-ingest.service';
 import { IngestionRunService } from './ingestion-run.service';
 import { ReferenceDataService } from './reference-data.service';
 import { IntradayReplayService } from './intraday-replay.service';
 import { PurgeService } from './purge.service';
 import { IngestionScheduler } from './ingestion.scheduler';
+import { ProspectusCorpusService } from './prospectus-corpus.service';
 
 /**
  * Ingestion worker module (spec 01 process shape; ticket 04, ADR-0012).
@@ -27,7 +30,13 @@ import { IngestionScheduler } from './ingestion.scheduler';
  * licensed production adapter swaps in with no worker change.
  */
 @Module({
-  imports: [ScheduleModule.forRoot(), DataModule, AdaptersModule, CacheModule],
+  imports: [
+    ScheduleModule.forRoot(),
+    DataModule,
+    AdaptersModule,
+    CacheModule,
+    JobBusModule,
+  ],
   providers: [
     IngestionRunService,
     ReferenceDataService,

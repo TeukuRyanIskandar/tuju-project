@@ -147,10 +147,15 @@ services:
       AWS_REGION: ap-southeast-1
       AWS_ACCESS_KEY_ID: local-dummy-access-key
       AWS_SECRET_ACCESS_KEY: local-dummy-secret-key
+      # The market-brief/announcement-summary jobs read via the NestJS API
+      # (ADR-0004 stateless reader) rather than touching Postgres directly.
+      BACKEND_API_URL: http://backend:3000
     depends_on:
       redis:
         condition: service_healthy
       localstack:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     healthcheck:
       # Liveness: the worker can reach Redis (its only hard boot dependency).

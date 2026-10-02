@@ -16,9 +16,14 @@ import json
 from typing import Any
 
 import boto3
+from botocore.exceptions import ClientError
 
 from .config import Settings
 from .contracts_generated import ArtifactPointer
+
+# S3 error codes that mean "no such object" for GET (LocalStack uses the
+# standard NoSuchKey; a HEAD-shaped 404 code is tolerated too).
+_NOT_FOUND_CODES = {"NoSuchKey", "404", "NotFound"}
 
 
 class ArtifactStore:
@@ -57,3 +62,26 @@ class ArtifactStore:
             bytes=len(body),
             contentType=content_type,
         )
+
+    def get_artifact(self, key_suffix: str) -> dict[str, Any] | None:
+        """Fetch and decode a previously PUT artifact, or ``None`` if absent.
+
+        Read-side counterpart to :meth:`put_artifact`, used by the prospectus
+        pipeline to reuse a persisted parse across re-runs (spec 06,
+        ticket 04). Only the scoped prefix is addressable, so reads stay
+        inside the same boundary as writes.
+        """
+        key = f"{self._settings.s3_prefix}/{key_suffix}"
+        try:
+            resp = self._s3.get_object(
+                Bucket=self._settings.s3_bucket, Key=key
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in _NOT_FOUND_CODES:
+                return None
+            raise
+        body: Any = resp["Body"]
+        if hasattr(body, "read"):  # real botocore StreamingBody
+            body = body.read()
+        return json.loads(body)

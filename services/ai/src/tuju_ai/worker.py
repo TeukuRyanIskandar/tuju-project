@@ -24,14 +24,15 @@ except ImportError:  # pragma: no cover
     UnrecoverableError = RuntimeError  # type: ignore[assignment, misc]
 
 from .artifacts import ArtifactStore
+from .backend_client import BackendClient, HttpBackendClient
 from .config import QUEUE_ANALYSIS, Settings
 from .contracts_generated import JobProgress
 from .handler import TerminalJobError, handle_job
 from .logging_config import configure_logging, get_logger
 
 
-def _make_processor(artifact_store: ArtifactStore):
-    """Build the async BullMQ processor bound to the given artifact store."""
+def _make_processor(artifact_store: ArtifactStore, backend_client: BackendClient):
+    """Build the async BullMQ processor bound to the given artifact/backend clients."""
 
     async def process(job: Any, token: str) -> dict:
         async def report_progress(progress: JobProgress) -> None:
@@ -50,6 +51,7 @@ def _make_processor(artifact_store: ArtifactStore):
                 job.data,
                 artifact_store=artifact_store,
                 report_progress=sync_report,
+                backend_client=backend_client,
             )
         except TerminalJobError as exc:
             # Fail fast, no retry (ADR-0007 §6).
@@ -67,6 +69,7 @@ async def run() -> None:
     log = get_logger(__name__)
     settings = Settings.from_env()
     artifact_store = ArtifactStore(settings)
+    backend_client = HttpBackendClient(settings.backend_api_url)
 
     log.info(
         "worker.boot",
@@ -74,7 +77,7 @@ async def run() -> None:
     )
     worker = Worker(
         QUEUE_ANALYSIS,
-        _make_processor(artifact_store),
+        _make_processor(artifact_store, backend_client),
         {"connection": settings.redis_url},
     )
 

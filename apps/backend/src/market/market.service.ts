@@ -48,6 +48,7 @@ import { IndexLevel } from '../data/entities/index-level.entity';
 import { MarketIndex } from '../data/entities/market-index.entity';
 import { MarketIndexKind, ProvenanceClass } from '../data/entities/enums';
 import { pctChange } from '../stocks/serialisation';
+import { isUuid } from '../stocks/filters';
 import { resolveMoversParams, type RawMoversParams } from './movers-params';
 import { resolveSeriesRange, seriesSinceDate } from './index-params';
 import type {
@@ -63,9 +64,6 @@ import type {
 /** `() => Date` DI token — the service's ONLY source of "now" (see file header). */
 export const MARKET_CLOCK = Symbol('MARKET_CLOCK');
 export type MarketClock = () => Date;
-
-/** Loose UUID check so an obviously-malformed `:id` 404s before any query. */
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // ─── Cache keys ───────────────────────────────────────────────────────────────
 
@@ -310,7 +308,7 @@ export class MarketService {
     id: string,
     rawRange: string | undefined,
   ): Promise<IndexSeriesResponse> {
-    if (!UUID_RE.test(id)) {
+    if (!isUuid(id)) {
       throw new NotFoundException(`No index found for id=${id}`);
     }
     const { range, days } = resolveSeriesRange(rawRange);

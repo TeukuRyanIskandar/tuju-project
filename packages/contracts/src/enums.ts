@@ -10,9 +10,17 @@ import { z } from 'zod';
  */
 
 // --- §1 Job names (queue `analysis`) ---------------------------------------
-// Two independent v1 job types. Adding a job type later = a new job name,
-// additively; existing names untouched.
-export const JobName = z.enum(['analyze-technical', 'analyze-fundamental']);
+// Two independent v1 job types, plus the spec-06 system-triggered showcase
+// jobs (additive, free-tier-ai-showcase ticket 01 decision): each shallow
+// artifact (daily market brief, announcement summaries) gets its own job name
+// rather than NestJS calling an LLM directly, following the same JobBus/
+// claim-check pattern as TA/FA.
+export const JobName = z.enum([
+  'analyze-technical',
+  'analyze-fundamental',
+  'generate-market-brief',
+  'summarize-announcement',
+]);
 export type JobName = z.infer<typeof JobName>;
 
 // --- Envelope trigger (ADR-0003: both triggers ride the same queue) --------
@@ -54,11 +62,32 @@ export const FundamentalPhase = z.enum([
 ]);
 export type FundamentalPhase = z.infer<typeof FundamentalPhase>;
 
+// Phases for the spec-06 system-triggered showcase jobs (additive).
+export const MarketBriefPhase = z.enum([
+  'queued',
+  'fetching-market-data',
+  'drafting-narrative',
+  'persisting-artifact',
+  'done',
+]);
+export type MarketBriefPhase = z.infer<typeof MarketBriefPhase>;
+
+export const AnnouncementSummaryPhase = z.enum([
+  'queued',
+  'fetching-announcement',
+  'summarizing',
+  'persisting-artifact',
+  'done',
+]);
+export type AnnouncementSummaryPhase = z.infer<typeof AnnouncementSummaryPhase>;
+
 // Union of all phases — used by the generic JobProgress envelope so a single
-// progress shape carries either job type's phase.
+// progress shape carries any job type's phase.
 export const Phase = z.enum([
   ...TechnicalPhase.options,
   ...FundamentalPhase.options,
+  ...MarketBriefPhase.options,
+  ...AnnouncementSummaryPhase.options,
 ]);
 export type Phase = z.infer<typeof Phase>;
 

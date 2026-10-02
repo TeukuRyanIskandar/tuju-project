@@ -10,6 +10,13 @@ from pydantic import (AwareDatetime, BaseModel, ConfigDict, conint,
                       constr)
 
 
+class AnnouncementSummaryPayload(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    announcementId: UUID
+
+
 class ArtifactPointer(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -47,9 +54,15 @@ class JobProgress(BaseModel):
     )
     stepIndex: conint(ge=0, le=9007199254740991)
     stepTotal: conint(ge=0, le=9007199254740991) | None
-    phase: Literal['queued', 'fetching-market-data', 'computing-indicators', 'synthesizing-verdict', 'persisting-artifact', 'done', 'fetching-financials', 'computing-metrics']
+    phase: Literal['queued', 'fetching-market-data', 'computing-indicators', 'synthesizing-verdict', 'persisting-artifact', 'done', 'fetching-financials', 'computing-metrics', 'drafting-narrative', 'fetching-announcement', 'summarizing']
     label: str
     at: AwareDatetime
+
+
+class MarketBriefPayload(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
 
 
 class Summary(BaseModel):
@@ -78,6 +91,17 @@ class TechnicalPayload(BaseModel):
     indicators: list[str] | None = None
 
 
+class AnnouncementSummaryJobEnvelope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    correlationId: UUID
+    requestedBy: constr(min_length=1)
+    trigger: Literal['user', 'price-move', 'system']
+    asOf: AwareDatetime
+    payload: AnnouncementSummaryPayload
+
+
 class FundamentalJobEnvelope(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -98,6 +122,17 @@ class JobResult(BaseModel):
     pointer: ArtifactPointer
     summary: Summary | SystemSummary
     at: AwareDatetime
+
+
+class MarketBriefJobEnvelope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    correlationId: UUID
+    requestedBy: constr(min_length=1)
+    trigger: Literal['user', 'price-move', 'system']
+    asOf: AwareDatetime
+    payload: MarketBriefPayload
 
 
 class TechnicalJobEnvelope(BaseModel):

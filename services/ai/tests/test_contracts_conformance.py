@@ -13,10 +13,12 @@ from pathlib import Path
 import pytest
 
 from tuju_ai.contracts_generated import (
+    AnnouncementSummaryJobEnvelope,
     FundamentalJobEnvelope,
     JobFailure,
     JobProgress,
     JobResult,
+    MarketBriefJobEnvelope,
     TechnicalJobEnvelope,
 )
 
@@ -37,6 +39,8 @@ def _load(name: str) -> dict:
     [
         ("technical-job-envelope.json", TechnicalJobEnvelope),
         ("fundamental-job-envelope.json", FundamentalJobEnvelope),
+        ("market-brief-job-envelope.json", MarketBriefJobEnvelope),
+        ("announcement-summary-job-envelope.json", AnnouncementSummaryJobEnvelope),
         ("job-progress.json", JobProgress),
         ("job-result.json", JobResult),
         ("job-result-system.json", JobResult),

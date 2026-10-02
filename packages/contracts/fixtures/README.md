@@ -17,6 +17,8 @@ suites in lock-step.
 | -------------------------------- | ------------------------ |
 | `technical-job-envelope.json`    | `TechnicalJobEnvelope`   |
 | `fundamental-job-envelope.json`  | `FundamentalJobEnvelope` |
+| `market-brief-job-envelope.json` | `MarketBriefJobEnvelope` |
+| `announcement-summary-job-envelope.json` | `AnnouncementSummaryJobEnvelope` |
 | `job-progress.json`              | `JobProgress`            |
 | `job-result.json`                | `JobResult` (verdict-bearing `Summary`) |
 | `job-result-system.json`         | `JobResult` (verdict-less `SystemSummary`) |

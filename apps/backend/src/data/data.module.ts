@@ -12,6 +12,7 @@ import {
   IngestionRun,
   Instrument,
   IpoListing,
+  MarketBrief,
   MarketIndex,
   NewsArticle,
   NewsArticleTag,
@@ -28,6 +29,7 @@ import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-Fre
 import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReIngestNaturalKeys';
 import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-DisclosureReadModel';
 import { MarketIndexModel1728000000000 } from './migrations/1728000000000-MarketIndexModel';
+import { ShowcaseJobsModel1728100000000 } from './migrations/1728100000000-ShowcaseJobsModel';
 
 /**
  * All domain entities managed by the data layer. Registered in both this module
@@ -54,6 +56,7 @@ const ENTITIES = [
   IndexLevel,
   Watchlist,
   WatchlistItem,
+  MarketBrief,
 ];
 
 /**
@@ -80,6 +83,7 @@ const ENTITIES = [
           ReIngestNaturalKeys1727800000000,
           DisclosureReadModel1727900000000,
           MarketIndexModel1728000000000,
+          ShowcaseJobsModel1728100000000,
         ],
       }),
     }),

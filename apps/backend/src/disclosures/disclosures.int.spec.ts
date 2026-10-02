@@ -28,18 +28,24 @@
  * required (see `ingestion.int.spec.ts`).
  */
 
+import { randomUUID } from 'node:crypto';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
+import { NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Worker } from 'bullmq';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import type { JobEnvelope, JobResult } from '@tuju/contracts';
 
 import { REDIS_CLIENT } from '../redis/redis.module';
 import { ReadCacheService } from '../cache/read-cache.service';
 import { DISCLOSURES_CACHE_PREFIX } from '../cache/cache-keys';
+import { JobBus } from '../jobbus/job-bus.service';
+import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
 import {
   Announcement,
   AnalysisResult,
@@ -75,6 +81,7 @@ import {
 } from '../data/entities/enums';
 import { PurgeService } from '../ingestion/purge.service';
 
+import { AnnouncementSummaryStore } from './announcement-summary.store';
 import { DisclosuresController } from './disclosures.controller';
 import { DisclosuresService } from './disclosures.service';
 import { MAX_PAGE_LIMIT } from '../stocks/pagination';
@@ -126,6 +133,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
   let controller: DisclosuresController;
   let service: DisclosuresService;
   let purge: PurgeService;
+  let jobBus: JobBus;
+  let announcementSummaryStore: AnnouncementSummaryStore;
 
   let aggregatorRun: IngestionRun;
   let syntheticRun: IngestionRun;
@@ -164,17 +173,24 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
         ReadCacheService,
         DisclosuresService,
         PurgeService,
+        JobBus,
+        AnnouncementSummaryStore,
       ],
     }).compile();
 
     controller = moduleRef.get(DisclosuresController);
     service = moduleRef.get(DisclosuresService);
     purge = moduleRef.get(PurgeService);
+    jobBus = moduleRef.get(JobBus);
+    announcementSummaryStore = moduleRef.get(AnnouncementSummaryStore);
+    await jobBus.onModuleInit();
+    announcementSummaryStore.onModuleInit();
 
     await seedFixtures();
   });
 
   afterAll(async () => {
+    await jobBus?.onModuleDestroy();
     await redis?.quit();
     if (dataSource?.isInitialized) await dataSource.destroy();
     await redisContainer?.stop();
@@ -485,6 +501,155 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
     });
     expect(cached).toEqual(before);
     expect(cached.total).toBe(5); // the fresh row is NOT served
+  });
+
+  it('GET /announcements/:id — one announcement\'s own fields; malformed/unknown id both 404 (spec 06, ticket 03)', async () => {
+    const row = await dataSource.getRepository(Announcement).findOneOrFail({
+      where: { title: 'Dealing in listed shares by director' },
+    });
+
+    const detail = await controller.getAnnouncementById(row.id);
+    expect(detail).toEqual({
+      id: row.id,
+      provenance: ProvenanceClass.Aggregator,
+      companyCode: MAYBANK,
+      companyName: 'Malayan Banking Berhad',
+      category: AnnouncementCategory.ShareholdingChange,
+      title: 'Dealing in listed shares by director',
+      filedAt: at(-2).toISOString(),
+      sourceUrl: 'https://example.test/1155/dealing',
+      aiSummary: null,
+      aiSummaryAsOf: null,
+    });
+
+    await expect(controller.getAnnouncementById('not-a-uuid')).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(
+      controller.getAnnouncementById('00000000-0000-0000-0000-000000000000'),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('AnnouncementSummaryStore: a summarize-announcement JobResult writes aiSummary/aiSummaryAsOf (spec 06, ticket 03)', async () => {
+    const row = await dataSource.getRepository(Announcement).findOneOrFail({
+      where: { title: 'Single tier interim dividend' },
+    });
+
+    const worker = new Worker(
+      ANALYSIS_QUEUE,
+      async (): Promise<JobResult> => ({
+        correlationId: randomUUID(),
+        jobId: `ann:${row.id}`,
+        pointer: {
+          bucket: 'tuju-artifacts',
+          key: `analysis/announcement/${row.id}/2026-09-29T05.json`,
+          sha256: 'a'.repeat(64),
+          bytes: 64,
+          contentType: 'application/json',
+        },
+        summary: {
+          headline: 'Malayan Banking Berhad declared a dividend',
+          asOf: '2026-09-29T05:00:00.000Z',
+        },
+        at: new Date().toISOString(),
+      }),
+      { connection: redis },
+    );
+
+    try {
+      const envelope: JobEnvelope<{ announcementId: string }> = {
+        correlationId: randomUUID(),
+        requestedBy: 'system',
+        trigger: 'system',
+        asOf: '2026-09-29T05:00:00.000Z',
+        payload: { announcementId: row.id },
+      } as JobEnvelope<{ announcementId: string }>;
+      // Content-derived + announcement-scoped, independent of asOf (ADR-0007
+      // §2): the BullMQ dedup key the enqueue-time collapse relies on.
+      const { jobId } = await jobBus.enqueue(JobNames.announcementSummary, envelope);
+      expect(jobId).toBe(`ann-${row.id}`);
+
+      let updated = await dataSource.getRepository(Announcement).findOneByOrFail({ id: row.id });
+      for (let i = 0; i < 100 && updated.aiSummary === null; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+        updated = await dataSource.getRepository(Announcement).findOneByOrFail({ id: row.id });
+      }
+
+      expect(updated.aiSummary).toBe('Malayan Banking Berhad declared a dividend');
+      expect(updated.aiSummaryAsOf).toBeInstanceOf(Date);
+      // Confirmed through the read surface too (spec 04's existing aiSummary field).
+      const viaFeed = await controller.getAnnouncementById(row.id);
+      expect(viaFeed.aiSummary).toBe('Malayan Banking Berhad declared a dividend');
+    } finally {
+      await worker.close();
+    }
+  });
+
+  it('AnnouncementSummaryStore: a legitimate re-summarize overwrites cleanly, not duplicating state (spec 06, ticket 03)', async () => {
+    const row = await dataSource.getRepository(Announcement).findOneOrFail({
+      where: { title: 'Single tier interim dividend' },
+    });
+    // Precondition: the prior test already wrote a summary for this row.
+    const before = await dataSource.getRepository(Announcement).findOneByOrFail({ id: row.id });
+    expect(before.aiSummary).toBe('Malayan Banking Berhad declared a dividend');
+    const countBefore = await dataSource.getRepository(Announcement).count();
+
+    const worker = new Worker(
+      ANALYSIS_QUEUE,
+      async (): Promise<JobResult> => ({
+        correlationId: randomUUID(),
+        jobId: `ann:${row.id}`,
+        pointer: {
+          bucket: 'tuju-artifacts',
+          key: `analysis/announcement/${row.id}/2026-09-30T05.json`,
+          sha256: 'b'.repeat(64),
+          bytes: 64,
+          contentType: 'application/json',
+        },
+        summary: {
+          // Simulates a correction: the same announcement, a different headline.
+          headline: 'Malayan Banking Berhad declared a REVISED dividend',
+          asOf: '2026-09-30T05:00:00.000Z',
+        },
+        at: new Date().toISOString(),
+      }),
+      { connection: redis },
+    );
+
+    try {
+      // A distinct BullMQ job id (the prior one was already removed on
+      // completion) carrying the SAME `ann:{id}` JobResult.jobId — models a
+      // legitimate later re-summarize, same as the market-brief re-run test.
+      await jobBus.getQueue().add(
+        JobNames.announcementSummary,
+        {
+          correlationId: randomUUID(),
+          requestedBy: 'system',
+          trigger: 'system',
+          asOf: '2026-09-30T05:00:00.000Z',
+          payload: { announcementId: row.id },
+        },
+        { jobId: `ann-${row.id}-correction` },
+      );
+
+      let updated = before;
+      for (
+        let i = 0;
+        i < 100 && updated.aiSummary === before.aiSummary;
+        i++
+      ) {
+        await new Promise((r) => setTimeout(r, 50));
+        updated = await dataSource.getRepository(Announcement).findOneByOrFail({ id: row.id });
+      }
+
+      // Overwritten in place — one row, the new headline, no duplicate state.
+      expect(updated.aiSummary).toBe(
+        'Malayan Banking Berhad declared a REVISED dividend',
+      );
+      expect(await dataSource.getRepository(Announcement).count()).toBe(countBefore);
+    } finally {
+      await worker.close();
+    }
   });
 
   it('decision-B purge removes every aggregator/synthetic row (incl. the derived tags) and sweeps the cache prefix', async () => {

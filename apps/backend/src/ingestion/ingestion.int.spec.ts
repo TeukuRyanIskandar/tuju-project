@@ -70,6 +70,8 @@ import { ReferenceDataService } from './reference-data.service';
 import { IntradayReplayService, INTRADAY_KEY_PREFIX } from './intraday-replay.service';
 import { PurgeService } from './purge.service';
 import { REFERENCE_UNIVERSE } from './reference-universe';
+import { JobBus } from '../jobbus/job-bus.service';
+import { JobNames } from '../jobbus/job-names';
 
 jest.setTimeout(180_000);
 
@@ -105,6 +107,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
   let eod: EodIngestService;
   let intraday: IntradayReplayService;
   let purge: PurgeService;
+  let jobBus: JobBus;
 
   beforeAll(async () => {
     pgContainer = await new PostgreSqlContainer('postgres:16-alpine').start();
@@ -138,6 +141,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         IngestionRunService,
         ReferenceDataService,
         ReadCacheService,
+        JobBus,
         EodIngestService,
         IntradayReplayService,
         PurgeService,
@@ -147,9 +151,11 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     eod = moduleRef.get(EodIngestService);
     intraday = moduleRef.get(IntradayReplayService);
     purge = moduleRef.get(PurgeService);
+    jobBus = moduleRef.get(JobBus);
   });
 
   afterAll(async () => {
+    await jobBus?.onModuleDestroy();
     await redis?.quit();
     if (dataSource?.isInitialized) await dataSource.destroy();
     await redisContainer?.stop();
@@ -535,6 +541,46 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     // fresh run row each for public-reference, synthetic, disclosure, news,
     // shariah, ipo, and index.
     expect(counts2.ingestionRun).toBe(runs1 + 7);
+  });
+
+  it('summarize-announcement is enqueued only for not-yet-summarized rows (spec 06, ticket 03 cost-bounding)', async () => {
+    const enqueueSpy = jest.spyOn(jobBus, 'enqueue');
+    enqueueSpy.mockClear();
+
+    // Baseline: every announcement starts `aiSummary IS NULL`, so a nightly
+    // ingest against the already-populated DB (re-landing the SAME static
+    // snapshot) still enqueues one summarize-announcement job per row.
+    await eod.runNightly();
+    const announcementCalls = (name: string) =>
+      enqueueSpy.mock.calls.filter(([jobName]) => jobName === name).length;
+    const firstRunCount = announcementCalls(JobNames.announcementSummary);
+    expect(firstRunCount).toBeGreaterThan(0);
+
+    // Simulate the AnnouncementSummaryStore having summarized every row.
+    await dataSource
+      .createQueryBuilder()
+      .update(Announcement)
+      .set({ aiSummary: 'stub summary', aiSummaryAsOf: new Date() })
+      .execute();
+
+    // A further nightly against the SAME static demo snapshot must not
+    // re-enqueue any already-summarized row — cost bounded, not unbounded
+    // re-processing of unchanged disclosures every night.
+    enqueueSpy.mockClear();
+    await eod.runNightly();
+    expect(announcementCalls(JobNames.announcementSummary)).toBe(0);
+
+    // Reset one row to simulate a genuinely new/corrected announcement — it
+    // alone is re-enqueued.
+    const [oneRow] = await dataSource.getRepository(Announcement).find({ take: 1 });
+    await dataSource
+      .getRepository(Announcement)
+      .update({ id: oneRow!.id }, { aiSummary: null, aiSummaryAsOf: null });
+    enqueueSpy.mockClear();
+    await eod.runNightly();
+    expect(announcementCalls(JobNames.announcementSummary)).toBe(1);
+
+    enqueueSpy.mockRestore();
   });
 });
 

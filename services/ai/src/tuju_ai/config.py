@@ -14,6 +14,17 @@ from dataclasses import dataclass
 QUEUE_ANALYSIS = "analysis"
 JOB_ANALYZE_TECHNICAL = "analyze-technical"
 JOB_ANALYZE_FUNDAMENTAL = "analyze-fundamental"
+# Spec-06 system-triggered showcase jobs (free-tier-ai-showcase, tickets 02/03).
+JOB_GENERATE_MARKET_BRIEF = "generate-market-brief"
+JOB_SUMMARIZE_ANNOUNCEMENT = "summarize-announcement"
+
+# `JobResult.jobId` prefixes the worker mints for the two showcase jobs
+# (ADR-0007 §2) — NOT the BullMQ dedup job id (`JobBus.deriveJobId`, TS side);
+# a distinct, independently-computed identity embedded in the wire `JobResult`
+# itself, which `MarketBriefStore`/`AnnouncementSummaryStore` parse back out
+# to recover their domain key (mirror these exactly if they ever change).
+MARKET_BRIEF_JOB_ID_PREFIX = "brief:"
+ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = "ann:"
 
 
 @dataclass(frozen=True)
@@ -25,6 +36,10 @@ class Settings:
     s3_region: str
     s3_bucket: str
     s3_prefix: str
+    # Base URL of the NestJS API's anonymous read surface (ADR-0004: the
+    # stateless worker fetches via NestJS data APIs, never Postgres directly).
+    # Only the market-brief/announcement-summary jobs use this.
+    backend_api_url: str
 
     @staticmethod
     def from_env() -> "Settings":
@@ -37,4 +52,5 @@ class Settings:
             s3_bucket=os.environ.get("S3_BUCKET", "tuju-artifacts"),
             # Python writes only under this scoped prefix (ADR-0004 write boundary).
             s3_prefix=os.environ.get("S3_ARTIFACTS_PREFIX", "analysis"),
+            backend_api_url=os.environ.get("BACKEND_API_URL", "http://localhost:3000"),
         )

@@ -1,11 +1,20 @@
 /**
- * Query-param filter parsing for the disclosure read surface (spec 04; ticket 02).
+ * Query-param filter parsing shared across the read surfaces (originated for
+ * disclosures, spec 04 ticket 02; `isUuid` is also used by `market.service.ts`
+ * and `disclosures.service.ts` for their `:id` resource lookups).
  *
  * Same posture as `pagination.ts` (spec 02): CLAMP, never 400 — a free-tier
  * browse surface is forgiving of odd query strings and the resolved values
  * are echoed / keyed into the class-2 cache so two equivalent requests (one
  * clamped) share one cache entry. Invalid tokens are dropped, never rejected.
  */
+
+/** Loose UUID check so an obviously-malformed `:id` 404s before any query. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isUuid(value: string): boolean {
+  return UUID_RE.test(value);
+}
 
 /** Strict ISO `YYYY-MM-DD` → UTC-midnight Date; anything else → null (ignored). */
 export function parseIsoDate(raw: string | undefined): Date | null {

@@ -18,7 +18,13 @@
  * the prefix after commit (ticket 01).
  *
  * Unknown `companyCode` in a filter position is filter semantics, not a
- * resource lookup → an empty page (only the per-company spec-02 routes 404).
+ * resource lookup → an empty page (only the per-company spec-02 routes and
+ * `getAnnouncementById` 404).
+ *
+ * This service itself still does no JobBus/writes; the sibling
+ * `AnnouncementSummaryStore` (spec 06, ticket 03) is the module's one
+ * JobBus-subscribing writer, kept separate so this composition service stays
+ * a pure read projection.
  */
 
 import { Injectable } from '@nestjs/common';
@@ -40,10 +46,11 @@ import {
   AnnouncementCategory,
   CorporateActionType,
 } from '../data/entities/enums';
-import { endOfUtcDay } from '../stocks/filters';
+import { endOfUtcDay, isUuid } from '../stocks/filters';
 import { toNumber } from '../stocks/serialisation';
 import { resolveCalendarWindow } from './calendar-window';
 import type {
+  AnnouncementDetail,
   CorporateActionCalendarWindow,
   MarketAnnouncementsPage,
   NewsPage,
@@ -145,6 +152,36 @@ export class DisclosuresService {
       `${DISCLOSURES_CACHE_PREFIX}news:${query.companyCode ?? 'market'}:${query.offset}:${query.limit}`,
       () => this.loadNews(query),
     );
+  }
+
+  /**
+   * `GET /announcements/:id` — one announcement's own fields (spec 06, ticket
+   * 03): the `summarize-announcement` Python job's only route to an
+   * announcement's content. Uncached (a single-row point lookup, read once
+   * per summarization job) — an `:id` that isn't even UUID-shaped, or doesn't
+   * resolve to a row, both return `null` (the controller 404s).
+   */
+  async getAnnouncementById(id: string): Promise<AnnouncementDetail | null> {
+    if (!isUuid(id)) return null;
+    const row = await this.dataSource.getRepository(Announcement).findOne({
+      where: { id },
+      relations: { company: true, ingestionRun: true },
+    });
+    if (!row) return null;
+
+    const codes = await this.companyCodesByCompanyId([row.companyId]);
+    return {
+      id: row.id,
+      provenance: row.ingestionRun.provenanceClass,
+      companyCode: codes.get(row.companyId)?.companyCode ?? '',
+      companyName: row.company.fullName,
+      category: row.category,
+      title: row.title,
+      filedAt: row.filedAt.toISOString(),
+      sourceUrl: row.sourceUrl,
+      aiSummary: row.aiSummary,
+      aiSummaryAsOf: row.aiSummaryAsOf === null ? null : row.aiSummaryAsOf.toISOString(),
+    };
   }
 
   // ---------------------------------------------------------------- reads

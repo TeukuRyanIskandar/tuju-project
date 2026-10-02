@@ -17,12 +17,14 @@
 import { Module } from '@nestjs/common';
 import { CacheModule } from '../cache/cache.module';
 import { DataModule } from '../data/data.module';
+import { JobBusModule } from '../jobbus/job-bus.module';
+import { AnnouncementSummaryStore } from './announcement-summary.store';
 import { DisclosuresController } from './disclosures.controller';
 import { DisclosuresService } from './disclosures.service';
 
 @Module({
-  imports: [DataModule, CacheModule],
+  imports: [DataModule, CacheModule, JobBusModule],
   controllers: [DisclosuresController],
-  providers: [DisclosuresService],
+  providers: [DisclosuresService, AnnouncementSummaryStore],
 })
 export class DisclosuresModule {}

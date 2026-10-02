@@ -15,7 +15,7 @@ import type {
   JobResult,
 } from '@tuju/contracts';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ANALYSIS_QUEUE } from './job-names';
+import { ANALYSIS_QUEUE, JobNames } from './job-names';
 
 /**
  * The `JobBus` seam (ADR-0001 guardrail, signatures pinned in ADR-0007 §8).
@@ -134,6 +134,10 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
    * Content-derived, idempotent job id (ADR-0007 §2).
    * e.g. `ta-{symbol}-{...}-{asOfBucket}`. The scaffold derives a stable id from
    * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
+   * Each job family picks its own discriminating fields (TA/FA: symbol +
+   * timeframe/period, hour-bucketed; the spec-06 showcase jobs: date-bucketed
+   * for the market brief, the announcement id alone for the summary — see each
+   * branch below).
    *
    * NB: BullMQ forbids `:` in a custom job id (it namespaces Redis keys with
    * `:`), so every segment is joined with `-` and any stray separator chars in
@@ -141,14 +145,32 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
    */
   private deriveJobId<P>(jobName: JobName, env: JobEnvelope<P>): string {
     const payload = env.payload as Record<string, unknown>;
-    const symbol = String(payload.symbol ?? 'unknown');
-    const discriminator = String(
-      payload.timeframe ?? payload.period ?? 'default',
-    );
     const asOfBucket = env.asOf.slice(0, 13); // hour bucket, e.g. 2026-09-29T05
-    const prefix = jobName === 'analyze-technical' ? 'ta' : 'fa';
-    return [prefix, symbol, discriminator, asOfBucket]
-      .join('-')
-      .replace(/:/g, '-');
+
+    switch (jobName) {
+      case JobNames.marketBrief: {
+        // Date-bucketed (not hour): re-enqueuing the same day collapses to the
+        // existing job (ticket 02 acceptance criteria).
+        const dayBucket = env.asOf.slice(0, 10); // e.g. 2026-09-29
+        return `brief-${dayBucket}`;
+      }
+      case JobNames.announcementSummary: {
+        // One job per announcement, independent of asOf: a legitimate
+        // re-summarize overwrites the same row rather than needing distinct
+        // job history (ticket 03 acceptance criteria).
+        const announcementId = String(payload.announcementId ?? 'unknown');
+        return `ann-${announcementId}`;
+      }
+      default: {
+        const symbol = String(payload.symbol ?? 'unknown');
+        const discriminator = String(
+          payload.timeframe ?? payload.period ?? 'default',
+        );
+        const prefix = jobName === 'analyze-technical' ? 'ta' : 'fa';
+        return [prefix, symbol, discriminator, asOfBucket]
+          .join('-')
+          .replace(/:/g, '-');
+      }
+    }
   }
 }

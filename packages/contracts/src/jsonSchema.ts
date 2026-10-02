@@ -18,8 +18,12 @@ import './result.js';
 export const modelOrder = [
   'TechnicalPayload',
   'FundamentalPayload',
+  'MarketBriefPayload',
+  'AnnouncementSummaryPayload',
   'TechnicalJobEnvelope',
   'FundamentalJobEnvelope',
+  'MarketBriefJobEnvelope',
+  'AnnouncementSummaryJobEnvelope',
   'JobProgress',
   'ArtifactPointer',
   'Summary',

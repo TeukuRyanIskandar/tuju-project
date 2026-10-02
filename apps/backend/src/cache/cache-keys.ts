@@ -45,3 +45,13 @@ export const READ_CACHE_PREFIXES = [
   SCREENER_CACHE_PREFIX,
   MARKET_CACHE_PREFIX,
 ] as const;
+
+/**
+ * Spec-06 daily market-brief read (`GET /market-brief/latest`, ticket 02).
+ * DELIBERATELY NOT in {@link READ_CACHE_PREFIXES}: that sweep fires after the
+ * nightly-ingest/purge commit, which has nothing to do with brief freshness —
+ * a fresh brief lands on its own async cadence (the JobBus result arriving),
+ * so `MarketBriefStore` invalidates this one key itself, the moment it
+ * persists a new brief.
+ */
+export const BRIEF_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}brief:`;

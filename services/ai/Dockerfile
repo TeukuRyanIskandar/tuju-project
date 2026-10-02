@@ -20,16 +20,17 @@ WORKDIR /app
 
 # ---- Deps layer: sync from the lockfile (cached on lock + manifest) ---------
 # Copy only the files that define the environment so this layer caches until a
-# dependency actually changes.
+# dependency actually changes. `--extra parse` pulls Docling + the CPU-only
+# torch wheels (spec 06, ticket 04: the prospectus parse runs in the worker).
 COPY services/ai/pyproject.toml services/ai/uv.lock services/ai/.python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --extra parse
 
 # ---- Project layer: install the package itself ------------------------------
 COPY services/ai/src ./src
 COPY services/ai/README.md ./README.md
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --extra parse
 
 # uv installs into /app/.venv; put it on PATH so the console script runs.
 ENV PATH="/app/.venv/bin:$PATH"

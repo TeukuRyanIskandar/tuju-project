@@ -21,8 +21,12 @@
  * purpose (audit trail), which is the accepted cost of option B.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DataSource, In, type EntityManager } from 'typeorm';
+import type { AnnouncementSummaryPayload, JobEnvelope } from '@tuju/contracts';
+import { JobBus } from '../jobbus/job-bus.service';
+import { JobNames } from '../jobbus/job-names';
 import {
   DISCLOSURE_ADAPTER,
   FUNDAMENTALS_ADAPTER,
@@ -98,6 +102,7 @@ export class EodIngestService {
     @Inject(IPO_ADAPTER) private readonly ipo: IpoAdapter,
     @Inject(INDEX_ADAPTER) private readonly index: IndexAdapter,
     private readonly readCache: ReadCacheService,
+    private readonly jobBus: JobBus,
   ) {}
 
   /**
@@ -106,6 +111,11 @@ export class EodIngestService {
    * (ordered after) ratio materialisation → indicator snapshots.
    */
   async runNightly(): Promise<NightlyIngestResult> {
+    // Escapes the transaction closure below so the showcase enqueue (spec 06,
+    // ticket 03) runs AFTER commit — the worker fetches the announcement via
+    // NestJS's own read API, which must see committed data.
+    let announcementIdsToSummarize: string[] = [];
+
     const result = await this.dataSource.transaction(async (manager) => {
       const ref = await this.reference.ensureReferenceData(manager);
 
@@ -140,12 +150,14 @@ export class EodIngestService {
         this.disclosure.provenanceClass,
       );
       const announcementsDto = await this.disclosure.fetchAnnouncements();
-      const announcements = await this.persistAnnouncements(
-        manager,
-        announcementsDto,
-        ref.companyByStockCode,
-        disclosureRun.id,
-      );
+      const { count: announcements, ids: announcementIds } =
+        await this.persistAnnouncements(
+          manager,
+          announcementsDto,
+          ref.companyByStockCode,
+          disclosureRun.id,
+        );
+      announcementIdsToSummarize = announcementIds;
       const corporateActionsDto = await this.disclosure.fetchCorporateActions();
       const corporateActions = await this.persistCorporateActions(
         manager,
@@ -270,6 +282,24 @@ export class EodIngestService {
     // disclosure/news-derived caches. A failure here fails the ingest loudly —
     // a stale page shown after new data committed is worse than a retried ingest.
     await this.readCache.invalidateReadCaches();
+
+    // Spec-06 ticket 03: enqueue a `summarize-announcement` job per NOT-YET-
+    // SUMMARIZED announcement (persistAnnouncements already narrowed the list
+    // to `aiSummary IS NULL` — the cost-bounding half) AFTER commit — the
+    // Python worker fetches the announcement via NestJS's own read API, which
+    // must see committed data. Content-derived `jobId`s (ADR-0007 §2)
+    // additionally collapse a concurrent duplicate enqueue to one job.
+    for (const announcementId of announcementIdsToSummarize) {
+      const envelope: JobEnvelope<AnnouncementSummaryPayload> = {
+        correlationId: randomUUID(),
+        requestedBy: 'system',
+        trigger: 'system',
+        asOf: new Date().toISOString(),
+        payload: { announcementId },
+      };
+      await this.jobBus.enqueue(JobNames.announcementSummary, envelope);
+    }
+
     return result;
   }
 
@@ -340,12 +370,28 @@ export class EodIngestService {
     return rows.length;
   }
 
+  /**
+   * Returns `{ count, ids }`: `count` is every upserted row; `ids` is the
+   * NOT-YET-SUMMARIZED subset only (`aiSummary IS NULL`), re-read on the
+   * natural key since `upsert` itself returns neither inserted/updated status
+   * nor ids. `runNightly` enqueues a `summarize-announcement` job per id after
+   * the transaction commits (spec 06, ticket 03).
+   *
+   * Narrowing to `aiSummary IS NULL` is the cost-bounding half of "enqueues
+   * per newly-ingested/updated announcement" (ticket 03): the demo aggregator
+   * re-serves the same disclosure snapshot every nightly ingest, and the
+   * natural key (company, filedAt, title) means a genuinely corrected title
+   * lands as a NEW row (new key) with a fresh `aiSummary IS NULL` anyway — so
+   * this one predicate covers both "new" and "title-corrected" without ever
+   * re-summarizing an already-summarized, unchanged row every single night
+   * (spec 06's "AI cost bounded by us" operator goal).
+   */
   private async persistAnnouncements(
     manager: EntityManager,
     dtos: Awaited<ReturnType<DisclosureAdapter['fetchAnnouncements']>>,
     companyByStockCode: Map<string, string>,
     runId: string,
-  ): Promise<number> {
+  ): Promise<{ count: number; ids: string[] }> {
     const repo = manager.getRepository(Announcement);
     const rows = dtos
       .map((d) => {
@@ -361,11 +407,23 @@ export class EodIngestService {
         });
       })
       .filter((r): r is Announcement => r !== null);
+    if (rows.length === 0) return { count: 0, ids: [] };
+
     // Upsert on (company, filedAt, title) — re-ingest updates in place.
-    if (rows.length > 0) {
-      await repo.upsert(rows, ['companyId', 'filedAt', 'title']);
+    await repo.upsert(rows, ['companyId', 'filedAt', 'title']);
+
+    const ids: string[] = [];
+    for (const row of rows) {
+      const found = await repo.findOneOrFail({
+        where: {
+          companyId: row.companyId,
+          filedAt: row.filedAt,
+          title: row.title,
+        },
+      });
+      if (found.aiSummary === null) ids.push(found.id);
     }
-    return rows.length;
+    return { count: rows.length, ids };
   }
 
   private async persistCorporateActions(

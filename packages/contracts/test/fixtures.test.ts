@@ -3,10 +3,12 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  AnnouncementSummaryJobEnvelope,
   FundamentalJobEnvelope,
   JobFailure,
   JobProgress,
   JobResult,
+  MarketBriefJobEnvelope,
   TechnicalJobEnvelope,
 } from '../src/index.js';
 
@@ -45,6 +47,20 @@ describe('golden fixtures conform to the Zod contract', () => {
 
   it('job-failure.json', () => {
     expect(() => JobFailure.parse(load('job-failure.json'))).not.toThrow();
+  });
+
+  it('market-brief-job-envelope.json', () => {
+    expect(() =>
+      MarketBriefJobEnvelope.parse(load('market-brief-job-envelope.json')),
+    ).not.toThrow();
+  });
+
+  it('announcement-summary-job-envelope.json', () => {
+    expect(() =>
+      AnnouncementSummaryJobEnvelope.parse(
+        load('announcement-summary-job-envelope.json'),
+      ),
+    ).not.toThrow();
   });
 });
 

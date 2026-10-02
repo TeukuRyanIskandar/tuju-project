@@ -64,9 +64,12 @@ jobs:
 
       - name: pytest (unit + contract)
         working-directory: services/ai
-        # -m "not integration" keeps this lane infra-free; the integration
-        # marker's tests run in ci-integration.yml against real containers.
-        run: uv run pytest -m "not integration"
+        # -m "not integration and not corpus" keeps this lane infra-free and
+        # fast: `integration` (testcontainers round-trip) runs in
+        # ci-integration.yml, `corpus` (real prospectus PDFs through Docling,
+        # spec 06 ticket 04) needs the `parse` extra + model downloads and runs
+        # on demand / release lane: `uv run pytest -m corpus`.
+        run: uv run pytest -m "not integration and not corpus"
 
   # --- Contract-drift gate (ADR-0008) ---------------------------------------
   # The single cross-language safety net: regenerate the JSON Schema + Pydantic

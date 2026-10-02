@@ -15,6 +15,9 @@ export const ANALYSIS_QUEUE = 'analysis';
 export const JobNames = {
   technical: 'analyze-technical',
   fundamental: 'analyze-fundamental',
+  // Spec-06 system-triggered showcase jobs (free-tier-ai-showcase, tickets 02/03).
+  marketBrief: 'generate-market-brief',
+  announcementSummary: 'summarize-announcement',
 } as const satisfies Record<string, JobName>;
 
 /** The stub job used to prove the JobBus round-trips end-to-end (ADR-0001). */

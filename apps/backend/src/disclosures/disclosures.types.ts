@@ -47,6 +47,15 @@ export interface MarketAnnouncementItem extends ProvenanceBlock {
 }
 
 /**
+ * One announcement's own fields (`GET /announcements/:id`, spec 06 ticket
+ * 03) — the `summarize-announcement` Python job's only route to an
+ * announcement's content (no bulk disclosure text rides the queue, ADR-0004).
+ */
+export interface AnnouncementDetail extends MarketAnnouncementItem {
+  id: string;
+}
+
+/**
  * One corporate-actions calendar row, keyed on `exDate` (the primary axis;
  * nullable entitlement/payment dates are not present in the demo source and
  * are omitted rather than served null — spec 04 §3). Dividends here are the

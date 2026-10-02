@@ -13,17 +13,48 @@ dependencies = [
     "boto3>=1.43.104,<2.0.0",
     # Runtime conformance validation of the wire contract (ADR-0007 / ADR-0011).
     "pydantic>=2.0.0,<3.0.0",
+    # NestJS data-API reads for the stateless worker (ADR-0004); spec-06 ticket 02/03.
+    "httpx>=0.27.0,<1.0.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.11.9,<0.12.0"]
 build-backend = "uv_build"
 
+[project.optional-dependencies]
+# Docling layout parsing for the prospectus pipeline (spec 06, ticket 04; an
+# extra, not a base dep: it drags torch + model downloads that neither the fast
+# unit/PR lane nor the JobBus round-trip needs). Install with
+# `uv sync --extra parse` (the worker image does the same).
+# torch/torchvision are declared explicitly (Docling needs them anyway) so the
+# CPU-index source pin below actually applies — uv only honors tool.uv.sources
+# index pins for the project's own requirements, not transitive ones.
+parse = [
+    "docling>=2.31.5,<3.0.0",
+    "torch>=2.2.2,<3.0.0",
+    "torchvision>=0.14,<1.0.0",
+]
+
 [project.scripts]
 # `uv run tuju-ai-worker` boots the worker; `uv run tuju-ai-smoke` runs the
-# offline smoke entrypoint (no live Redis/S3 required).
+# offline smoke entrypoint (no live Redis/S3 required). `tuju-ai-prospectus-parse`
+# parses + routes a prospectus PDF and claim-checks the parse (spec 06, ticket 04).
 tuju-ai-worker = "tuju_ai.worker:main"
 tuju-ai-smoke = "tuju_ai.smoke:main"
+tuju-ai-prospectus-parse = "tuju_ai.prospectus.cli:main"
+
+[tool.uv]
+# CPU-only torch wheels (docling's own CI recommendation): the prospectus parse
+# is CPU-bound, so the ~10x smaller CPU wheel beats the default CUDA build on
+# every platform (dev syncs, CI, the worker image).
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
 
 [dependency-groups]
 dev = [
@@ -39,9 +70,12 @@ dev = [
 [tool.pytest.ini_options]
 # `unit` runs everywhere with no live infra; `integration` spins up real
 # testcontainers (Redis + LocalStack S3) for the JobBus round-trip (ADR-0011)
-# and is deselected from the fast unit/PR lane.
+# and is deselected from the fast unit/PR lane. `corpus` parses the real demo
+# prospectus PDFs with Docling (needs the `parse` extra + model downloads; slow)
+# and is likewise deselected from the fast lane.
 markers = [
     "unit: fast tests with no external infra (Redis/S3 not required)",
     "integration: requires testcontainers (Redis + LocalStack S3); run with -m integration",
+    "corpus: parses the real demo-corpus prospectus PDFs with Docling (needs the `parse` extra); run with -m corpus",
 ]
 testpaths = ["tests"]

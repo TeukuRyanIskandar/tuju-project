@@ -16,8 +16,12 @@
  * not a cron, per the spec.
  */
 
+import { randomUUID } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import type { JobEnvelope, MarketBriefPayload } from '@tuju/contracts';
+import { JobBus } from '../jobbus/job-bus.service';
+import { JobNames } from '../jobbus/job-names';
 import { isMarketHours } from './intraday-model';
 import { EodIngestService } from './eod-ingest.service';
 import { IntradayReplayService } from './intraday-replay.service';
@@ -29,6 +33,7 @@ export class IngestionScheduler {
   constructor(
     private readonly eod: EodIngestService,
     private readonly intraday: IntradayReplayService,
+    private readonly jobBus: JobBus,
   ) {}
 
   /**
@@ -42,6 +47,29 @@ export class IngestionScheduler {
   async nightlyIngest(): Promise<void> {
     this.logger.log('cron: nightly-eod-ingest firing');
     await this.eod.runNightly();
+  }
+
+  /**
+   * Nightly daily-market-brief enqueue (spec 06, ticket 02) — system-triggered,
+   * no `@RequiresJob` gate (free/anonymous content). Scheduled an hour after
+   * the nightly EOD ingest so the brief narrates freshly-ingested index
+   * levels; a content-derived `jobId` keyed by date (ADR-0007 §2, derived in
+   * `JobBus.deriveJobId`) collapses a same-day re-enqueue to one job.
+   */
+  @Cron(CronExpression.EVERY_DAY_AT_9PM, {
+    name: 'nightly-market-brief',
+    timeZone: 'Asia/Kuala_Lumpur',
+  })
+  async nightlyMarketBrief(): Promise<void> {
+    this.logger.log('cron: nightly-market-brief firing');
+    const envelope: JobEnvelope<MarketBriefPayload> = {
+      correlationId: randomUUID(),
+      requestedBy: 'system',
+      trigger: 'system',
+      asOf: new Date().toISOString(),
+      payload: {},
+    };
+    await this.jobBus.enqueue(JobNames.marketBrief, envelope);
   }
 
   /**

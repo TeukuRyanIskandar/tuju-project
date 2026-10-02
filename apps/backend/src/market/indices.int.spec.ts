@@ -77,6 +77,7 @@ import { EodIngestService } from '../ingestion/eod-ingest.service';
 import { IngestionRunService } from '../ingestion/ingestion-run.service';
 import { ReferenceDataService } from '../ingestion/reference-data.service';
 import { IntradayReplayService } from '../ingestion/intraday-replay.service';
+import { JobBus } from '../jobbus/job-bus.service';
 import { REQUIRES_JOB_KEY } from '../auth/requires-job.decorator';
 import { pctChange } from '../stocks/serialisation';
 
@@ -522,6 +523,7 @@ async function runNightlyIngest(
       IngestionRunService,
       ReferenceDataService,
       ReadCacheService,
+      JobBus,
       EodIngestService,
     ],
   });

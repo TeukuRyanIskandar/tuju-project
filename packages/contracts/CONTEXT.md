@@ -26,7 +26,9 @@ package emits (ADR-0008).
 - **JobEnvelope** — the message enqueued onto the `analysis` queue.
 - **JobResult** — the terminal `job.returnvalue`: a claim-check pointer + thin summary.
 - **JobProgress** — step-based progress emitted via `job.updateProgress` (ADR-0007 §4).
-- **JobName** — the discriminant (`analyze-technical` / `analyze-fundamental`).
+- **JobName** — the discriminant (`analyze-technical` / `analyze-fundamental`,
+  plus the spec-06 system-triggered showcase jobs `generate-market-brief` /
+  `summarize-announcement`).
 
 ## Commands
 

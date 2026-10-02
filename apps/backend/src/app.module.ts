@@ -15,6 +15,7 @@ import { StocksModule } from './stocks/stocks.module';
 import { DisclosuresModule } from './disclosures/disclosures.module';
 import { ScreenerModule } from './screener/screener.module';
 import { MarketModule } from './market/market.module';
+import { MarketBriefModule } from './brief/market-brief.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -47,6 +48,9 @@ import { MarketModule } from './market/market.module';
     // /market/indices, /market/indices/:id/series, /market/sectors) — same
     // anonymous posture as the other read surfaces.
     MarketModule,
+    // Spec-06 system-triggered daily market brief (GET /market-brief/latest)
+    // — same anonymous posture as the other read surfaces.
+    MarketBriefModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

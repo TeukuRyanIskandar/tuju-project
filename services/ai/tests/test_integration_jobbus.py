@@ -92,6 +92,7 @@ def settings(redis_url: str, s3_endpoint: str) -> Settings:
         s3_region="ap-southeast-1",
         s3_bucket=BUCKET,
         s3_prefix="analysis",
+        backend_api_url="http://backend-unused",
     )
 
 
@@ -113,6 +114,17 @@ def s3_client(settings: Settings):
 
 def _load(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
+
+
+class _UnusedBackendClient:
+    """Stand-in `BackendClient` — this test only exercises the TA job, which
+    never calls it."""
+
+    def get_market_indices(self) -> dict:
+        raise AssertionError("analyze-technical must not call the backend client")
+
+    def get_announcement(self, announcement_id: str) -> dict:
+        raise AssertionError("analyze-technical must not call the backend client")
 
 
 def test_round_trip_over_redis_and_localstack(
@@ -144,6 +156,7 @@ def test_round_trip_over_redis_and_localstack(
                 job.data,
                 artifact_store=artifact_store,
                 report_progress=report,
+                backend_client=_UnusedBackendClient(),
             )
             payload = result.model_dump(mode="json")
             if not done.done():

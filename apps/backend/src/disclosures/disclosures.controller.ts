@@ -1,8 +1,9 @@
 /**
- * Disclosure read-surface HTTP surface (spec 04; ticket 02) — five anonymous
- * read endpoints over the already-ingested model:
+ * Disclosure read-surface HTTP surface (spec 04 ticket 02; spec 06 ticket 03)
+ * — six anonymous read endpoints over the already-ingested model:
  *
  *   GET /announcements?category&companyCode&from&to&limit&offset= → market-wide feed
+ *   GET /announcements/:id                                        → one announcement's own fields
  *   GET /disclosures/dealings?companyCode&from&to&limit&offset=  → insider-dealings feed
  *   GET /calendar/corporate-actions?from&to&type&companyCode=    → exDate calendar
  *   GET /calendar/results?from&to&companyCode=                     → when-filed calendar
@@ -15,7 +16,7 @@
  * provenance and the class-2 cache live in `DisclosuresService`.
  */
 
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
 import {
   AnnouncementCategory,
   CorporateActionType,
@@ -24,6 +25,7 @@ import { parseEnumList, parseIsoDate } from '../stocks/filters';
 import { resolvePagination } from '../stocks/pagination';
 import { DisclosuresService } from './disclosures.service';
 import type {
+  AnnouncementDetail,
   CorporateActionCalendarWindow,
   MarketAnnouncementsPage,
   NewsPage,
@@ -59,6 +61,23 @@ export class DisclosuresController {
       },
       parseEnumList(category, Object.values(AnnouncementCategory)),
     );
+  }
+
+  /**
+   * One announcement's own fields (spec 06, ticket 03) — the
+   * `summarize-announcement` Python job's only route to an announcement's
+   * content; unknown/malformed `:id` → 404 (a resource lookup, unlike the
+   * filter-semantics `companyCode` above).
+   */
+  @Get('announcements/:id')
+  async getAnnouncementById(
+    @Param('id') id: string,
+  ): Promise<AnnouncementDetail> {
+    const item = await this.disclosures.getAnnouncementById(id);
+    if (!item) {
+      throw new NotFoundException(`No announcement found for id=${id}`);
+    }
+    return item;
   }
 
   /**

@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { Trigger } from './enums.js';
-import { FundamentalPayload, TechnicalPayload } from './payloads.js';
+import {
+  AnnouncementSummaryPayload,
+  FundamentalPayload,
+  MarketBriefPayload,
+  TechnicalPayload,
+} from './payloads.js';
 
 /**
  * The generic outer job envelope (ADR-0007 §3).
@@ -51,3 +56,16 @@ export const FundamentalJobEnvelope = JobEnvelope(FundamentalPayload).meta({
   id: 'FundamentalJobEnvelope',
 });
 export type FundamentalJobEnvelope = z.infer<typeof FundamentalJobEnvelope>;
+
+// Spec-06 system-triggered showcase envelopes (additive).
+export const MarketBriefJobEnvelope = JobEnvelope(MarketBriefPayload).meta({
+  id: 'MarketBriefJobEnvelope',
+});
+export type MarketBriefJobEnvelope = z.infer<typeof MarketBriefJobEnvelope>;
+
+export const AnnouncementSummaryJobEnvelope = JobEnvelope(
+  AnnouncementSummaryPayload,
+).meta({ id: 'AnnouncementSummaryJobEnvelope' });
+export type AnnouncementSummaryJobEnvelope = z.infer<
+  typeof AnnouncementSummaryJobEnvelope
+>;

@@ -9,8 +9,9 @@ extractable to its own repo later.
 A stateless job **consumer**:
 
 - **JobBus worker (ADR-0001)** — consumes the `analysis` queue
-  (`analyze-technical` / `analyze-fundamental`) over Redis; connection by env
-  (ADR-0006).
+  (`analyze-technical` / `analyze-fundamental`, plus the spec-06 system-triggered
+  showcase jobs `generate-market-brief` / `summarize-announcement`) over Redis;
+  connection by env (ADR-0006).
 - **Runtime conformance (ADR-0011)** — validates the incoming `JobEnvelope` and
   outgoing `JobResult` against the generated Pydantic v2 models
   (`contracts_generated`, do not edit).

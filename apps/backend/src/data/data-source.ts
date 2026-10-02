@@ -10,6 +10,7 @@ import {
   IngestionRun,
   Instrument,
   IpoListing,
+  MarketBrief,
   MarketIndex,
   IndexLevel,
   NewsArticle,
@@ -27,6 +28,7 @@ import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-Fre
 import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReIngestNaturalKeys';
 import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-DisclosureReadModel';
 import { MarketIndexModel1728000000000 } from './migrations/1728000000000-MarketIndexModel';
+import { ShowcaseJobsModel1728100000000 } from './migrations/1728100000000-ShowcaseJobsModel';
 
 /**
  * Standalone TypeORM DataSource used by the CLI (migration:run/revert).
@@ -61,6 +63,7 @@ export const AppDataSource = new DataSource({
     IndexLevel,
     Watchlist,
     WatchlistItem,
+    MarketBrief,
   ],
   migrations: [
     InitialSchema1727600000000,
@@ -68,5 +71,6 @@ export const AppDataSource = new DataSource({
     ReIngestNaturalKeys1727800000000,
     DisclosureReadModel1727900000000,
     MarketIndexModel1728000000000,
+    ShowcaseJobsModel1728100000000,
   ],
 });
