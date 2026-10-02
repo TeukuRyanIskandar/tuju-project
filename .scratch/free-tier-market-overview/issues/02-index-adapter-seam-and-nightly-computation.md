@@ -1,7 +1,7 @@
 # Build ticket: IndexAdapter seam + nightly cap-weighted computation
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01 (entities + migration)
 
 > Wave 2 of the spec-05 execution effort. Fixed inputs: the ticket-01 entities,

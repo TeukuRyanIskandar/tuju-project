@@ -14,7 +14,7 @@ never touches Postgres).
 | # | Ticket | Wave | Blocked by | Status |
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [MarketIndex / IndexLevel entities + migration](issues/01-market-index-and-index-level-entities.md) | 1 | — | resolved |
-| 02 | [IndexAdapter seam + nightly cap-weighted computation](issues/02-index-adapter-seam-and-nightly-computation.md) | 2 | 01 | ready-for-agent |
+| 02 | [IndexAdapter seam + nightly cap-weighted computation](issues/02-index-adapter-seam-and-nightly-computation.md) | 2 | 01 | resolved |
 | 03 | [Intraday live levels + movers precompute in the 5-min replay](issues/03-intraday-live-levels-and-movers-precompute.md) | 3 | 02 | ready-for-agent |
 | 04 | [Movers endpoint (`GET /market/movers`)](issues/04-movers-endpoint.md) | 4 | 03 | ready-for-agent |
 | 05 | [Index + sector endpoints (`/market/indices`, `/market/sectors`)](issues/05-index-and-sector-endpoints.md) | 4 | 03 | ready-for-agent |
@@ -47,9 +47,24 @@ never touches Postgres).
 - The `IndexLevel` series `range` param is the deliberate precedent for the
   still-foggy general OHLC series endpoints (spec 05 Further Notes).
 - Ticket 01 resolved: `MarketIndex`/`IndexLevel` entities + migration
-  (`1728000000000-MarketIndexModel.ts`) landed additively with unit +
+  (`1728000000-MarketIndexModel.ts`) landed additively with unit +
   testcontainers tests (up/down, upsert idempotency, purge-by-lineage). Key
   shape choices: `(kind, sector_id)` natural key `NULLS NOT DISTINCT` (headline
   row included), `(index_id, level_date)` level natural key, both run FKs
   RESTRICT, and `MarketIndex → Sector` RESTRICT per the Company→Sector
   precedent (review catch — CASCADE would wipe chartable history).
+- Ticket 02 resolved: `IndexAdapter` (one interface + `INDEX_ADAPTER` token on
+  the spec-01 seam) + `SyntheticIndexAdapter` (pure cap-weighted computation,
+  FBM KLCI divisor methodology — Σ close × shares normalised to a 100-point
+  base at the series' earliest date; free-float adjustment omitted, no float
+  data in the demo) + nightly persist ordered after the indicators, own
+  `IngestionRun` per nightly (7 runs total), and `cache:market:` swept via the
+  new shared `ReadCacheService.invalidateReadCaches()` over
+  `READ_CACHE_PREFIXES` (code-review fix — the per-prefix cascade had
+  duplicated across ingest + purge). Decisions from the review: the purge
+  deletes `MarketIndex` rows too (they're sourced rows with synthetic
+  lineage; a `real` licensed index survives), display names carry no
+  "(illustrative)" wording (the label is a read-time lineage join, never a
+  stored string), and `data.module.ts`'s migration list caught up with
+  `data-source.ts` (the DisclosureReadModel gap closed as a side effect of the
+  must-stay-in-sync invariant). Idempotency now also pins stable row ids.
