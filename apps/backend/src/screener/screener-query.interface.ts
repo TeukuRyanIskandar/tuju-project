@@ -133,7 +133,20 @@ export interface ScreenerPage {
   limit: number;
 }
 
-/** The repository seam: one screen of the analysed universe. */
+/**
+ * One sector option in the `sector` filter's enum domain (spec 03, ticket 03):
+ * the `id` IS the FK id `GET /screener?sector=` takes, the `name` is what the
+ * FE renders.
+ */
+export interface ScreenerSectorOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * The repository seam: one screen of the analysed universe, plus the sector
+ * enum domain the fields endpoint advertises.
+ */
 export interface ScreenerQuery {
   /**
    * Screen the analysed universe (ordinary shares of MAIN/ACE companies) with
@@ -141,4 +154,10 @@ export interface ScreenerQuery {
    * match count.
    */
   screen(params: ScreenerQueryParams): Promise<ScreenerPage>;
+
+  /**
+   * The sector enum domain (id + name from the `Sector` reference table),
+   * name-ordered — the fields endpoint's `sector` filter advertisement.
+   */
+  sectors(): Promise<ScreenerSectorOption[]>;
 }

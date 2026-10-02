@@ -13,7 +13,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ReadCacheService, SCREENER_CACHE_PREFIX } from '../cache';
-import { parseScreenerQuery, type RawScreenerParams } from './params';
+import { parseScreenerQuery, SCREENER_BOARDS, type RawScreenerParams } from './params';
+import {
+  SCREENER_FILTER_FIELDS,
+  SCREENER_FIELDS_CACHE_KEY,
+  type ScreenerFieldsResponse,
+} from './fields';
 import {
   SCREENER_QUERY,
   type ScreenerPage,
@@ -110,5 +115,21 @@ export class ScreenerService {
       this.screenerQuery.screen(params),
     );
     return { ...page, sort: params.sort, dir: params.dir };
+  }
+
+  /**
+   * Serve the fields advertisement (ticket 03): the static vocabulary +
+   * board domain from the parse layer's allowlist, the sector domain read
+   * through the seam — all under ONE class-2 entry, the `…:fields` key
+   * ticket 02 reserved. The nightly ingest + purge sweep the prefix
+   * wholesale (a sector that lands mid-horizon appears after the sweep,
+   * never half-cached).
+   */
+  async fields(): Promise<ScreenerFieldsResponse> {
+    return this.readCache.remember(SCREENER_FIELDS_CACHE_KEY, async () => ({
+      filters: SCREENER_FILTER_FIELDS,
+      boards: [...SCREENER_BOARDS],
+      sectors: await this.screenerQuery.sectors(),
+    }));
   }
 }

@@ -44,6 +44,7 @@ import type {
   ScreenerQuery,
   ScreenerQueryParams,
   ScreenerRow,
+  ScreenerSectorOption,
   ScreenerSortKey,
 } from './screener-query.interface';
 
@@ -198,6 +199,18 @@ export class PgScreenerQuery implements ScreenerQuery {
       offset: params.offset,
       limit: params.limit,
     };
+  }
+
+  /**
+   * The sector enum domain (ticket 03): a plain ordered read over the
+   * `Sector` reference table — every sector, whether or not any analysed
+   * company currently FKs to it (the domain is the classification, not the
+   * populated universe).
+   */
+  async sectors(): Promise<ScreenerSectorOption[]> {
+    return (await this.dataSource.query(
+      'SELECT id, name FROM sectors ORDER BY name ASC',
+    )) as ScreenerSectorOption[];
   }
 }
 

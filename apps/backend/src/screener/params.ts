@@ -85,6 +85,61 @@ export interface RawScreenerParams {
 }
 
 /**
+ * The complete raw-param vocabulary, compile-time exhaustive over
+ * {@link RawScreenerParams} via the Record check (a new interface key
+ * without a Record entry fails the build, not just a test). The ONE home
+ * of the HTTP param names: the ticket-02 picker and ticket 03's fields
+ * advertisement (its drift guard) both read THIS list.
+ */
+const RAW_SCREENER_PARAM_RECORD: Record<keyof RawScreenerParams, true> = {
+  board: true,
+  sector: true,
+  shariah: true,
+  priceMin: true,
+  priceMax: true,
+  volumeMin: true,
+  marketCapMin: true,
+  marketCapMax: true,
+  peMin: true,
+  peMax: true,
+  dyMin: true,
+  dyMax: true,
+  pNtaMin: true,
+  pNtaMax: true,
+  roeMin: true,
+  roeMax: true,
+  deMin: true,
+  deMax: true,
+  profitableYearsMin: true,
+  yoyProfitGrowthMin: true,
+  consecutiveGrowthQuartersMin: true,
+  rsi14Min: true,
+  rsi14Max: true,
+  aboveSma50: true,
+  aboveSma200: true,
+  sort: true,
+  dir: true,
+  offset: true,
+  limit: true,
+};
+
+/** Every raw param the endpoint understands (filter + sort/dir/page). */
+export const RAW_SCREENER_PARAM_KEYS = Object.keys(
+  RAW_SCREENER_PARAM_RECORD,
+) as (keyof RawScreenerParams)[];
+
+/**
+ * The non-filter params (sort/dir/offset/limit) — not part of the fields
+ * vocabulary ticket 03 advertises.
+ */
+export const RAW_SCREENER_NON_FILTER_KEYS: readonly (keyof RawScreenerParams)[] = [
+  'sort',
+  'dir',
+  'offset',
+  'limit',
+];
+
+/**
  * The endpoint's whole `@Query()` object → the known raw params. The ONE
  * place the HTTP param-name mapping lives (ticket 02): only the 29 known
  * keys pass, and only their plain-string values — a repeated param (an
@@ -95,38 +150,7 @@ export function rawScreenerParams(query: unknown): RawScreenerParams {
   const raw: RawScreenerParams = {};
   if (typeof query !== 'object' || query === null) return raw;
   const record = query as Record<string, unknown>;
-  const keys: readonly (keyof RawScreenerParams)[] = [
-    'board',
-    'sector',
-    'shariah',
-    'priceMin',
-    'priceMax',
-    'volumeMin',
-    'marketCapMin',
-    'marketCapMax',
-    'peMin',
-    'peMax',
-    'dyMin',
-    'dyMax',
-    'pNtaMin',
-    'pNtaMax',
-    'roeMin',
-    'roeMax',
-    'deMin',
-    'deMax',
-    'profitableYearsMin',
-    'yoyProfitGrowthMin',
-    'consecutiveGrowthQuartersMin',
-    'rsi14Min',
-    'rsi14Max',
-    'aboveSma50',
-    'aboveSma200',
-    'sort',
-    'dir',
-    'offset',
-    'limit',
-  ];
-  for (const key of keys) {
+  for (const key of RAW_SCREENER_PARAM_KEYS) {
     const value = record[key];
     if (typeof value === 'string') raw[key] = value;
   }
