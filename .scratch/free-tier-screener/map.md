@@ -9,15 +9,15 @@ tickets. Backend only. Ticket work lands in `apps/backend`.
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [Cache seam + screener query read model](issues/01-cache-seam-screener-read-model.md) | 1 | — | **resolved** (committed `307ba6b`) |
 | 02 | [Screener endpoint (`GET /screener`)](issues/02-screener-endpoint.md) | 2 | 01 | **resolved** (committed `97e59e5`) |
-| 03 | [Screener fields endpoint (`GET /screener/fields`)](issues/03-screener-fields.md) | 2 | 01 | **resolved** (working tree) |
+| 03 | [Screener fields endpoint (`GET /screener/fields`)](issues/03-screener-fields.md) | 2 | 01 | **resolved** (committed `b3e90d8`) |
 
 Wave 1 resolved and verified, committed as `307ba6b`. Ticket 02 (wave 2)
 resolved and verified, committed as `97e59e5` — typecheck + build clean; full
 suite **278/278** across 24 suites incl. all testcontainers suites;
-`test:int` 2/2. Ticket 03 resolved and verified (working tree) — typecheck +
-build clean; full suite **288/288** across 26 suites; `test:int` 2/2. The
-effort is complete: ticket 03 landed as a second route on the ticket-02
-endpoint trio (no new module → no orchestrator wiring left to do).
+`test:int` 2/2. Ticket 03 resolved and verified, committed as `b3e90d8` —
+typecheck + build clean; full suite **288/288** across 26 suites; `test:int`
+2/2. The effort is complete: ticket 03 landed as a second route on the
+ticket-02 endpoint trio (no new module → no orchestrator wiring left to do).
 
 ## Wave structure
 
