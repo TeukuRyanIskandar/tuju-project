@@ -16,8 +16,8 @@ never touches Postgres).
 | 01 | [MarketIndex / IndexLevel entities + migration](issues/01-market-index-and-index-level-entities.md) | 1 | — | resolved |
 | 02 | [IndexAdapter seam + nightly cap-weighted computation](issues/02-index-adapter-seam-and-nightly-computation.md) | 2 | 01 | resolved |
 | 03 | [Intraday live levels + movers precompute in the 5-min replay](issues/03-intraday-live-levels-and-movers-precompute.md) | 3 | 02 | resolved |
-| 04 | [Movers endpoint (`GET /market/movers`)](issues/04-movers-endpoint.md) | 4 | 03 | ready-for-agent |
-| 05 | [Index + sector endpoints (`/market/indices`, `/market/sectors`)](issues/05-index-and-sector-endpoints.md) | 4 | 03 | ready-for-agent |
+| 04 | [Movers endpoint (`GET /market/movers`)](issues/04-movers-endpoint.md) | 4 | 03 | resolved |
+| 05 | [Index + sector endpoints (`/market/indices`, `/market/sectors`)](issues/05-index-and-sector-endpoints.md) | 4 | 03 | resolved |
 
 ## Wave structure
 
@@ -90,3 +90,56 @@ never touches Postgres).
   the volume ramp; `pctChange` stays the one shared definition (imported from
   `stocks/serialisation` in both the model and the service); and the
   `Movers board` glossary term landed in `apps/backend/CONTEXT.md`.
+- **Tickets 04 + 05 resolved** (continuing a prior session's interrupted
+  draft — the wave-4 file split held, no overlap). Both ride two shared
+  seam additions in the ticket-03 files: `intraday-model.ts` now exports a
+  pure `isMarketHours(now)` (the scheduler's static method delegates to it)
+  and `MOVERS_COMPARATORS` (the three board comparators, keyed by type,
+  reused instead of copy-pasted). Decisions from review:
+  - **Movers (04):** EOD-fallback provenance reads from the `PriceBar`'s own
+    `ingestionRun` (the price data's lineage, `synthetic`), not the
+    `Instrument`'s (`real`) — the stock-page `StocksService` precedent for
+    splitting identity vs. data-row provenance. The EOD fallback is one
+    window-queried SQL round trip (`ROW_NUMBER` + `LEAD` over
+    `price_bars` joined to `instruments`/`companies`), and the class-2 cache
+    holds the WHOLE sorted board per type (not per `type, limit` pair) —
+    `limit` is a read-time slice.
+  - **Indices/sectors (05):** the during-hours "Redis only" AC needs the
+    index identity fields (id/name/sectorName/provenance — DB-only concepts
+    the intraday replay never produces) without a live Postgres read. Rather
+    than a new dedicated "index catalog" cache key (the original plan), the
+    during-hours read PEEKS the already-existing `cache:market:indices` entry
+    (written by the outside-hours path) for those fields and overlays just
+    `level`/`pctChange` from the live Redis tick; a cold peek (no
+    outside-hours traffic since a flush) gracefully serves an empty panel
+    rather than touching Postgres — same posture as an absent movers board.
+    `/market/sectors` is now derived from `/market/indices` (filter to
+    `kind = sector`) instead of a parallel implementation, so the two can
+    never disagree and the Redis-only fix covers both for free. The series
+    `range` lookback anchors to the SERIES' OWN latest stored `levelDate`
+    (new `seriesSinceDate` in `index-params.ts`), never the wall clock — the
+    fixed-date synthetic backfill would otherwise drift out of every range as
+    real time passes. A non-UUID `:id` now 404s (a regex check before any
+    query) instead of 500ing on a bad Postgres `uuid` cast.
+  - **Clock seam:** both endpoints read "now" through a new `MARKET_CLOCK`
+    (`() => Date`) DI token bound in `MarketModule` (default: the wall
+    clock), not `IngestionScheduler.isMarketHours(new Date())` directly — a
+    static-method spy cannot intercept a call made inside a service
+    constructed through a different `TestingModule`, which is exactly the
+    shape the integration tests need; overriding one provider does.
+  - **Integration-test harness fix:** the interrupted draft's `.int.spec.ts`
+    files imported `MarketModule` (whose `DataModule` opens its own
+    `DATABASE_URL`-driven `DataSource`) while asserting on a separately
+    constructed `DataSource` in the test — two different pool instances, so
+    every "Postgres untouched" assertion was vacuous (could never fail).
+    Rewritten on the `stocks.int.spec.ts` / `disclosures.int.spec.ts` house
+    pattern: the controller/service are wired by hand with
+    `{ provide: DataSource, useValue: dataSource }`, pointing spies at the
+    DataSource the service actually uses.
+  - Added the ticket-05 AC's adapter-swap test (a fake `LicensedIndexAdapter`,
+    `real` provenance, run through the real nightly ingest on a separate
+    harness) — the interrupted draft had an "adapter-swap" test that asserted
+    nothing. Also corrected a wrong assumption in that draft: the synthetic
+    backfill yields one `IndexLevel` per trading day across the whole ~3-year
+    series from a SINGLE nightly ingest (same calendar as the price bars), so
+    `pctChange` is a real number immediately, never null.

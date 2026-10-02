@@ -1,7 +1,7 @@
 # Build ticket: Movers endpoint (`GET /market/movers`)
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03 (precomputed boards + live replay)
 
 > Wave 4 of the spec-05 execution effort (parallel with ticket 05 — own files,
@@ -25,18 +25,18 @@ running replay or a nightly-ingested DB:
 
 ## Acceptance criteria
 
-- [ ] `type=gainers|losers|actives` (default `gainers`; unknown value drops to
+- [x] `type=gainers|losers|actives` (default `gainers`; unknown value drops to
       default, never a 400) and `limit` (default 10, clamped) parse per the
       house posture.
-- [ ] Ordering per board: %change desc (gainers), asc (losers), volume
+- [x] Ordering per board: %change desc (gainers), asc (losers), volume
       (actives); ties deterministic.
-- [ ] **Source selection by the market-hours clock:** during hours the read
+- [x] **Source selection by the market-hours clock:** during hours the read
       hits Redis only (Postgres untouched — integration-pinned); outside
       hours it reads the EOD fallback through the class-2 cache.
-- [ ] Rows carry provenance → synthetic rows labelled "illustrative".
-- [ ] Endpoint is anonymous; module wired into the app per the house
+- [x] Rows carry provenance → synthetic rows labelled "illustrative".
+- [x] Endpoint is anonymous; module wired into the app per the house
       controller/service/module pattern.
-- [ ] Unit lane: param parsing, no containers. Integration lane
+- [x] Unit lane: param parsing, no containers. Integration lane
       (testcontainers Postgres + Redis): seeded universe, ordering, clock
       selection, cache-class behaviour. Typecheck + full suite green.
 
@@ -44,3 +44,53 @@ running replay or a nightly-ingested DB:
 
 - Index + sector endpoints (ticket 05).
 - Movers floor, anonymous rate-limit posture — spec 05 Out of Scope.
+
+## Resolution notes
+
+Finished a prior session's interrupted draft; the shape (controller/service/
+module/params) was already right, but review turned up real defects, fixed
+here:
+
+- **Provenance was wrong.** The draft read it from the `Instrument` row
+  (`real`), not the `PriceBar` run that actually produced the illustrative
+  prices (`synthetic`) — the same identity-vs-data-row split the stock-page
+  `StocksService` already makes for its technicals block.
+- **The EOD fallback is now one SQL round trip**, not a "load every bar for
+  the universe, group in JS" scan: a window query (`ROW_NUMBER` for the
+  latest bar, `LEAD` for the %change basis) over `price_bars ⋈ instruments ⋈
+  companies`, filtered to the analysed universe inline (`c.board IN ('MAIN',
+  'ACE')` — the `screener-query.pg.ts` precedent for a fixed-board literal,
+  not a bind parameter).
+- **The class-2 cache now holds the WHOLE sorted board per type**, not one
+  entry per `(type, limit)` — `limit` is a read-time slice of the cached
+  board, so `?limit=3` and `?limit=50` share one cache entry instead of
+  fragmenting the cache.
+- **The "during hours" integration tests were vacuous.** The draft's
+  `.int.spec.ts` imported `MarketModule` (which opens its OWN
+  `DATABASE_URL`-driven `DataSource` via `DataModule`) and then spied on the
+  TEST's own separately-constructed `DataSource` — two different pool
+  instances, so the "Postgres untouched" assertions could never fail even if
+  the code touched Postgres. Rewritten on the `stocks.int.spec.ts` /
+  `disclosures.int.spec.ts` house pattern: `{ provide: DataSource, useValue:
+  dataSource }` wires the controller/service directly to the SAME DataSource
+  the test spies on.
+- **The market-hours clock is now a DI seam** (`MARKET_CLOCK`, a `() => Date`
+  token bound in `MarketModule`; defaults to the wall clock), not a call to
+  `IngestionScheduler.isMarketHours(new Date())`. A static-method spy cannot
+  intercept a call made inside a service constructed through a *different*
+  `TestingModule`, which is exactly the shape every integration test needs;
+  overriding one provider does intercept it. `IngestionScheduler.isMarketHours`
+  now delegates to the same pure `isMarketHours` the service calls
+  (`intraday-model.ts`) — one guard, shared by the write side (replay) and
+  the read side (this endpoint).
+- The board comparators (`gainers`/`losers`/`actives`) are now exported from
+  `intraday-model.ts` as `MOVERS_COMPARATORS` and reused here, rather than a
+  second copy-pasted comparator set that could silently drift from the
+  ticket-03 precompute's ordering.
+- Fixed a wrong unit-test expectation (`movers-params.spec.ts`): `limit=0`
+  drops to the default (not a positive-integer floor of 1) — matches the
+  parser's actual, correct behaviour.
+- Seeded universe now includes a LEAP instrument with the largest mover/volume
+  numbers, pinning that it's excluded (the analysed universe is MAIN/ACE
+  only) — the prior draft's seed had no non-MAIN/ACE row to exercise that
+  filter at all.
