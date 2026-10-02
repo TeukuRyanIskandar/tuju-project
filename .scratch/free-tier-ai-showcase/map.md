@@ -16,20 +16,20 @@ columns (resolved in `free-tier-disclosures`) are both already in place.
 | # | Ticket | Blocked by | Status |
 | - | ------ | ---------- | ------ |
 | 01 | [Wire contract: `system` trigger + verdict-less `Summary`](issues/01-wire-contract-system-trigger-and-verdictless-summary.md) | — | resolved |
-| 02 | [Daily market brief (end-to-end)](issues/02-daily-market-brief.md) | 01 | ready-for-agent |
-| 03 | [Announcement AI summaries (end-to-end)](issues/03-announcement-ai-summaries.md) | 01 | ready-for-agent |
+| 02 | [Daily market brief (end-to-end)](issues/02-daily-market-brief.md) | 01 | resolved |
+| 03 | [Announcement AI summaries (end-to-end)](issues/03-announcement-ai-summaries.md) | 01 | resolved |
 | 04 | [Prospectus parse + section router](issues/04-prospectus-parse-and-section-router.md) | — | ready-for-agent |
 | 05 | [Prospectus at-a-glance: LLM analysis + job + read endpoint](issues/05-prospectus-at-a-glance-analysis-and-endpoint.md) | 01, 04 | ready-for-agent |
 | 06 | [ADR-0007 amendment (docs)](issues/06-adr-amendment.md) | 01, 02, 03, 05 | ready-for-agent |
 
 ## Frontier
 
-Ticket **01** is resolved. Tickets 02 and 03 are now unblocked and can run in
-parallel (different job names, 02 touches market-overview reads, 03 touches
-disclosures). Ticket **04** was already unblocked and can run alongside them
-(no file overlap — `services/ai` Docling/parse-only). Ticket 05 needs both 01
-(done) and 04. Ticket 06 is last — it documents whatever job names 02/03/05
-actually ship with.
+Tickets **01, 02, 03** are resolved. Ticket **04** was already unblocked and
+ran alongside them (no file overlap — `services/ai` Docling/parse-only).
+Ticket 05 needs both 01 (done) and 04. Ticket 06 is last — it documents the
+job names 02/03/05 actually shipped with: `generate-market-brief` /
+`summarize-announcement` (02/03, resolved) and whatever 05 lands as
+`analyze-prospectus`.
 
 ## Decisions / notes so far
 
@@ -71,3 +71,29 @@ actually ship with.
   `ERR_PACKAGE_PATH_NOT_EXPORTED` at runtime/under Jest. Every existing
   backend import from the package is type-only; keep it that way unless the
   package gains a CJS build.
+- **Tickets 02/03 resolved together** (shared infra: `BackendClient`,
+  `JobBus.deriveJobId` generalisation, the jobId-prefix-recovery pattern).
+  Notes for ticket 06:
+  - **`jobId` split is intentional, not an oversight**: the BullMQ dedup id
+    (TS `JobBus.deriveJobId`, hyphen-joined — `brief-YYYY-MM-DD`,
+    `ann-{id}`) and the Python worker's own `JobResult.jobId` field (colon-
+    joined — `brief:YYYY-MM-DD`, `ann:{id}`) are two independently computed
+    strings, same as the pre-existing `ta-`/`ta:` split. No shared
+    cross-language constant exists for either half; both sides are hand-
+    synced constants, documented in-file, flagged here as the kind of gap a
+    future `packages/contracts` plain-constant export (not just Zod models)
+    could close.
+  - **Class-2 cache is per-feature, not automatic**: `MarketBriefStore`
+    needed its own `BRIEF_CACHE_PREFIX`, deliberately excluded from the
+    nightly-ingest-swept `READ_CACHE_PREFIXES` — its data changes on the
+    JobBus result's own async cadence, not the nightly ingest transaction,
+    so the store invalidates its one key itself. The first pass missed
+    this cache entirely; a spec-conformance review caught it.
+  - **Cost-bounding is a real correctness axis for every future
+    system-triggered job**, not just ticket 03's: "enqueue per
+    newly-ingested/updated row" needs an explicit not-yet-processed
+    predicate (here, `aiSummary IS NULL`) — BullMQ's own content-derived
+    dedup does NOT bound cost on its own once the queue's
+    `removeOnComplete` retention is shorter than the enqueue cadence (1h vs.
+    a 24h nightly ingest here). Worth re-checking for ticket 05's
+    `analyze-prospectus` enqueue trigger.
