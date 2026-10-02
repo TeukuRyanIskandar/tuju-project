@@ -8,14 +8,13 @@ tickets. Backend only. Ticket work lands in `apps/backend`.
 | # | Ticket | Wave | Blocked by | Status |
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [Cache seam + screener query read model](issues/01-cache-seam-screener-read-model.md) | 1 | — | **resolved** (committed `307ba6b`) |
-| 02 | [Screener endpoint (`GET /screener`)](issues/02-screener-endpoint.md) | 2 | 01 | **resolved** (working tree, uncommitted) |
+| 02 | [Screener endpoint (`GET /screener`)](issues/02-screener-endpoint.md) | 2 | 01 | **resolved** (committed `97e59e5`) |
 | 03 | [Screener fields endpoint (`GET /screener/fields`)](issues/03-screener-fields.md) | 2 | 01 | **ready-for-agent** (frontier) |
 
 Wave 1 resolved and verified, committed as `307ba6b`. Ticket 02 (wave 2)
-resolved and verified in the working tree — typecheck + build clean; full
+resolved and verified, committed as `97e59e5` — typecheck + build clean; full
 suite **278/278** across 24 suites incl. all testcontainers suites;
-`test:int` 2/2 — uncommitted, pending user review. Ticket 03 remains on the
-frontier.
+`test:int` 2/2. Ticket 03 remains on the frontier.
 
 ## Wave structure
 
