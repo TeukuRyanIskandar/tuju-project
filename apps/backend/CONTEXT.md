@@ -111,6 +111,13 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
   absent from any P/E screen) and sort last; `%change`/`volume` are read-time
   from the two latest EOD bars (the stock-page precedent). Rows carry
   per-numeric-class provenance (price / fundamentals / technicals lineage).
+- **Movers board** — a precomputed market-overview read panel: the day's top
+  gainers, losers, and most-active instruments of the whole analysed universe
+  (gainers/losers by %change, actives by cumulative intraday volume — no
+  liquidity/market-cap floor, spec-05 option A). During market hours the 5-min
+  intraday replay precomputes the three boards into Redis as class-3 keys
+  (`intraday:movers:*`) so the read endpoint is a pure slice of a sorted board;
+  outside hours the read falls back to the latest stored EOD closes (class 2).
 - **Sector** — Bursa's own sector/subsector classification (real public reference
   data), modelled as a reference entity the Company FKs to. No vendor global
   taxonomy (demo is KLSE-only).

@@ -1,7 +1,7 @@
 # Build ticket: Intraday live levels + movers precompute in the 5-min replay
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02 (adapter + cap-weighted computation)
 
 > Wave 3 of the spec-05 execution effort. Fixed inputs: the spec-01 worker's

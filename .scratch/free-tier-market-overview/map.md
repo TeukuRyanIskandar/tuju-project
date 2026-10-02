@@ -15,7 +15,7 @@ never touches Postgres).
 | - | ------ | ---- | ---------- | ------ |
 | 01 | [MarketIndex / IndexLevel entities + migration](issues/01-market-index-and-index-level-entities.md) | 1 | — | resolved |
 | 02 | [IndexAdapter seam + nightly cap-weighted computation](issues/02-index-adapter-seam-and-nightly-computation.md) | 2 | 01 | resolved |
-| 03 | [Intraday live levels + movers precompute in the 5-min replay](issues/03-intraday-live-levels-and-movers-precompute.md) | 3 | 02 | ready-for-agent |
+| 03 | [Intraday live levels + movers precompute in the 5-min replay](issues/03-intraday-live-levels-and-movers-precompute.md) | 3 | 02 | resolved |
 | 04 | [Movers endpoint (`GET /market/movers`)](issues/04-movers-endpoint.md) | 4 | 03 | ready-for-agent |
 | 05 | [Index + sector endpoints (`/market/indices`, `/market/sectors`)](issues/05-index-and-sector-endpoints.md) | 4 | 03 | ready-for-agent |
 
@@ -53,7 +53,7 @@ never touches Postgres).
   row included), `(index_id, level_date)` level natural key, both run FKs
   RESTRICT, and `MarketIndex → Sector` RESTRICT per the Company→Sector
   precedent (review catch — CASCADE would wipe chartable history).
-- Ticket 02 resolved: `IndexAdapter` (one interface + `INDEX_ADAPTER` token on
+  - Ticket 02 resolved: `IndexAdapter` (one interface + `INDEX_ADAPTER` token on
   the spec-01 seam) + `SyntheticIndexAdapter` (pure cap-weighted computation,
   FBM KLCI divisor methodology — Σ close × shares normalised to a 100-point
   base at the series' earliest date; free-float adjustment omitted, no float
@@ -66,5 +66,27 @@ never touches Postgres).
   lineage; a `real` licensed index survives), display names carry no
   "(illustrative)" wording (the label is a read-time lineage join, never a
   stored string), and `data.module.ts`'s migration list caught up with
-  `data-source.ts` (the DisclosureReadModel gap closed as a side effect of the
-  must-stay-in-sync invariant). Idempotency now also pins stable row ids.
+  `data-source.ts` (the DisclosureReadModel gap closed as a side effect of
+  the must-stay-in-sync invariant). Idempotency now also pins stable row ids.
+- Ticket 03 resolved: the 5-min replay's `replayTick` now also writes the
+  class-3 market-overview values — a live cap-weighted level per index
+  (`computeLiveIndexLevels` in `index-computation.ts` re-runs the SAME pure
+  divisor maths over bars whose last close is substituted with the live tick
+  price, and bakes `prevLevel`/`pctChange` into the Redis payload so tickets
+  04/05 are single-GET reads) and the three precomputed movers boards
+  (`buildMoversBoards` in the new pure `intraday-model.ts`: whole universe,
+  gainers/losers by %change desc/asc, actives by cumulative volume, null
+  %change last, ties by stockCode — no floor per option A). Decisions from
+  the review: the wobble gained a per-instrument phase (a market-wide wobble
+  made every %change identical → all-tied boards; this changes spec-01 tick
+  prices, which nothing pinned — the phase is the point); actives volume is
+  an honest monotonic ramp of the last daily volume × elapsed trading
+  fraction (accepted trade-off: actives ORDERING is stable through the day
+  and zero at the open — board values still grow every tick); `prevLevel` is
+  recomputed from the same generator maths rather than read from Postgres
+  (the ADR-0004 no-repository posture; reconciliation with the stored nightly
+  series is integration-pinned); the 09:00–16:45 MYT window constants now
+  live once in `intraday-model.ts` and are shared by the scheduler guard and
+  the volume ramp; `pctChange` stays the one shared definition (imported from
+  `stocks/serialisation` in both the model and the service); and the
+  `Movers board` glossary term landed in `apps/backend/CONTEXT.md`.
