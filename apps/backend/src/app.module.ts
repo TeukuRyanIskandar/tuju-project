@@ -14,6 +14,7 @@ import { SearchModule } from './search/search.module';
 import { StocksModule } from './stocks/stocks.module';
 import { DisclosuresModule } from './disclosures/disclosures.module';
 import { ScreenerModule } from './screener/screener.module';
+import { MarketModule } from './market/market.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -42,6 +43,10 @@ import { ScreenerModule } from './screener/screener.module';
     // Spec-03 anonymous free-tier screener (GET /screener) — same anonymous
     // posture as the other read surfaces.
     ScreenerModule,
+    // Spec-05 anonymous free-tier market overview (GET /market/movers,
+    // /market/indices, /market/indices/:id/series, /market/sectors) — same
+    // anonymous posture as the other read surfaces.
+    MarketModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

@@ -18,11 +18,7 @@
 
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import {
-  MARKET_CLOSE_MINUTE_OF_DAY,
-  MARKET_OPEN_MINUTE_OF_DAY,
-  mytMinuteOfDay,
-} from './intraday-model';
+import { isMarketHours } from './intraday-model';
 import { EodIngestService } from './eod-ingest.service';
 import { IntradayReplayService } from './intraday-replay.service';
 
@@ -63,12 +59,12 @@ export class IngestionScheduler {
   }
 
   /**
-   * Bursa continuous-trading window, 09:00–16:45 MYT (UTC+8). Evaluated in MYT
-   * so it is independent of the host timezone. The window constants are shared
-   * with the intraday volume ramp (`intraday-model.ts`) — one window, one guard.
+   * Bursa continuous-trading window, 09:00–16:45 MYT (UTC+8). Delegates to the
+   * pure `intraday-model.ts` guard — shared with the market-overview read
+   * endpoints (spec 05, tickets 04/05) so the write-side replay and the
+   * read-side clock selection agree on exactly one window.
    */
   static isMarketHours(now: Date): boolean {
-    const minutes = mytMinuteOfDay(now);
-    return minutes >= MARKET_OPEN_MINUTE_OF_DAY && minutes <= MARKET_CLOSE_MINUTE_OF_DAY;
+    return isMarketHours(now);
   }
 }

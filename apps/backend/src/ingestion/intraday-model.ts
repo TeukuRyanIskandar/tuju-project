@@ -32,6 +32,18 @@ export function mytMinuteOfDay(now: Date): number {
   return myt.getUTCHours() * 60 + myt.getUTCMinutes();
 }
 
+/**
+ * Bursa continuous-trading window guard, 09:00–16:45 MYT (UTC+8). Evaluated in
+ * MYT so it is independent of the host timezone. The pure function the
+ * scheduler's cron guard AND the market-overview read endpoints (spec 05,
+ * tickets 04/05) both call — one guard, shared by the write side (the 5-min
+ * replay) and the read side (the clock-selected movers/indices/sectors reads).
+ */
+export function isMarketHours(now: Date): boolean {
+  const minutes = mytMinuteOfDay(now);
+  return minutes >= MARKET_OPEN_MINUTE_OF_DAY && minutes <= MARKET_CLOSE_MINUTE_OF_DAY;
+}
+
 /** Deterministic per-instrument wobble phase (radians), stable per stockCode. */
 export function intradayWobblePhase(stockCode: string): number {
   return ((instrumentSeed(SYNTHETIC_BASE_SEED, stockCode) % 360) * Math.PI) / 180;
@@ -131,9 +143,9 @@ export function buildMoversBoards(
     volume: intradayVolume(s.dailyVolume, minutes),
   }));
   return {
-    gainers: [...entries].sort(compareGainers),
-    losers: [...entries].sort(compareLosers),
-    actives: [...entries].sort(compareActives),
+    gainers: [...entries].sort(MOVERS_COMPARATORS.gainers),
+    losers: [...entries].sort(MOVERS_COMPARATORS.losers),
+    actives: [...entries].sort(MOVERS_COMPARATORS.actives),
   };
 }
 
@@ -164,3 +176,18 @@ function compareLosers(a: MoverEntry, b: MoverEntry): number {
 function compareActives(a: MoverEntry, b: MoverEntry): number {
   return b.volume - a.volume || byStockCode(a, b);
 }
+
+/**
+ * The three board comparators, keyed by board type — exported so the
+ * market-overview EOD fallback (spec 05, ticket 04) sorts its own
+ * `MoverEntry`-shaped rows with the IDENTICAL ordering rules as the intraday
+ * precompute, rather than a copy-pasted comparator set that could drift.
+ */
+export const MOVERS_COMPARATORS: Record<
+  MoversBoardType,
+  (a: MoverEntry, b: MoverEntry) => number
+> = {
+  gainers: compareGainers,
+  losers: compareLosers,
+  actives: compareActives,
+};
