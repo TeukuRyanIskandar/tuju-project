@@ -14,7 +14,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[2]
+REPO = Path(__file__).resolve().parents[3]
 CORPUS = REPO / ".scratch" / "free-tier" / "demo-corpus" / "prospectuses"
 
 from tuju_ai.prospectus.models import ProspectusSection
@@ -23,8 +23,13 @@ from tuju_ai.prospectus.router import route_sections
 
 
 def main() -> int:
+    pdfs = sorted(CORPUS.glob("*.pdf"))
+    if not pdfs:
+        print(f"no PDFs found under {CORPUS}", file=sys.stderr)
+        return 1
+
     out: dict[str, dict] = {}
-    for pdf in sorted(CORPUS.glob("*.pdf")):
+    for pdf in pdfs:
         t0 = time.time()
         print(f"--- parsing {pdf.name} ...", flush=True)
         parse = parse_prospectus(pdf.read_bytes())
