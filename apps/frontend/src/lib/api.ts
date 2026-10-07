@@ -1,3 +1,6 @@
+import { parseOrThrow } from '@tuju/contracts'
+import type { z } from 'zod'
+
 /**
  * API base URL — a single configurable entry point (ADR-0005).
  *
@@ -29,4 +32,72 @@ export function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     credentials: 'include',
     ...init,
   })
+}
+
+/**
+ * Whether `apiGet` validates response bodies against their contract schema.
+ *
+ * ON in dev and test, OFF in production builds. Validation exists to catch
+ * backend/contract drift while developing (the contract objects are strict, so
+ * an unannounced backend field fails loudly); in production it would only turn
+ * a harmless extra field into a broken page, and costs parse time on big
+ * payloads. "Warn-only in prod" (parse, report, still return the data) is the
+ * later escape hatch once error reporting exists.
+ */
+export const VALIDATE_RESPONSES: boolean =
+  import.meta.env.DEV || import.meta.env.MODE === 'test'
+
+/** A non-2xx response from the backend. */
+export class ApiError extends Error {
+  override readonly name = 'ApiError'
+
+  constructor(
+    /** HTTP status code. */
+    readonly status: number,
+    /** Parsed JSON body when the response was JSON, else the raw text (may be empty). */
+    readonly body: unknown,
+    /** The request path (as passed to `apiGet`, including any query string). */
+    readonly path: string,
+  ) {
+    super(`GET ${path} failed with ${status}`)
+  }
+}
+
+async function readBody(res: Response): Promise<unknown> {
+  const text = await res.text()
+  if (text === '') return text
+  try {
+    return JSON.parse(text)
+  } catch {
+    return text
+  }
+}
+
+/**
+ * Typed GET. Non-2xx throws {@link ApiError}. On success the JSON body is
+ * validated against `schema` (throwing `ContractParseError`) when
+ * {@link VALIDATE_RESPONSES} is on; otherwise it is returned as-is, typed by
+ * the schema.
+ */
+export async function apiGet<S extends z.ZodType>(
+  path: string,
+  schema: S,
+  init?: RequestInit,
+): Promise<z.output<S>> {
+  const res = await apiFetch(path, init)
+  if (!res.ok) throw new ApiError(res.status, await readBody(res), path)
+  const json: unknown = await res.json()
+  return VALIDATE_RESPONSES ? parseOrThrow(schema, json, path) : (json as z.output<S>)
+}
+
+type QueryValue = string | number | boolean | null | undefined
+
+/** Append query params to a path, dropping `undefined`/`null` values. */
+export function withQuery(path: string, params?: Record<string, QueryValue>): string {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value !== undefined && value !== null) search.set(key, String(value))
+  }
+  const qs = search.toString()
+  return qs === '' ? path : `${path}${path.includes('?') ? '&' : '?'}${qs}`
 }

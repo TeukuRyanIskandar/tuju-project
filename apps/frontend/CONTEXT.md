@@ -13,14 +13,35 @@ additive, not a rewrite.
   `src/lib/api.ts`) — never hard-code backend URLs.
 - Send `credentials: 'include'`; the session token is httpOnly and never touches
   client JS (ADR-0005).
+- Read every backend endpoint through `apiGet(path, schema)` (`src/lib/api.ts`),
+  wrapped per area in `src/api/` as TanStack Query key factories and
+  `queryOptions` builders. Route loaders call
+  `context.queryClient.ensureQueryData(xQuery(...))`; components use the same
+  builders with `useQuery`.
 
 ## Boundaries
 
-- **Tier = show/hide only.** `src/lib/auth.ts` reads `tier` from `/me` for
+- **Tier = show/hide only.** `src/lib/auth.ts` reads `tier` from `/auth/me` for
   presentation and asks capability questions (`canRunJob`); it never enforces.
   The backend always re-checks at the enqueue seam.
 - Consumes `@tuju/contracts` TS types (e.g. `JobName`) via `workspace:*`; no
   cross-language imports (ADR-0002).
+
+## Data layer
+
+- `apiGet(path, schema, init?)` returns the schema's output type. A non-2xx
+  response throws `ApiError` (`status`, `body`, `path`). Response bodies are
+  validated with `parseOrThrow` from `@tuju/contracts` (throws
+  `ContractParseError`) in dev and test only; production builds skip validation
+  (`VALIDATE_RESPONSES`).
+- `src/api/<area>.ts` holds one key factory and the `queryOptions` builders for an
+  area (search, stocks, screener, announcements, calendar, news, market, brief,
+  ipo, auth). Add a new endpoint there, with its schema from `@tuju/contracts`;
+  do not call `fetch` from components or routes.
+- The `QueryClient` is created per `getRouter()` (`src/lib/query-client.ts`) and
+  sits in the router context (`RouterContext` in `src/router.tsx`). Defaults:
+  `staleTime` 60s; no retry on 4xx `ApiError` or `ContractParseError`, at most 2
+  retries otherwise.
 
 ## Design
 
@@ -31,13 +52,15 @@ Visual language, tokens and chart patterns live in [`DESIGN.md`](DESIGN.md).
 - **Static SPA** — the v1 build target; CDN-served assets, no FE request-path server.
 - **Configurable API base** — the `VITE_API_BASE_URL` indirection that is the
   ADR-0005 lever toward a future BFF/proxy.
+- **`apiGet`** — the typed GET through the configurable base; throws `ApiError`
+  on non-2xx.
 - **Capability (FE)** — a presentation-only question derived from tier; drives
   show/hide, never authorization.
 
 ## Commands
 
 ```bash
-pnpm --filter frontend dev        # dev server on :3000
+pnpm --filter frontend dev        # dev server on :5173
 pnpm --filter frontend build      # static SPA bundle
 pnpm --filter frontend test       # vitest
 pnpm --filter frontend typecheck  # tsc --noEmit

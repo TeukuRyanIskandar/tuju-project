@@ -35,6 +35,9 @@ at-a-glance) is out of scope and becomes separate feature efforts afterwards.
 5. `docs/tokens-preview.html` is kept next to the `/_tokens` route.
 6. No Tailwind/shadcn ADR; DESIGN.md holds that decision. One ADR (0014) covers
    the contracts scope change.
+7. Response validation (`apiGet`) is on in dev and test and off in production
+   builds (ticket 07). Warn-only in production is the later escape hatch once
+   error reporting exists.
 
 ## Ticket order (blocking edges)
 
@@ -53,5 +56,3 @@ at-a-glance) is out of scope and becomes separate feature efforts afterwards.
 ## Open questions
 
 - Production SPA origin and shared parent domain (ADR-0005) for `CORS_ORIGINS`.
-- Whether response validation stays on in production builds (decided in 07;
-  default is dev and test only).

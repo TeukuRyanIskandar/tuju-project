@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { canRunJob, fetchSession, type SessionUser } from '../lib/auth'
-import { apiUrl } from '../lib/api'
+import { ApiError, apiUrl } from '../lib/api'
 
 /**
  * Unit test for the FE tier show/hide seam (ADR-0005) and the configurable API
@@ -54,9 +54,19 @@ describe('fetchSession (GET /auth/me, parsed with contracts SessionUser)', () =>
     await expect(fetchSession()).resolves.toBeNull()
   })
 
-  it('throws on other non-ok responses', async () => {
+  it('returns null when forbidden', async () => {
+    stubFetch(new Response(null, { status: 403 }))
+    await expect(fetchSession()).resolves.toBeNull()
+  })
+
+  it('rejects with an ApiError on other non-ok responses', async () => {
     stubFetch(new Response(null, { status: 500 }))
-    await expect(fetchSession()).rejects.toThrow(/500/)
+    await expect(fetchSession()).rejects.toMatchObject({
+      name: 'ApiError',
+      status: 500,
+    })
+    stubFetch(new Response(null, { status: 500 }))
+    await expect(fetchSession()).rejects.toBeInstanceOf(ApiError)
   })
 
   it('rejects a response that does not match the SessionUser schema', async () => {

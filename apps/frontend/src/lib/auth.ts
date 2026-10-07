@@ -1,13 +1,13 @@
 import { SessionUser, type JobName, type Tier } from '@tuju/contracts'
-import { apiFetch } from './api'
+import { ApiError, apiGet } from './api'
 
 /**
  * Auth surface (ADR-0005).
  *
  * The backend (NestJS) is the identity + session authority. It sets an httpOnly,
  * Secure, SameSite session cookie the browser can't read from JS; this module
- * only asks the backend "who am I?" via `/me` (cookie sent automatically by
- * `apiFetch`).
+ * only asks the backend "who am I?" via `/auth/me` (cookie sent automatically by
+ * `apiGet`).
  *
  * `tier` is used on the FE for SHOW/HIDE ONLY — presentation. The backend always
  * re-checks capability at the job-enqueue seam; the FE never enforces. Call sites
@@ -38,8 +38,10 @@ export function canRunJob(user: SessionUser | null, job: JobName): boolean {
 
 /** Fetch the current session user from the backend, or null if unauthenticated. */
 export async function fetchSession(): Promise<SessionUser | null> {
-  const res = await apiFetch('/auth/me')
-  if (res.status === 401 || res.status === 403) return null
-  if (!res.ok) throw new Error(`Session lookup failed: ${res.status}`)
-  return SessionUser.parse(await res.json())
+  try {
+    return await apiGet('/auth/me', SessionUser)
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return null
+    throw err
+  }
 }

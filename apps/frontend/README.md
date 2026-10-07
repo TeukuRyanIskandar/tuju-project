@@ -14,7 +14,12 @@ later is an additive change, not a rewrite.
   migration lever toward a future BFF/proxy.
 - **Auth** — the backend owns identity + an httpOnly session cookie (ADR-0005).
   `apiFetch` sends `credentials: 'include'`; the token never touches client JS.
-- **Tier = show/hide only** — `src/lib/auth.ts` reads `tier` from `/me` for
+- **Typed data layer** — `apiGet(path, schema)` (`src/lib/api.ts`) throws
+  `ApiError` on non-2xx and validates against the `@tuju/contracts` schema in dev
+  and test (off in production builds). `src/api/` has the TanStack Query key
+  factories and `queryOptions` builders per area; the `QueryClient` lives in the
+  router context and loaders use `ensureQueryData`.
+- **Tier = show/hide only** — `src/lib/auth.ts` reads `tier` from `/auth/me` for
   presentation. It asks capability questions (`canRunJob`), never compares tier
   names. The backend always re-checks at the enqueue seam; the FE never enforces.
 - **Contract seam** — consumes `@tuju/contracts` TS types (e.g. `JobName`), no
@@ -25,7 +30,7 @@ later is an additive change, not a rewrite.
 ## Commands
 
 ```bash
-pnpm --filter frontend dev        # dev server on :3000
+pnpm --filter frontend dev        # dev server on :5173
 pnpm --filter frontend build      # static SPA bundle (Vite + Start SPA prerender)
 pnpm --filter frontend test       # Vitest
 pnpm --filter frontend typecheck  # tsc --noEmit
