@@ -27,12 +27,12 @@
   --surface-3: #1e232b;  /* hover / selected row */
   --border: #262c35;
   --border-strong: #343c47;   /* decorative dividers only */
-  --control-border: #616b79;  /* inputs, buttons: >=3:1 (WCAG 1.4.11) */
+  --control-border: #6a7484;  /* inputs, buttons: >=3:1 on every surface (WCAG 1.4.11) */
 
   /* Text */
   --fg: #e6e9ee;
   --fg-2: #a3abb8;
-  --fg-3: #7d8696;
+  --fg-3: #8c95a5;
 
   /* Accent (focus, selection, active tab) */
   --accent: #5b9bff;
@@ -62,15 +62,13 @@
   --synthetic: #5ad1e6;
   --synthetic-bg: rgba(90, 209, 230, 0.10);
 
-  /* Charts: colour-blind-safe (Okabe-Ito, lifted for dark) */
+  /* Charts: Okabe-Ito based, checked under CVD simulation (see DESIGN.md) */
   --chart-1: #56b4e9;
   --chart-2: #e69f00;
-  --chart-3: #00c48c;
+  --chart-3: #b26d3e;
   --chart-4: #f0e442;
   --chart-5: #cc79a7;
-  --chart-6: #ff8c42;
-  --chart-7: #8fa3ff;
-  --chart-8: #b0b7c3;
+  --chart-6: #b0b7c3;
 
   /* Shape + density */
   --radius-sm: 2px;
@@ -109,7 +107,7 @@ header.top {
   height: 36px; padding: 0 16px;
   background: var(--surface-1); border-bottom: 1px solid var(--border);
 }
-.logo { font: 600 13px var(--font-mono); color: var(--accent); letter-spacing: .08em; }
+.logo { font: 600 13px var(--font-mono); color: var(--fg); letter-spacing: .08em; }
 header.top nav { display: flex; gap: 2px; }
 header.top nav a {
   color: var(--fg-2); text-decoration: none; padding: 0 10px; height: 36px;
@@ -131,8 +129,8 @@ p.lede { color: var(--fg-2); margin: 0; max-width: 72ch; }
 .g-4 { grid-template-columns: repeat(4, 1fr); }
 .g-3 { grid-template-columns: repeat(3, 1fr); }
 .g-2 { grid-template-columns: repeat(2, 1fr); }
-.g-8 { grid-template-columns: repeat(8, 1fr); }
-@media (max-width: 860px) { .g-4, .g-3, .g-2 { grid-template-columns: 1fr 1fr; } .g-8 { grid-template-columns: repeat(4,1fr); } }
+.g-6 { grid-template-columns: repeat(6, 1fr); }
+@media (max-width: 860px) { .g-4, .g-3, .g-2 { grid-template-columns: 1fr 1fr; } .g-6 { grid-template-columns: repeat(3,1fr); } }
 
 /* ---------- swatches ---------- */
 .sw { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface-1); }
@@ -175,7 +173,7 @@ td .name { color: var(--fg-3); margin-left: 8px; font-size: 12px; }
 /* ---------- chips / badges ---------- */
 .chg { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; height: 18px; border-radius: var(--radius-sm); font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
 .chg.up { background: var(--up-bg); } .chg.down { background: var(--down-bg); } .chg.unch { background: var(--unch-bg); }
-.badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: var(--radius-sm); font: 500 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--border-strong); color: var(--fg-2); }
+.badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: var(--radius-sm); font: 500 11px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--border-strong); color: var(--fg-2); }
 .badge.ai { color: var(--ai); background: var(--ai-bg); border-color: rgba(179,155,255,.4); }
 .badge.syn { color: var(--synthetic); background: var(--synthetic-bg); border: 1px dashed rgba(90,209,230,.55); }
 .badge.info { color: var(--info); border-color: rgba(159,179,200,.45); }
@@ -199,14 +197,14 @@ input.field {
   background: var(--surface-0); border: 1px solid var(--control-border); color: var(--fg); font: 400 13px var(--font-mono);
 }
 input.field::placeholder { color: var(--fg-3); }
-kbd { font: 500 10.5px var(--font-mono); padding: 1px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); color: var(--fg-2); background: var(--surface-2); }
+kbd { font: 500 11px var(--font-mono); padding: 1px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); color: var(--fg-2); background: var(--surface-2); }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 /* ---------- ticker strip ---------- */
 .strip { display: flex; overflow: hidden; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .strip > div { flex: 1; min-width: 0; padding: 6px 12px; border-right: 1px solid var(--border); }
 .strip > div:last-child { border-right: 0; }
-.strip .lbl { font: 500 10.5px var(--font-ui); color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; }
+.strip .lbl { font: 500 11px var(--font-ui); color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; }
 .strip .val { font: 600 15px var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ---------- type specimen ---------- */
@@ -220,7 +218,7 @@ kbd { font: 500 10.5px var(--font-mono); padding: 1px 5px; border: 1px solid var
 .sparkbar i { flex: 1; }
 
 /* ---------- section examples ---------- */
-.ex-label { font: 500 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--fg-3); margin: 14px 0 6px; }
+.ex-label { font: 500 11px var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--fg-3); margin: 14px 0 6px; }
 .layers { background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; }
 .layers .l1 { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; }
 .layers .l2 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-top: 8px; }
@@ -358,8 +356,8 @@ svg text { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-3); }
       <span style="color:var(--fg-3);font-size:12px">Dashed border marks anything that is not live market data.</span></div>
   </div>
 
-  <h2>Chart series (Okabe-Ito based, not yet simulator-tested)</h2>
-  <div class="grid g-8" id="charts"></div>
+  <h2>Chart series (Okabe-Ito based, CVD-simulated: see DESIGN.md)</h2>
+  <div class="grid g-6" id="charts"></div>
   <div class="ex-label">Example: line chart, TradingView style (hover for crosshair; right price axis, last-price tag, volume pane)</div>
   <div class="panel"><div class="ph tvhead">
       <span class="sym">TENAGA</span><span class="dim">Tenaga Nasional &middot; 1D &middot; MYX</span>
@@ -396,7 +394,7 @@ svg text { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-3); }
     <div><div class="lbl">FBM KLCI</div><div class="val">1,642.18</div><span class="chg up">&#9650; +0.42%</span></div>
     <div><div class="lbl">FBM 100</div><div class="val">11,904.55</div><span class="chg up">&#9650; +0.31%</span></div>
     <div><div class="lbl">FBM ACE</div><div class="val">4,718.02</div><span class="chg down">&#9660; -0.66%</span></div>
-    <div><div class="lbl">Volume</div><div class="val">3.42B</div><span class="chg unch">&#9644; 0.0%</span></div>
+    <div><div class="lbl">Volume</div><div class="val">3.42B</div><span style="color:var(--fg-3);font:400 12px var(--font-mono)">shares traded</span></div>
     <div><div class="lbl">Up / Down</div><div class="val"><span class="up">612</span> <span style="color:var(--fg-3)">/</span> <span class="down">488</span></div></div>
   </div>
 
@@ -406,11 +404,11 @@ svg text { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-3); }
       <table>
         <thead><tr><th>Symbol</th><th class="num">Last</th><th class="num">Chg</th><th class="num">%</th><th class="num">Volume</th></tr></thead>
         <tbody>
-          <tr><td><span class="code">MAYBANK</span><span class="name">Malayan Banking</span></td><td class="num">10.420</td><td class="num up">+0.180</td><td class="num"><span class="chg up">+1.76%</span></td><td class="num">12,480,300</td></tr>
-          <tr class="sel"><td><span class="code">TENAGA</span><span class="name">Tenaga Nasional</span></td><td class="num">14.880</td><td class="num up">+0.220</td><td class="num"><span class="chg up">+1.50%</span></td><td class="num">8,102,900</td></tr>
-          <tr><td><span class="code">PCHEM</span><span class="name">Petronas Chemicals</span></td><td class="num">4.630</td><td class="num down">-0.090</td><td class="num"><span class="chg down">-1.91%</span></td><td class="num">5,774,100</td></tr>
-          <tr><td><span class="code">SDPLNT</span><span class="name">Sime Darby Plantation</span></td><td class="num">4.920</td><td class="num down">-0.060</td><td class="num"><span class="chg down">-1.20%</span></td><td class="num">2,310,000</td></tr>
-          <tr><td><span class="code">PBBANK</span><span class="name">Public Bank</span></td><td class="num">4.410</td><td class="num unch">0.000</td><td class="num"><span class="chg unch">0.00%</span></td><td class="num">9,640,500</td></tr>
+          <tr><td><span class="code">MAYBANK</span><span class="name">Malayan Banking</span></td><td class="num">10.420</td><td class="num up">+0.180</td><td class="num"><span class="chg up">&#9650; +1.76%</span></td><td class="num">12,480,300</td></tr>
+          <tr class="sel"><td><span class="code">TENAGA</span><span class="name">Tenaga Nasional</span></td><td class="num">14.880</td><td class="num up">+0.220</td><td class="num"><span class="chg up">&#9650; +1.50%</span></td><td class="num">8,102,900</td></tr>
+          <tr><td><span class="code">PCHEM</span><span class="name">Petronas Chemicals</span></td><td class="num">4.630</td><td class="num down">-0.090</td><td class="num"><span class="chg down">&#9660; -1.91%</span></td><td class="num">5,774,100</td></tr>
+          <tr><td><span class="code">SDPLNT</span><span class="name">Sime Darby Plantation</span></td><td class="num">4.920</td><td class="num down">-0.060</td><td class="num"><span class="chg down">&#9660; -1.20%</span></td><td class="num">2,310,000</td></tr>
+          <tr><td><span class="code">PBBANK</span><span class="name">Public Bank</span></td><td class="num">4.410</td><td class="num unch">0.000</td><td class="num"><span class="chg unch">&#9644; 0.00%</span></td><td class="num">9,640,500</td></tr>
         </tbody>
       </table>
     </div>
@@ -433,7 +431,7 @@ svg text { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-3); }
     <span style="color:var(--fg-3)">Press <kbd>/</kbd> to search, <kbd>g</kbd> <kbd>s</kbd> for screener</span>
   </div>
 
-  <h2>Contrast (WCAG, computed live from the tokens above)</h2>
+  <h2>Contrast (WCAG, computed live; tinted fills blended onto their parent surface)</h2>
   <div class="panel"><table id="contrast"><thead><tr><th>Foreground</th><th>Background</th><th class="num">Ratio</th><th>Needs</th><th>Result</th></tr></thead><tbody></tbody></table></div>
 </main>
 
@@ -447,9 +445,9 @@ function swatches(el, items) {
     return `<div class="sw"><div class="chip" style="background:${val};color:${fg||'var(--fg)'}">${val}</div><div class="meta"><b>${name}</b></div></div>`;
   }).join('');
 }
-swatches('surfaces', [['--surface-0'],['--surface-1'],['--surface-2'],['--surface-3'],['--border'],['--border-strong']]);
+swatches('surfaces', [['--surface-0'],['--surface-1'],['--surface-2'],['--surface-3'],['--border'],['--border-strong'],['--control-border'],['--accent-soft']]);
 swatches('text', [['--fg','#000'],['--fg-2','#000'],['--fg-3','#000'],['--accent','var(--accent-fg)']]);
-document.getElementById('charts').innerHTML = [1,2,3,4,5,6,7,8].map(i =>
+document.getElementById('charts').innerHTML = [1,2,3,4,5,6].map(i =>
   `<div class="sw"><div class="chip" style="background:var(--chart-${i});color:#000">${v('--chart-'+i)}</div><div class="meta"><b>--chart-${i}</b></div></div>`).join('');
 
 function replay() {
@@ -460,29 +458,43 @@ function replay() {
   }
 }
 
-// contrast
-const lum = hex => {
-  const [r,g,b] = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
-    .map(c => c <= .03928 ? c/12.92 : ((c+.055)/1.055)**2.4);
+// contrast. Specs: '--token' or '--tint@--parent' (a translucent token blended onto its parent).
+const parse = c => c.startsWith('#')
+  ? { rgb: [1,3,5].map(i => parseInt(c.slice(i,i+2),16)), a: 1 }
+  : (m => ({ rgb: m.slice(0,3), a: m[3] === undefined ? 1 : m[3] }))(c.match(/[\d.]+/g).map(Number));
+const resolve = spec => {
+  const [t, parent] = spec.split('@');
+  const { rgb, a } = parse(v(t));
+  if (a === 1) return rgb;
+  const bg = resolve(parent);
+  return rgb.map((c,i) => Math.round(c*a + bg[i]*(1-a)));
+};
+const lum = rgb => {
+  const [r,g,b] = rgb.map(c => c/255).map(c => c <= .03928 ? c/12.92 : ((c+.055)/1.055)**2.4);
   return .2126*r + .7152*g + .0722*b;
 };
-const ratio = (a,b) => { const [x,y] = [lum(a),lum(b)].sort((p,q)=>q-p); return (x+.05)/(y+.05); };
+const ratio = (a,b) => { const [x,y] = [lum(resolve(a)),lum(resolve(b))].sort((p,q)=>q-p); return (x+.05)/(y+.05); };
+const T = 4.5, U = 3.0;
 const pairs = [
-  ['--fg','--surface-0',4.5],['--fg','--surface-3',4.5],
-  ['--fg-2','--surface-1',4.5],['--fg-2','--surface-3',4.5],
-  ['--fg-3','--surface-0',4.5],['--fg-3','--surface-1',4.5],['--fg-3','--surface-2',4.5],
-  ['--up','--surface-1',4.5],['--up','--surface-3',4.5],
-  ['--down','--surface-1',4.5],['--down','--surface-3',4.5],
-  ['--unch','--surface-1',4.5],
-  ['--accent','--surface-1',4.5],['--accent-fg','--accent',4.5],
-  ['--info','--surface-1',4.5],['--warn','--surface-1',4.5],['--danger','--surface-1',4.5],
-  ['--ai','--surface-1',4.5],['--synthetic','--surface-1',4.5],
-  ['--control-border','--surface-1',3.0],
+  ['--fg','--surface-0',T],['--fg','--surface-3',T],
+  ['--fg-2','--surface-1',T],['--fg-2','--surface-3',T],['--fg-2','--accent-soft@--surface-1',T],
+  ['--fg-3','--surface-0',T],['--fg-3','--surface-1',T],['--fg-3','--surface-2',T],['--fg-3','--surface-3',T],
+  ['--fg-3','--accent-soft@--surface-1',T],['--fg-3','--ai-bg@--surface-1',T],['--fg-3','--synthetic-bg@--surface-1',T],
+  ['--up','--surface-1',T],['--up','--surface-3',T],['--up','--up-bg@--surface-1',T],['--up','--accent-soft@--surface-1',T],
+  ['--down','--surface-1',T],['--down','--surface-3',T],['--down','--down-bg@--surface-1',T],['--down','--accent-soft@--surface-1',T],
+  ['--unch','--surface-1',T],['--unch','--surface-3',T],['--unch','--unch-bg@--surface-1',T],
+  ['--accent','--surface-1',T],['--accent','--accent-soft@--surface-1',T],['--accent','--accent-soft@--surface-2',T],['--accent-fg','--accent',T],
+  ['--info','--surface-1',T],['--warn','--surface-1',T],['--danger','--surface-1',T],
+  ['--ai','--ai-bg@--surface-1',T],['--synthetic','--synthetic-bg@--surface-1',T],
+  ['--surface-0','--up',T],['--surface-0','--down',T],['--surface-0','--chart-1',T],
+  ['--control-border','--surface-0',U],['--control-border','--surface-1',U],['--control-border','--surface-2',U],['--control-border','--surface-3',U],
+  ['--chart-1','--surface-1',U],['--chart-2','--surface-1',U],['--chart-3','--surface-1',U],
+  ['--chart-4','--surface-1',U],['--chart-5','--surface-1',U],['--chart-6','--surface-1',U],
 ];
 document.querySelector('#contrast tbody').innerHTML = pairs.map(([f,b,need]) => {
-  const r = ratio(v(f), v(b));
+  const r = ratio(f, b);
   const ok = r >= need;
-  return `<tr><td class="mono">${f}</td><td class="mono">${b}</td><td class="num">${r.toFixed(2)}:1</td><td class="num" style="text-align:left">${need}:1${need===3?' (UI)':''}</td><td class="${ok?'ok':'bad'}">${ok?'Pass':'FAIL'}</td></tr>`;
+  return `<tr><td class="mono">${f}</td><td class="mono">${b}</td><td class="num">${r.toFixed(2)}:1</td><td class="num" style="text-align:left">${need}:1${need===U?' (UI)':''}</td><td class="${ok?'ok':'bad'}">${ok?'Pass':'FAIL'}</td></tr>`;
 }).join('');
 
 /* ---------- TradingView-style charts (synthetic, seeded) ---------- */
@@ -542,7 +554,7 @@ document.querySelector('#contrast tbody').innerHTML = pairs.map(([f,b,need]) => 
     }
     const ly = y(last.c);
     g += `<line x1="${L}" x2="${W - R}" y1="${ly}" y2="${ly}" stroke="${lastCol}" stroke-dasharray="3 3" stroke-opacity=".8"/>`;
-    g += `<rect x="${W - R}" y="${ly - 10}" width="${R - 2}" height="20" rx="2" fill="${lastCol}"/><text x="${W - R + 7}" y="${ly + 4}" style="fill:#0b0d10;font-weight:600">${last.c.toFixed(2)}</text>`;
+    g += `<rect x="${W - R}" y="${ly - 10}" width="${R - 2}" height="20" rx="2" fill="${lastCol}"/><text x="${W - R + 7}" y="${ly + 4}" style="fill:var(--surface-0);font-weight:600">${last.c.toFixed(2)}</text>`;
     g += `<g id="xh${uid}" style="display:none;pointer-events:none"><line id="xv${uid}" y1="${T}" y2="${vb}" stroke="var(--fg-3)" stroke-dasharray="4 4"/><line id="xhz${uid}" x1="${L}" x2="${W - R}" stroke="var(--fg-3)" stroke-dasharray="4 4"/>
       <rect id="xpr${uid}" x="${W - R}" width="${R - 2}" height="20" rx="2" fill="var(--surface-3)" stroke="var(--border-strong)"/><text id="xpt${uid}" x="${W - R + 7}" style="fill:var(--fg)"></text>
       <rect id="xdr${uid}" y="${vb + 2}" width="78" height="18" rx="2" fill="var(--surface-3)" stroke="var(--border-strong)"/><text id="xdt${uid}" y="${vb + 15}" text-anchor="middle" style="fill:var(--fg)"></text></g>`;
