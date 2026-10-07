@@ -20,6 +20,7 @@ export const JobName = z.enum([
   'analyze-fundamental',
   'generate-market-brief',
   'summarize-announcement',
+  'analyze-prospectus',
 ]);
 export type JobName = z.infer<typeof JobName>;
 
@@ -81,6 +82,21 @@ export const AnnouncementSummaryPhase = z.enum([
 ]);
 export type AnnouncementSummaryPhase = z.infer<typeof AnnouncementSummaryPhase>;
 
+// Phases for the prospectus at-a-glance job (spec 06, ticket 05; additive).
+// `parsing-document` covers the long (4-11 min CPU) first-run Docling parse;
+// `analyzing-sections` the per-section LLM steps; `synthesizing-watchlist` the
+// what-to-watch reduce over the other four sections.
+export const ProspectusPhase = z.enum([
+  'queued',
+  'fetching-prospectus',
+  'parsing-document',
+  'analyzing-sections',
+  'synthesizing-watchlist',
+  'persisting-artifact',
+  'done',
+]);
+export type ProspectusPhase = z.infer<typeof ProspectusPhase>;
+
 // Union of all phases — used by the generic JobProgress envelope so a single
 // progress shape carries any job type's phase.
 export const Phase = z.enum([
@@ -88,6 +104,7 @@ export const Phase = z.enum([
   ...FundamentalPhase.options,
   ...MarketBriefPhase.options,
   ...AnnouncementSummaryPhase.options,
+  ...ProspectusPhase.options,
 ]);
 export type Phase = z.infer<typeof Phase>;
 

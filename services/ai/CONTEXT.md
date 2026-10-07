@@ -10,7 +10,8 @@ A stateless job **consumer**:
 
 - **JobBus worker (ADR-0001)** — consumes the `analysis` queue
   (`analyze-technical` / `analyze-fundamental`, plus the spec-06 system-triggered
-  showcase jobs `generate-market-brief` / `summarize-announcement`) over Redis;
+  showcase jobs `generate-market-brief` / `summarize-announcement`, and the flagship
+  `analyze-prospectus`) over Redis;
   connection by env (ADR-0006).
 - **Runtime conformance (ADR-0011)** — validates the incoming `JobEnvelope` and
   outgoing `JobResult` against the generated Pydantic v2 models
@@ -18,6 +19,9 @@ A stateless job **consumer**:
 - **Step-based progress (ADR-0007 §4)** — emits `JobProgress` via `job.updateProgress`.
 - **Claim-check (ADR-0004)** — writes the artifact to S3 (LocalStack locally) and
   returns a pointer + thin summary. **Never writes Postgres.**
+- **LLM (ticket 05, prospectus only)** — `llm/` seam (OpenRouter via httpx, env
+  `OPENROUTER_API_KEY` / `LLM_MODEL`); no key ⇒ clean terminal job failure. Per-doc
+  cost guard (~$2). Tests use `FakeLLMClient`, never the network.
 - **LangGraph stub (ADR-0003 scope)** — trivial 3-node graph; no real TA/FA logic yet.
 - **Structured logging (ADR-0010)** — JSON to stdout, `correlationId` on every line.
 
@@ -34,6 +38,7 @@ Real TA/FA indicator/metric logic is a later feature effort, explicitly out of s
 
 - **Handler** — the pure path: validate → graph → claim-check → `JobResult`.
 - **Worker** — the BullMQ adapter around the handler (entrypoint `tuju-ai-worker`).
+- **At-a-glance** — the prospectus artifact: 5 sections + Shariah/cornerstone insights.
 - **Claim-check** — the S3 pointer pattern that keeps large artifacts out of the queue.
 
 ## Commands

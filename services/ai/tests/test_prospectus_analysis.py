@@ -1,0 +1,275 @@
+"""Unit tests for the prospectus LLM analysis (spec 06, ticket 05).
+
+Everything runs against ``FakeLLMClient`` — NO network, NO infra.
+"""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from prospectus_helpers import make_parse, ipo_reference
+from tuju_ai.llm import CostTracker, FakeLLMClient, Message, Usage
+from tuju_ai.llm.cost import CostCeilingExceeded, load_price_table
+from tuju_ai.prospectus.analysis import (
+    MalformedModelOutput,
+    analyze_prospectus,
+    extract_json,
+)
+from tuju_ai.prospectus.analysis_models import IpoReference
+from tuju_ai.prospectus.budget import (
+    SECTION_CHAR_BUDGET,
+    cornerstone_context,
+    fit_section,
+)
+from tuju_ai.prospectus.router import route_sections
+
+pytestmark = pytest.mark.unit
+
+
+def _run(client: FakeLLMClient | None = None, *, shariah: str | None = "compliant", parse=None, ceiling: float = 2.0):
+    client = client or FakeLLMClient()
+    parse = parse or make_parse()
+    tracker = CostTracker(
+        model=client.model, ceiling_usd=ceiling, price_table=load_price_table()
+    )
+    steps: list[str] = []
+    artifact = analyze_prospectus(
+        prospectus_id="p1",
+        reference=IpoReference.model_validate(ipo_reference(shariahStatus=shariah)),
+        parse=parse,
+        routed=route_sections(parse),
+        client=client,
+        tracker=tracker,
+        on_step=steps.append,
+    )
+    return artifact, client, tracker, steps
+
+
+def test_all_five_sections_and_both_insights_present() -> None:
+    artifact, _client, _tracker, steps = _run()
+
+    assert set(artifact["sections"]) == {
+        "offer", "business", "financials", "riskFactors", "whatToWatch",
+    }
+    assert set(artifact["insights"]) == {"shariah", "cornerstone"}
+    assert artifact["sections"]["offer"]["data"]["useOfProceeds"]
+    assert len(artifact["sections"]["business"]["data"]["lines"]) == 3
+    assert artifact["sections"]["riskFactors"]["data"]["themes"][0]["rank"] == 1
+    assert artifact["insights"]["shariah"]["status"] == "compliant"
+    assert artifact["insights"]["cornerstone"]["present"] is True
+    assert artifact["insights"]["cornerstone"]["investors"]
+    assert artifact["provenance"]["source"] == "real"
+    assert artifact["headline"] == artifact["sections"]["whatToWatch"]["data"]["headline"]
+    assert steps == [
+        "offer", "business", "financials", "risk-factors",
+        "cornerstone-investors", "what-to-watch",
+    ]
+
+
+def test_what_to_watch_is_a_reduce_over_the_four_section_outputs() -> None:
+    artifact, client, _t, _s = _run()
+    watch_call = client.calls[client.steps.index("what-to-watch")]
+    joined = "\n".join(m.content for m in watch_call)
+
+    # The reduce prompt embeds the four structured outputs ...
+    marker = "SECTION_OUTPUTS:\n"
+    payload, _ = json.JSONDecoder().raw_decode(joined[joined.index(marker) + len(marker):])
+    assert set(payload) == {"offer", "business", "financials", "riskFactors"}
+    assert payload["riskFactors"] == artifact["sections"]["riskFactors"]["data"]
+    # ... and NOT the raw document text.
+    assert "150,000,000 shares at RM0.50" not in joined
+    # The fake derives the headline from the top-ranked risk theme it was handed.
+    assert "customer concentration" in artifact["headline"].lower()
+    assert artifact["sections"]["whatToWatch"]["derivedFrom"] == [
+        "offer", "business", "financials", "riskFactors",
+    ]
+
+
+def test_located_vs_fallback_is_recorded_per_section() -> None:
+    artifact, _c, _t, _s = _run()
+    sections = artifact["sections"]
+    for name in ("offer", "business", "financials"):
+        assert sections[name]["routing"]["source"] == "located"
+        assert sections[name]["routing"]["located"] is True
+    # make_parse() has no risk-factors heading ⇒ explicit whole-document fallback.
+    risk = sections["riskFactors"]["routing"]
+    assert risk["source"] == "fallback" and risk["located"] is False
+    assert risk["routedChars"] > 0 and risk["inputChars"] > 0
+
+
+def test_malformed_json_gets_one_retry_then_succeeds() -> None:
+    client = FakeLLMClient(garbage_first={"offer": 1})
+    artifact, client, _t, _s = _run(client)
+    assert client.steps.count("offer") == 2  # bad reply + one retry
+    assert artifact["sections"]["offer"]["data"]["priceRange"] == "RM0.50 per share"
+    # the retry re-sends the same shared prefix first (cache-friendly) + feedback
+    first, second = [c for c, s in zip(client.calls, client.steps) if s == "offer"]
+    assert second[:3] == first[:3] or second[:2] == first[:2]
+    assert "could not be used" in second[-1].content
+
+
+def test_malformed_json_twice_is_a_clear_failure() -> None:
+    client = FakeLLMClient(garbage_first={"business": 2})
+    with pytest.raises(MalformedModelOutput, match="business"):
+        _run(client)
+    assert client.steps.count("business") == 2  # bounded: exactly one retry
+
+
+def test_schema_violation_counts_as_malformed() -> None:
+    class BadRisk(FakeLLMClient):
+        def complete(self, messages, **kw):  # type: ignore[override]
+            resp = super().complete(messages, **kw)
+            if self.steps[-1] == "risk-factors":
+                return type(resp)(text='{"themes": []}', usage=resp.usage, model=resp.model)
+            return resp
+
+    with pytest.raises(MalformedModelOutput, match="risk-factors"):
+        _run(BadRisk())
+
+
+def test_shariah_tolerates_absent_and_unknown() -> None:
+    absent, *_ = _run(shariah=None)
+    assert absent["insights"]["shariah"]["status"] == "unknown"
+    assert absent["insights"]["shariah"]["source"] == "unavailable"
+    unknown, *_ = _run(shariah="unknown")
+    assert unknown["insights"]["shariah"]["status"] == "unknown"
+
+
+def test_cornerstone_skips_llm_when_never_mentioned() -> None:
+    parse = make_parse(with_cornerstone=False)
+    assert cornerstone_context(parse) is None
+    artifact, client, _t, _s = _run(parse=parse)
+    assert "cornerstone-investors" not in client.steps
+    assert artifact["insights"]["cornerstone"]["present"] is False
+    assert artifact["insights"]["cornerstone"]["llmCalled"] is False
+
+
+def test_message_order_is_shared_prefix_first() -> None:
+    _a, client, _t, _s = _run()
+    for msgs in client.calls:
+        assert msgs[0].role == "system" and msgs[0].cache  # shared system prefix
+    sec_calls = [c for c, s in zip(client.calls, client.steps) if s == "offer"]
+    assert sec_calls[0][1].cache  # document context is the cacheable 2nd block
+    assert sec_calls[0][-1].content.startswith("[step:offer]")  # task last
+
+
+# --- budget ----------------------------------------------------------------
+
+
+def test_fallback_section_is_bounded_to_the_budget() -> None:
+    para = "Revenue of RM1 million was recorded in the financial year.\n\n"
+    filler = "Lorem ipsum dolor sit amet consectetur.\n\n"
+    whole = (filler * 20000) + (para * 50) + (filler * 20000)  # ~1.6M chars
+    assert len(whole) > 5 * SECTION_CHAR_BUDGET
+    fitted = fit_section("financials", whole, located=False)
+    assert fitted.truncated and fitted.input_chars <= SECTION_CHAR_BUDGET + 1000
+    assert "Revenue of RM1 million" in fitted.text  # relevance-selected, not head-only
+
+
+def test_located_section_keeps_head_and_tail_with_marker() -> None:
+    body = "\n\n".join(f"paragraph {i} " + "x" * 200 for i in range(2000))
+    fitted = fit_section("business", body, located=True, budget=50_000)
+    assert fitted.truncated and len(fitted.text) <= 51_000
+    assert fitted.text.startswith("paragraph 0 ")
+    assert "paragraph 1999 " in fitted.text
+    assert "characters omitted" in fitted.text
+
+
+def test_whole_document_fallback_sections_stay_bounded_end_to_end() -> None:
+    from tuju_ai.prospectus.models import Block, Heading, ProspectusParse
+
+    # 600k-char document with NO recognisable headings ⇒ all four sections fall back.
+    blocks = [
+        Block(kind="text", text=f"Paragraph {i}: revenue risk shares. " + "y" * 400, headingIndex=0)
+        for i in range(1400)
+    ]
+    parse = ProspectusParse(
+        pdfSha256="0" * 64,
+        headings=[Heading(text="Front matter", level=1, index=0)],
+        blocks=blocks,
+    )
+    artifact, client, _t, _s = _run(parse=parse)
+    for name in ("offer", "business", "financials", "riskFactors"):
+        routing = artifact["sections"][name]["routing"]
+        assert routing["source"] == "fallback" and routing["routedChars"] > 500_000
+        assert routing["truncated"] is True
+        assert routing["inputChars"] <= SECTION_CHAR_BUDGET
+    for msgs, step in zip(client.calls, client.steps):
+        assert sum(len(m.content) for m in msgs) <= SECTION_CHAR_BUDGET + 10_000, step
+
+
+def test_small_section_is_untouched() -> None:
+    fitted = fit_section("offer", "short text", located=True)
+    assert fitted.text == "short text" and not fitted.truncated
+
+
+# --- cost guard ----------------------------------------------------------------
+
+
+def test_realistic_run_stays_well_under_the_2_usd_ceiling() -> None:
+    # Worst-case-sized fake usage per call: a maxed-out 240k-char section
+    # (~80k tokens in) + full output, for every one of the 6 LLM steps.
+    usage = Usage(prompt_tokens=80_000, completion_tokens=3_000)
+    artifact, _c, tracker, _s = _run(FakeLLMClient(model="google/gemini-2.5-flash", usage=usage))
+    cost = artifact["cost"]
+    assert cost["calls"] == 6
+    assert cost["promptTokens"] == 6 * 80_000
+    assert 0 < cost["estimatedCostUsd"] < 2.0
+    assert cost["estimatedCostUsd"] < 0.5  # Flash is cheap: ~0.18 here
+    assert cost["ceilingUsd"] == 2.0
+    assert tracker.spent_usd == pytest.approx(cost["estimatedCostUsd"])
+
+
+def test_every_builtin_model_fits_the_ceiling_at_worst_case_budget() -> None:
+    """The documented input budget (budget.py) fits $2/doc even on Sonnet."""
+    from tuju_ai.prospectus.budget import CORNERSTONE_CHAR_BUDGET
+    from tuju_ai.llm.cost import CHARS_PER_TOKEN_ESTIMATE, DEFAULT_PRICE_TABLE, usage_cost_usd
+
+    worst_in = (4 * SECTION_CHAR_BUDGET + CORNERSTONE_CHAR_BUDGET) // CHARS_PER_TOKEN_ESTIMATE
+    worst_out = 5 * 3000 + 1500
+    for model, price in DEFAULT_PRICE_TABLE.items():
+        # +10% for prompts/system overhead and the reduce input.
+        cost = usage_cost_usd(Usage(int(worst_in * 1.1), worst_out), price)
+        assert cost < 2.0, f"{model} worst-case ${cost:.2f} breaches the ceiling"
+
+
+def test_cost_guard_aborts_mid_run_when_usage_exceeds_the_ceiling() -> None:
+    # Each call reports $-heavy usage; the ceiling trips after a few steps.
+    usage = Usage(prompt_tokens=1_000_000, completion_tokens=100_000)
+    client = FakeLLMClient(model="google/gemini-2.5-flash", usage=usage)
+    with pytest.raises(CostCeilingExceeded):
+        _run(client)
+    # Aborted mid-run: later steps never ran (no spend on the reduce).
+    assert "what-to-watch" not in client.steps
+    assert len(client.steps) < 6
+
+
+def test_cost_guard_refuses_a_call_projected_to_cross_the_ceiling() -> None:
+    client = FakeLLMClient()
+    tracker = CostTracker(model="anthropic/claude-sonnet-4.5", ceiling_usd=0.01)
+    huge = [Message("user", "x" * 3_000_000 + "[step:offer]")]
+    with pytest.raises(CostCeilingExceeded, match="projected"):
+        tracker.call(client, "offer", huge, max_tokens=3000)
+    assert client.calls == []  # refused BEFORE paying for the call
+
+
+def test_unknown_model_is_priced_conservatively() -> None:
+    t = CostTracker(model="mystery/model", ceiling_usd=10.0)
+    t.record("x", Usage(prompt_tokens=1_000_000, completion_tokens=0))
+    assert t.spent_usd == pytest.approx(3.0)  # the priciest known input rate (Sonnet)
+
+
+def test_price_table_override_is_honoured_and_validated() -> None:
+    table = load_price_table('{"x/y": {"input": 1, "output": 2, "cachedInput": 0.5}}')
+    assert table["x/y"].cached_input == 0.5
+    with pytest.raises(ValueError):
+        load_price_table("not json")
+
+
+def test_extract_json_tolerates_fences_and_prose() -> None:
+    assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
+    assert extract_json('Here you go: {"a": 2} hope that helps') == {"a": 2}
+    with pytest.raises(ValueError):
+        extract_json("no json at all")

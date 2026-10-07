@@ -150,6 +150,11 @@ services:
       # The market-brief/announcement-summary jobs read via the NestJS API
       # (ADR-0004 stateless reader) rather than touching Postgres directly.
       BACKEND_API_URL: http://backend:3000
+      # analyze-prospectus LLM (OpenRouter). Empty by default ⇒ that job fails
+      # cleanly (terminal) with a clear message; supply the key from your shell
+      # or an untracked .env (`OPENROUTER_API_KEY=... docker compose up`).
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-google/gemini-2.5-flash}
     depends_on:
       redis:
         condition: service_healthy

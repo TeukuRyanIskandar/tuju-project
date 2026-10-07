@@ -54,7 +54,7 @@ class JobProgress(BaseModel):
     )
     stepIndex: conint(ge=0, le=9007199254740991)
     stepTotal: conint(ge=0, le=9007199254740991) | None
-    phase: Literal['queued', 'fetching-market-data', 'computing-indicators', 'synthesizing-verdict', 'persisting-artifact', 'done', 'fetching-financials', 'computing-metrics', 'drafting-narrative', 'fetching-announcement', 'summarizing']
+    phase: Literal['queued', 'fetching-market-data', 'computing-indicators', 'synthesizing-verdict', 'persisting-artifact', 'done', 'fetching-financials', 'computing-metrics', 'drafting-narrative', 'fetching-announcement', 'summarizing', 'fetching-prospectus', 'parsing-document', 'analyzing-sections', 'synthesizing-watchlist']
     label: str
     at: AwareDatetime
 
@@ -63,6 +63,13 @@ class MarketBriefPayload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
+
+
+class ProspectusPayload(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    prospectusId: constr(min_length=1)
 
 
 class Summary(BaseModel):
@@ -133,6 +140,17 @@ class MarketBriefJobEnvelope(BaseModel):
     trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: MarketBriefPayload
+
+
+class ProspectusJobEnvelope(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    correlationId: UUID
+    requestedBy: constr(min_length=1)
+    trigger: Literal['user', 'price-move', 'system']
+    asOf: AwareDatetime
+    payload: ProspectusPayload
 
 
 class TechnicalJobEnvelope(BaseModel):

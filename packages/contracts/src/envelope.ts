@@ -4,6 +4,7 @@ import {
   AnnouncementSummaryPayload,
   FundamentalPayload,
   MarketBriefPayload,
+  ProspectusPayload,
   TechnicalPayload,
 } from './payloads.js';
 
@@ -69,3 +70,9 @@ export const AnnouncementSummaryJobEnvelope = JobEnvelope(
 export type AnnouncementSummaryJobEnvelope = z.infer<
   typeof AnnouncementSummaryJobEnvelope
 >;
+
+// Prospectus at-a-glance envelope (spec 06, ticket 05; additive).
+export const ProspectusJobEnvelope = JobEnvelope(ProspectusPayload).meta({
+  id: 'ProspectusJobEnvelope',
+});
+export type ProspectusJobEnvelope = z.infer<typeof ProspectusJobEnvelope>;

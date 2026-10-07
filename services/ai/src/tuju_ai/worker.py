@@ -29,9 +29,14 @@ from .config import QUEUE_ANALYSIS, Settings
 from .contracts_generated import JobProgress
 from .handler import TerminalJobError, handle_job
 from .logging_config import configure_logging, get_logger
+from .prospectus.job import ProspectusRuntime, build_prospectus_runtime
 
 
-def _make_processor(artifact_store: ArtifactStore, backend_client: BackendClient):
+def _make_processor(
+    artifact_store: ArtifactStore,
+    backend_client: BackendClient,
+    prospectus_runtime: ProspectusRuntime | None = None,
+):
     """Build the async BullMQ processor bound to the given artifact/backend clients."""
 
     async def process(job: Any, token: str) -> dict:
@@ -46,12 +51,20 @@ def _make_processor(artifact_store: ArtifactStore, backend_client: BackendClient
             asyncio.run_coroutine_threadsafe(report_progress(progress), loop)
 
         try:
-            result = handle_job(
+            # handle_job is sync and can block for MINUTES (the first-run
+            # Docling parse of analyze-prospectus is 4-11 min of CPU). Run it
+            # in a thread so this event loop stays free to renew the BullMQ
+            # job lock (bullmq's LockManager is an asyncio task on this loop)
+            # and to flush progress updates. Blocking the loop here would let
+            # the lock lapse and the job be re-queued as "stalled".
+            result = await asyncio.to_thread(
+                handle_job,
                 job.name,
                 job.data,
                 artifact_store=artifact_store,
                 report_progress=sync_report,
                 backend_client=backend_client,
+                prospectus_runtime=prospectus_runtime,
             )
         except TerminalJobError as exc:
             # Fail fast, no retry (ADR-0007 §6).
@@ -70,6 +83,12 @@ async def run() -> None:
     settings = Settings.from_env()
     artifact_store = ArtifactStore(settings)
     backend_client = HttpBackendClient(settings.backend_api_url)
+    prospectus_runtime = build_prospectus_runtime(settings)
+    if prospectus_runtime.llm_client is None:
+        log.warning(
+            "worker.llm_not_configured",
+            extra={"detail": "OPENROUTER_API_KEY unset: analyze-prospectus jobs will fail terminally"},
+        )
 
     log.info(
         "worker.boot",
@@ -77,8 +96,13 @@ async def run() -> None:
     )
     worker = Worker(
         QUEUE_ANALYSIS,
-        _make_processor(artifact_store, backend_client),
-        {"connection": settings.redis_url},
+        _make_processor(artifact_store, backend_client, prospectus_runtime),
+        {
+            "connection": settings.redis_url,
+            # Generous lock for the long analyze-prospectus job (renewed every
+            # lockDuration/2 by bullmq's LockManager while the thread runs).
+            "lockDuration": settings.worker_lock_duration_ms,
+        },
     )
 
     stop = asyncio.Event()

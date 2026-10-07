@@ -47,3 +47,14 @@ export const AnnouncementSummaryPayload = z
   })
   .meta({ id: 'AnnouncementSummaryPayload' });
 export type AnnouncementSummaryPayload = z.infer<typeof AnnouncementSummaryPayload>;
+
+// Prospectus at-a-glance payload (spec 06, ticket 05): anchoring id only. The
+// worker fetches the IPO reference row (NestJS read API) and the stored PDF
+// (S3) itself (ADR-0004) — no document content rides the queue. `prospectusId`
+// is the `IpoListing.id` (uuid-ish string, deliberately not `z.uuid()`-strict).
+export const ProspectusPayload = z
+  .object({
+    prospectusId: z.string().min(1),
+  })
+  .meta({ id: 'ProspectusPayload' });
+export type ProspectusPayload = z.infer<typeof ProspectusPayload>;

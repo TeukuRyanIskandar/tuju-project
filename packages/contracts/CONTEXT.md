@@ -28,7 +28,8 @@ package emits (ADR-0008).
 - **JobProgress** — step-based progress emitted via `job.updateProgress` (ADR-0007 §4).
 - **JobName** — the discriminant (`analyze-technical` / `analyze-fundamental`,
   plus the spec-06 system-triggered showcase jobs `generate-market-brief` /
-  `summarize-announcement`).
+  `summarize-announcement`, and the prospectus at-a-glance `analyze-prospectus`
+  with `ProspectusPayload = { prospectusId }`).
 
 ## Commands
 

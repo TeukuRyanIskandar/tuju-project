@@ -9,6 +9,7 @@ import {
   JobProgress,
   JobResult,
   MarketBriefJobEnvelope,
+  ProspectusJobEnvelope,
   TechnicalJobEnvelope,
 } from '../src/index.js';
 
@@ -62,6 +63,16 @@ describe('golden fixtures conform to the Zod contract', () => {
       ),
     ).not.toThrow();
   });
+
+  it('prospectus-job-envelope.json', () => {
+    expect(() =>
+      ProspectusJobEnvelope.parse(load('prospectus-job-envelope.json')),
+    ).not.toThrow();
+  });
+
+  it('job-result-prospectus.json (verdict-less summary)', () => {
+    expect(() => JobResult.parse(load('job-result-prospectus.json'))).not.toThrow();
+  });
 });
 
 describe('the contract rejects malformed payloads', () => {
@@ -87,6 +98,24 @@ describe('the system trigger and verdict-less summary', () => {
   it('rejects a SystemSummary missing its required headline', () => {
     const good = load('job-result-system.json') as { summary: Record<string, unknown> };
     const bad = { ...good, summary: { ...good.summary, headline: undefined } };
+    expect(() => JobResult.parse(bad)).toThrow();
+  });
+});
+
+describe('the prospectus job', () => {
+  it('rejects a prospectus payload missing prospectusId', () => {
+    const good = load('prospectus-job-envelope.json') as object;
+    expect(() => ProspectusJobEnvelope.parse({ ...good, payload: {} })).toThrow();
+  });
+
+  it('accepts the system trigger on the prospectus envelope', () => {
+    const good = load('prospectus-job-envelope.json') as { trigger: string };
+    expect(good.trigger).toBe('system');
+  });
+
+  it('rejects an unknown key on the prospectus result summary', () => {
+    const good = load('job-result-prospectus.json') as { summary: Record<string, unknown> };
+    const bad = { ...good, summary: { ...good.summary, source: 'real' } };
     expect(() => JobResult.parse(bad)).toThrow();
   });
 });

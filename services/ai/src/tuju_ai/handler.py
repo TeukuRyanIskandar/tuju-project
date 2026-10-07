@@ -17,9 +17,12 @@ whatever Postgres-backed context they need via the injected ``BackendClient``
 
 from __future__ import annotations
 
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Iterator
 
+import httpx
 from pydantic import ValidationError
 
 from .announcement_summary import compose_announcement_summary
@@ -28,10 +31,12 @@ from .backend_client import BackendClient
 from .config import (
     ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX,
     JOB_ANALYZE_FUNDAMENTAL,
+    JOB_ANALYZE_PROSPECTUS,
     JOB_ANALYZE_TECHNICAL,
     JOB_GENERATE_MARKET_BRIEF,
     JOB_SUMMARIZE_ANNOUNCEMENT,
     MARKET_BRIEF_JOB_ID_PREFIX,
+    PROSPECTUS_JOB_ID_PREFIX,
 )
 from .contracts_generated import (
     AnnouncementSummaryJobEnvelope,
@@ -39,13 +44,35 @@ from .contracts_generated import (
     JobProgress,
     JobResult,
     MarketBriefJobEnvelope,
+    ProspectusJobEnvelope,
     Summary,
     SystemSummary,
     TechnicalJobEnvelope,
 )
 from .graph import run_analysis
 from .logging_config import get_logger
+from .llm import (
+    CostCeilingExceeded,
+    CostTracker,
+    LLMConfigError,
+    LLMPermanentError,
+)
 from .market_brief import compose_market_brief
+from .prospectus.analysis import (
+    LLM_STEPS,
+    STEP_BUSINESS,
+    STEP_CORNERSTONE,
+    STEP_FINANCIALS,
+    STEP_OFFER,
+    STEP_RISKS,
+    STEP_WATCH,
+    MalformedModelOutput,
+    analyze_prospectus,
+)
+from .prospectus.analysis_models import IpoReference
+from .prospectus.job import MISSING_KEY_MESSAGE, ProspectusRuntime
+from .prospectus.router import route_sections
+from .prospectus.store import ensure_parse
 
 # Injected progress reporter: takes a validated JobProgress. In the worker this
 # maps to BullMQ ``job.updateProgress``; in tests it collects the sequence.
@@ -73,13 +100,16 @@ def handle_job(
     artifact_store: ArtifactStore,
     report_progress: ProgressReporter,
     backend_client: BackendClient,
+    prospectus_runtime: ProspectusRuntime | None = None,
 ) -> JobResult:
     """Process one job and return a contract-valid ``JobResult``.
 
     ``job_name`` selects the envelope model and dispatches to the job
     family's handling. ``raw_envelope`` is the untrusted wire payload.
     ``backend_client`` is only used by the system-triggered showcase jobs
-    (market brief, announcement summary); the TA/FA jobs ignore it.
+    (market brief, announcement summary, prospectus); the TA/FA jobs ignore it.
+    ``prospectus_runtime`` (LLM client, parse fn, cost ceiling) is only used by
+    ``analyze-prospectus``; ``None`` behaves as "no API key configured".
     """
     if job_name in (JOB_ANALYZE_TECHNICAL, JOB_ANALYZE_FUNDAMENTAL):
         return _handle_analysis_job(
@@ -92,6 +122,14 @@ def handle_job(
     if job_name == JOB_SUMMARIZE_ANNOUNCEMENT:
         return _handle_announcement_summary(
             raw_envelope, artifact_store, report_progress, backend_client
+        )
+    if job_name == JOB_ANALYZE_PROSPECTUS:
+        return _handle_prospectus(
+            raw_envelope,
+            artifact_store,
+            report_progress,
+            backend_client,
+            prospectus_runtime or ProspectusRuntime(),
         )
     raise TerminalJobError(f"Unknown job name: {job_name!r}")
 
@@ -296,3 +334,208 @@ def _handle_announcement_summary(
     report_progress(_progress(4, total, "done", "Done"))
     log.info("job.done", extra={"jobId": job_id})
     return result
+
+
+@contextmanager
+def _heartbeat(
+    report: ProgressReporter,
+    make_event: Callable[[], JobProgress],
+    interval: float,
+) -> Iterator[None]:
+    """Re-emit the current step's progress every ``interval`` s while a long
+    blocking step (the 4-11 min first-run Docling parse) runs, so subscribers
+    see the job is alive. Same ``stepIndex``/``phase``, fresh ``at``."""
+    stop = threading.Event()
+
+    def beat() -> None:
+        while not stop.wait(interval):
+            report(make_event())
+
+    thread = threading.Thread(target=beat, name="progress-heartbeat", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+
+# Progress plan for analyze-prospectus (ADR-0007 §4: step-based, fixed phases).
+_PROSPECTUS_STEPS: list[tuple[str, str]] = [
+    ("queued", "Queued"),
+    ("fetching-prospectus", "Fetching prospectus"),
+    ("parsing-document", "Parsing document"),
+    ("analyzing-sections", "Analyzing offer details"),  # STEP_OFFER
+    ("analyzing-sections", "Summarizing the business"),  # STEP_BUSINESS
+    ("analyzing-sections", "Reading financials"),  # STEP_FINANCIALS
+    ("analyzing-sections", "Ranking risk factors"),  # STEP_RISKS
+    ("analyzing-sections", "Finding cornerstone investors"),  # STEP_CORNERSTONE
+    ("synthesizing-watchlist", "Synthesizing what to watch"),  # STEP_WATCH
+    ("persisting-artifact", "Persisting artifact"),
+    ("done", "Done"),
+]
+_PROSPECTUS_TOTAL = len(_PROSPECTUS_STEPS) - 1
+_STEP_INDEX = {
+    STEP_OFFER: 3,
+    STEP_BUSINESS: 4,
+    STEP_FINANCIALS: 5,
+    STEP_RISKS: 6,
+    STEP_CORNERSTONE: 7,
+    STEP_WATCH: 8,
+}
+assert set(_STEP_INDEX) == set(LLM_STEPS)
+
+
+def _handle_prospectus(
+    raw_envelope: dict,
+    artifact_store: ArtifactStore,
+    report_progress: ProgressReporter,
+    backend_client: BackendClient,
+    runtime: ProspectusRuntime,
+) -> JobResult:
+    """Prospectus at-a-glance (spec 06, ticket 05) — verdict-less ``SystemSummary``.
+
+    Flow: validate → (fail fast without an LLM key) → IPO reference row via
+    NestJS → PDF from the corpus prefix in S3 → ``ensure_parse`` (reused across
+    re-runs) → route sections → LLM analysis under the cost guard → claim-check
+    the rich artifact → ``SystemSummary{headline = what-to-watch, asOf}``.
+
+    Failure classes (ADR-0007 §6): unknown IPO / missing PDF / unparseable PDF
+    / no API key / rejected request / cost ceiling / still-malformed model
+    output are TERMINAL; LLM timeouts, rate limits, 5xx and backend blips
+    propagate as ordinary exceptions and are retried by BullMQ.
+    """
+    try:
+        envelope = ProspectusJobEnvelope.model_validate(raw_envelope)
+    except ValidationError as exc:
+        raise TerminalJobError(f"Envelope failed contract validation: {exc}") from exc
+
+    log = get_logger(__name__, correlation_id=str(envelope.correlationId))
+    prospectus_id = envelope.payload.prospectusId
+    # Colon form is the worker's JobResult.jobId; the BullMQ dedup id is the
+    # hyphen form `prospectus-{id}`, minted TS-side (JobBus.deriveJobId).
+    job_id = f"{PROSPECTUS_JOB_ID_PREFIX}{prospectus_id}"
+    log.info("job.start", extra={"jobId": job_id, "jobName": JOB_ANALYZE_PROSPECTUS})
+
+    def step(index: int) -> JobProgress:
+        phase, label = _PROSPECTUS_STEPS[index]
+        return _progress(index, _PROSPECTUS_TOTAL, phase, label)
+
+    report_progress(step(0))
+
+    # Fail fast and cleanly BEFORE any fetch/parse spend (non-retryable).
+    if runtime.llm_client is None:
+        raise TerminalJobError(MISSING_KEY_MESSAGE)
+    client = runtime.llm_client
+
+    # --- reference row + PDF ---------------------------------------------------
+    report_progress(step(1))
+    try:
+        reference = IpoReference.model_validate(
+            backend_client.get_ipo_reference(prospectus_id)
+        )
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise TerminalJobError(
+                f"Unknown prospectus id {prospectus_id!r} (backend returned 404)"
+            ) from exc
+        raise  # 5xx etc. ⇒ transient, BullMQ retries
+    except ValidationError as exc:
+        raise TerminalJobError(
+            f"IPO reference for {prospectus_id!r} is malformed: {exc}"
+        ) from exc
+
+    try:
+        pdf_bytes = artifact_store.get_prospectus_pdf(reference.prospectusS3Key)
+    except ValueError as exc:
+        raise TerminalJobError(str(exc)) from exc
+    if pdf_bytes is None:
+        raise TerminalJobError(
+            f"Prospectus PDF not found at {reference.prospectusS3Key!r}"
+        )
+
+    # --- parse (long on first run; reused on re-run) ---------------------------
+    report_progress(step(2))
+    parse_fn = runtime.parse_fn or _default_parse_fn
+    with _heartbeat(report_progress, lambda: step(2), runtime.heartbeat_seconds):
+        try:
+            parse, parsed_now = ensure_parse(
+                artifact_store=artifact_store,
+                prospectus_id=prospectus_id,
+                pdf_bytes=pdf_bytes,
+                parse_fn=parse_fn,
+            )
+        except TerminalJobError:
+            raise
+        except Exception as exc:  # deterministic on a given PDF ⇒ no retry
+            raise TerminalJobError(
+                f"Could not parse prospectus PDF for {prospectus_id!r}: {exc!r}"
+            ) from exc
+    routed = route_sections(parse)
+    log.info(
+        "job.parse_ready",
+        extra={
+            "jobId": job_id,
+            "parsedNow": parsed_now,
+            "located": {s.value: r.located for s, r in routed.items()},
+        },
+    )
+
+    # --- LLM analysis under the cost guard -------------------------------------
+    tracker = CostTracker(
+        model=client.model,
+        ceiling_usd=runtime.cost_ceiling_usd,
+        price_table=runtime.price_table,
+    )
+    try:
+        artifact = analyze_prospectus(
+            prospectus_id=prospectus_id,
+            reference=reference,
+            parse=parse,
+            routed=routed,
+            client=client,
+            tracker=tracker,
+            on_step=lambda s: report_progress(step(_STEP_INDEX[s])),
+        )
+    except CostCeilingExceeded as exc:
+        raise TerminalJobError(f"Cost guard aborted the job: {exc}") from exc
+    except (LLMConfigError, LLMPermanentError, MalformedModelOutput) as exc:
+        raise TerminalJobError(f"LLM analysis failed permanently: {exc}") from exc
+    artifact["parse"] = {"parsedNow": parsed_now, "reusedParse": not parsed_now}
+
+    # --- claim-check + result --------------------------------------------------
+    pointer = artifact_store.put_artifact(
+        f"prospectus/{prospectus_id}/at-a-glance.json", artifact
+    )
+    report_progress(step(9))
+    log.info(
+        "job.artifact_written",
+        extra={
+            "jobId": job_id,
+            "bucket": pointer.bucket,
+            "key": pointer.key,
+            "costUsd": artifact["cost"]["estimatedCostUsd"],
+        },
+    )
+
+    result = JobResult(
+        correlationId=envelope.correlationId,
+        jobId=job_id,
+        pointer=pointer,
+        summary=SystemSummary(headline=artifact["headline"], asOf=envelope.asOf),
+        at=_now(),
+    )
+    report_progress(step(10))
+    log.info("job.done", extra={"jobId": job_id})
+    return result
+
+
+def _default_parse_fn(pdf_bytes: bytes):  # noqa: ANN202
+    """The real Docling adapter (lazy: it lives in the optional ``parse`` extra)."""
+    try:
+        from .prospectus.parsing import parse_prospectus
+    except ImportError as exc:  # pragma: no cover - image lacks the extra
+        raise TerminalJobError(
+            "Docling is not installed (install the `parse` extra): " + str(exc)
+        ) from exc
+    return parse_prospectus(pdf_bytes)

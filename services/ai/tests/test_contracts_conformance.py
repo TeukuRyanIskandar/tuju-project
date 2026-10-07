@@ -19,6 +19,7 @@ from tuju_ai.contracts_generated import (
     JobProgress,
     JobResult,
     MarketBriefJobEnvelope,
+    ProspectusJobEnvelope,
     TechnicalJobEnvelope,
 )
 
@@ -41,9 +42,11 @@ def _load(name: str) -> dict:
         ("fundamental-job-envelope.json", FundamentalJobEnvelope),
         ("market-brief-job-envelope.json", MarketBriefJobEnvelope),
         ("announcement-summary-job-envelope.json", AnnouncementSummaryJobEnvelope),
+        ("prospectus-job-envelope.json", ProspectusJobEnvelope),
         ("job-progress.json", JobProgress),
         ("job-result.json", JobResult),
         ("job-result-system.json", JobResult),
+        ("job-result-prospectus.json", JobResult),
         ("job-failure.json", JobFailure),
     ],
 )
@@ -74,3 +77,23 @@ def test_contract_rejects_out_of_enum_verdict() -> None:
     bad["summary"]["verdict"] = "mega-bullish"
     with pytest.raises(ValidationError):
         JobResult.model_validate(bad)
+
+
+def test_prospectus_result_fixture_is_verdictless() -> None:
+    from pydantic import ValidationError
+
+    good = _load("job-result-prospectus.json")
+    assert set(good["summary"]) == {"headline", "asOf"}
+    bad = _load("job-result-prospectus.json")
+    bad["summary"]["source"] = "real"  # no provenance field on the wire summary
+    with pytest.raises(ValidationError):
+        JobResult.model_validate(bad)
+
+
+def test_prospectus_envelope_requires_prospectus_id() -> None:
+    from pydantic import ValidationError
+
+    bad = _load("prospectus-job-envelope.json")
+    bad["payload"] = {}
+    with pytest.raises(ValidationError):
+        ProspectusJobEnvelope.model_validate(bad)

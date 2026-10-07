@@ -8,7 +8,7 @@ runs against LocalStack locally and AWS in prod. Local dev values live in
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # Queue + job names — mirror packages/contracts/src/enums.ts (ADR-0007 §1).
 QUEUE_ANALYSIS = "analysis"
@@ -17,6 +17,8 @@ JOB_ANALYZE_FUNDAMENTAL = "analyze-fundamental"
 # Spec-06 system-triggered showcase jobs (free-tier-ai-showcase, tickets 02/03).
 JOB_GENERATE_MARKET_BRIEF = "generate-market-brief"
 JOB_SUMMARIZE_ANNOUNCEMENT = "summarize-announcement"
+# Flagship prospectus at-a-glance (ticket 05).
+JOB_ANALYZE_PROSPECTUS = "analyze-prospectus"
 
 # `JobResult.jobId` prefixes the worker mints for the two showcase jobs
 # (ADR-0007 §2) — NOT the BullMQ dedup job id (`JobBus.deriveJobId`, TS side);
@@ -25,6 +27,22 @@ JOB_SUMMARIZE_ANNOUNCEMENT = "summarize-announcement"
 # to recover their domain key (mirror these exactly if they ever change).
 MARKET_BRIEF_JOB_ID_PREFIX = "brief:"
 ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = "ann:"
+# Prospectus at-a-glance (ticket 05): `prospectus:{IpoListing.id}`. The BullMQ
+# dedup id is the hyphen form `prospectus-{id}` minted TS-side
+# (`JobBus.deriveJobId`) — same intentional split as `brief-`/`brief:` above;
+# the TS half is NOT implemented here.
+PROSPECTUS_JOB_ID_PREFIX = "prospectus:"
+
+# --- LLM defaults (ticket 05) ------------------------------------------------
+DEFAULT_LLM_MODEL = "google/gemini-2.5-flash"
+DEFAULT_LLM_BASE_URL = "https://openrouter.ai/api/v1"
+# Per-document spend ceiling (spec 06: ~$2/doc). A run that would cross it is
+# aborted as a terminal failure (see tuju_ai.llm.cost).
+DEFAULT_COST_CEILING_USD = 2.0
+# BullMQ lock duration for the worker. The first-run Docling parse is 4-11 min
+# of CPU; the handler runs in a thread so the lock-renewal task keeps ticking
+# (renewed every lockDuration/2), but a generous lock is belt-and-braces.
+DEFAULT_WORKER_LOCK_DURATION_MS = 5 * 60 * 1000
 
 
 @dataclass(frozen=True)
@@ -40,6 +58,24 @@ class Settings:
     # stateless worker fetches via NestJS data APIs, never Postgres directly).
     # Only the market-brief/announcement-summary jobs use this.
     backend_api_url: str
+    # --- Prospectus analysis (ticket 05). All defaulted so pre-existing
+    # `Settings(...)` constructions (tests, scripts) keep working. -----------
+    # Narrow read prefix for the seeded prospectus PDFs
+    # (`prospectus/{fileName}`), deliberately separate from the artifacts
+    # write prefix: only `ArtifactStore.get_prospectus_pdf` may read it.
+    prospectus_s3_prefix: str = "prospectus"
+    # OpenRouter key. ``None`` ⇒ the prospectus job fails terminally (clear,
+    # non-retryable) instead of crashing the worker. NEVER log/print this.
+    openrouter_api_key: str | None = field(default=None, repr=False)
+    llm_model: str = DEFAULT_LLM_MODEL
+    llm_base_url: str = DEFAULT_LLM_BASE_URL
+    # Opt-in OpenRouter `cache_control` breakpoints on the shared prefix.
+    llm_prompt_cache: bool = False
+    # JSON (object) of per-model prices overriding the built-in table:
+    # {"vendor/model": {"input": <USD/Mtok>, "output": <USD/Mtok>, "cachedInput": <USD/Mtok>}}
+    llm_price_table_json: str | None = None
+    cost_ceiling_usd: float = DEFAULT_COST_CEILING_USD
+    worker_lock_duration_ms: int = DEFAULT_WORKER_LOCK_DURATION_MS
 
     @staticmethod
     def from_env() -> "Settings":
@@ -53,4 +89,18 @@ class Settings:
             # Python writes only under this scoped prefix (ADR-0004 write boundary).
             s3_prefix=os.environ.get("S3_ARTIFACTS_PREFIX", "analysis"),
             backend_api_url=os.environ.get("BACKEND_API_URL", "http://localhost:3000"),
+            prospectus_s3_prefix=os.environ.get("PROSPECTUS_S3_PREFIX", "prospectus"),
+            openrouter_api_key=os.environ.get("OPENROUTER_API_KEY") or None,
+            llm_model=os.environ.get("LLM_MODEL") or DEFAULT_LLM_MODEL,
+            llm_base_url=os.environ.get("LLM_BASE_URL") or DEFAULT_LLM_BASE_URL,
+            llm_prompt_cache=os.environ.get("LLM_PROMPT_CACHE", "").lower()
+            in ("1", "true", "yes"),
+            llm_price_table_json=os.environ.get("LLM_PRICE_TABLE_JSON") or None,
+            cost_ceiling_usd=float(
+                os.environ.get("LLM_COST_CEILING_USD") or DEFAULT_COST_CEILING_USD
+            ),
+            worker_lock_duration_ms=int(
+                os.environ.get("WORKER_LOCK_DURATION_MS")
+                or DEFAULT_WORKER_LOCK_DURATION_MS
+            ),
         )

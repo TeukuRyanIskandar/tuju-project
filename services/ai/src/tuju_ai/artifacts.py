@@ -85,3 +85,35 @@ class ArtifactStore:
         if hasattr(body, "read"):  # real botocore StreamingBody
             body = body.read()
         return json.loads(body)
+
+    def get_prospectus_pdf(self, s3_key: str) -> bytes | None:
+        """Read one seeded prospectus PDF, or ``None`` if the object is absent.
+
+        Narrowly scoped (spec 06, ticket 05): the seeded PDFs live under the
+        ``prospectus/`` corpus prefix, outside the ``analysis/`` artifacts
+        prefix that :meth:`get_artifact` is confined to. This method may ONLY
+        read beneath ``settings.prospectus_s3_prefix`` (exact ``prefix/``
+        match, no ``..`` segments) — it does not widen general read access,
+        and there is no write counterpart.
+        """
+        prefix = self._settings.prospectus_s3_prefix.strip("/") + "/"
+        if (
+            not s3_key.startswith(prefix)
+            or len(s3_key) == len(prefix)
+            or ".." in s3_key.split("/")
+        ):
+            raise ValueError(
+                f"refusing to read {s3_key!r}: outside the prospectus corpus "
+                f"prefix {prefix!r}"
+            )
+        try:
+            resp = self._s3.get_object(Bucket=self._settings.s3_bucket, Key=s3_key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in _NOT_FOUND_CODES:
+                return None
+            raise
+        body: Any = resp["Body"]
+        if hasattr(body, "read"):
+            body = body.read()
+        return bytes(body)

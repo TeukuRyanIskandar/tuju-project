@@ -20,8 +20,27 @@ A stateless job consumer:
   - `summarize-announcement` — system-triggered per-announcement summary (spec 06):
     reads the announcement's metadata from the NestJS API.
 
-  Both showcase jobs are **deterministic templates — no LLM call yet** — and return
-  a verdict-less `SystemSummary`. The brief flags its data as illustrative/synthetic.
+  - `analyze-prospectus` — the flagship IPO prospectus at-a-glance (spec 06, ticket
+    05), payload `{ prospectusId }` (= `IpoListing.id`). Fetches the IPO reference row
+    (`GET /ipo/{id}/reference`) and the PDF (read-only `prospectus/` prefix), reuses
+    the persisted Docling parse, runs per-section LLM prompts (offer, business,
+    financials, risk factors) + cornerstone-investor extraction, then a what-to-watch
+    **reduce** over the four outputs; Shariah status comes from the reference row.
+    Writes `analysis/prospectus/{id}/at-a-glance.json` and returns a verdict-less
+    `SystemSummary { headline = what-to-watch, asOf }` (`JobResult.jobId =
+    prospectus:{id}`). Per-section input is budgeted (`prospectus/budget.py`), and a
+    per-document cost guard (default $2) aborts the job terminally.
+
+  The market-brief and announcement-summary jobs are **deterministic templates — no LLM
+  call** — and return a verdict-less `SystemSummary`. The brief flags its data as
+  illustrative/synthetic. Only `analyze-prospectus` calls an LLM.
+- **LLM seam (`llm/`):** `LLMClient` protocol (text + token usage), `OpenRouterClient`
+  (httpx, OpenAI-compatible chat completions), deterministic `FakeLLMClient` for
+  tests/CI (tests never touch the network), and a `CostTracker` with a per-model price
+  table. Env: `OPENROUTER_API_KEY` (unset ⇒ the job fails terminally and cleanly, no
+  retry), `LLM_MODEL` (default `google/gemini-2.5-flash`), optional `LLM_BASE_URL`,
+  `LLM_PROMPT_CACHE`, `LLM_COST_CEILING_USD`, `LLM_PRICE_TABLE_JSON`,
+  `WORKER_LOCK_DURATION_MS`, `PROSPECTUS_S3_PREFIX`.
 - **Stateless reader (ADR-0004):** data reads go through NestJS's anonymous read API
   (`backend_client.py`, `BACKEND_API_URL`), never Postgres directly.
 - **Runtime conformance (ADR-0011):** validates the incoming `JobEnvelope` and the
@@ -30,12 +49,12 @@ A stateless job consumer:
 - **Claim-check (ADR-0004):** writes the artifact to S3 (LocalStack locally) and
   returns `job.returnvalue` = pointer + thin summary. Never writes Postgres.
 - **Structured logging (ADR-0010):** JSON to stdout, `correlationId` on every line.
-- **Prospectus pipeline (spec 06, LLM-free so far):** `prospectus/` parses a PDF once
+- **Prospectus pipeline (spec 06):** `prospectus/` parses a PDF once
   with Docling, routes the four regulated Bursa/SC sections by heading (explicit
   whole-document fallback), and claim-checks the parse to S3 idempotently (keyed by
   prospectus + PDF sha). Standalone entrypoint: `tuju-ai-prospectus-parse`. Docling
   lives in the optional `parse` extra (the worker image installs it). The
-  at-a-glance LLM analysis job is not built yet.
+  LLM analysis on top of it is `prospectus/analysis.py` (ticket 05).
 
 Real TA/FA indicator/metric logic is out of scope here (indicators are computed in
 the NestJS ingestion worker, ADR-0012).
@@ -50,6 +69,7 @@ src/tuju_ai/
 ├── market_brief.py         templated daily market brief narrative (spec 06)
 ├── announcement_summary.py templated plain-language announcement summary (spec 06)
 ├── backend_client.py       thin httpx client for the NestJS read API — ADR-0004
+├── llm/                    LLMClient protocol, OpenRouterClient, FakeLLMClient, cost guard
 ├── artifacts.py            S3 claim-check writer → ArtifactPointer — ADR-0004
 ├── handler.py              pure job handler: dispatch by job name → JobResult
 ├── worker.py               BullMQ JobBus adapter (entrypoint: tuju-ai-worker)
@@ -59,6 +79,10 @@ src/tuju_ai/
 │   ├── parsing.py          Docling parse adapter (lazy import; `parse` extra)
 │   ├── skeleton.py         regulated Bursa/SC section heading patterns
 │   ├── router.py           heading-based section router + whole-doc fallback
+│   ├── budget.py           per-section input budgets / trimming (ticket 05)
+│   ├── analysis.py         per-section LLM prompts + what-to-watch reduce (ticket 05)
+│   ├── analysis_models.py  pydantic models for the LLM's structured outputs
+│   ├── job.py              ProspectusRuntime (LLM client, parse fn, cost ceiling)
 │   ├── store.py            idempotent S3 claim-check of the parse
 │   └── cli.py              entrypoint: tuju-ai-prospectus-parse
 └── contracts_generated/    generated Pydantic models (do not edit)
@@ -72,7 +96,11 @@ tests/
 ├── test_contracts_conformance.py    golden-fixture cross-language conformance (unit)
 ├── test_prospectus_router.py        section router (unit)
 ├── test_prospectus_parse_store.py   parse persistence / idempotency (unit)
-├── test_prospectus_corpus.py        real demo-corpus PDFs via Docling (corpus)
+├── test_prospectus_analysis.py      analysis / budget / cost guard, fake LLM (unit)
+├── test_prospectus_job.py           analyze-prospectus handler, failure classes (unit)
+├── test_prospectus_worker.py        worker thread-offload + terminal mapping (unit)
+├── test_openrouter_client.py        OpenRouter client over httpx MockTransport (unit)
+├── test_prospectus_corpus.py        real demo-corpus PDFs via Docling + fake LLM (corpus)
 └── test_integration_jobbus.py       JobBus round-trip, testcontainers (integration)
 ```
 

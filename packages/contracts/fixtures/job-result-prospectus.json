@@ -1,0 +1,16 @@
+{
+  "correlationId": "0b1f3a52-8e5c-4c58-9a51-6f0c2f9b7d14",
+  "jobId": "prospectus:5f3c1a2e-9b7d-4e1a-8c3f-2d6b7a9e0f41",
+  "pointer": {
+    "bucket": "tuju-artifacts",
+    "key": "analysis/prospectus/5f3c1a2e-9b7d-4e1a-8c3f-2d6b7a9e0f41/at-a-glance.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 18432,
+    "contentType": "application/json"
+  },
+  "summary": {
+    "headline": "Watch customer concentration and how fast the RM45m proceeds are deployed into new capacity",
+    "asOf": "2026-10-07T02:00:00Z"
+  },
+  "at": "2026-10-07T02:04:31Z"
+}

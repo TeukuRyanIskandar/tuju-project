@@ -161,3 +161,45 @@ def test_re_run_reuses_parse_no_reparse_for_real_pdfs(
     assert parsed_now_2 is False
     assert calls["n"] == 1
     assert second.pdfSha256 == first.pdfSha256 == parse.pdfSha256
+
+
+@pytest.mark.skipif(
+    not PDFS, reason="corpus PDFs not present (.scratch/free-tier/demo-corpus)"
+)
+@pytest.mark.parametrize("pdf", PDFS, ids=lambda p: p.name)
+def test_full_pipeline_on_real_pdf_with_fake_llm(
+    parsed: dict[str, ProspectusParse], pdf: Path
+) -> None:
+    """Ticket 05 AC 2 (offline half): all 5 sections + both insights on each real
+    corpus PDF, with the deterministic FakeLLMClient (NO network, no API key).
+
+    Slow only because of the shared Docling ``parsed`` fixture; the analysis
+    itself is instant. Asserts the per-section input budget held on the real
+    (fallback = whole-document) sections and the run stays under $2.
+    """
+    from tuju_ai.llm import CostTracker, FakeLLMClient
+    from tuju_ai.prospectus.analysis import analyze_prospectus
+    from tuju_ai.prospectus.analysis_models import IpoReference
+    from tuju_ai.prospectus.budget import SECTION_CHAR_BUDGET
+
+    parse = parsed[pdf.name]
+    llm = FakeLLMClient(model="google/gemini-2.5-flash")
+    tracker = CostTracker(model=llm.model, ceiling_usd=2.0)
+    artifact = analyze_prospectus(
+        prospectus_id=pdf.stem,
+        reference=IpoReference(
+            id=pdf.stem, companyName=pdf.stem, prospectusS3Key=f"prospectus/{pdf.name}"
+        ),
+        parse=parse,
+        routed=route_sections(parse),
+        client=llm,
+        tracker=tracker,
+    )
+    assert set(artifact["sections"]) == {
+        "offer", "business", "financials", "riskFactors", "whatToWatch",
+    }
+    assert set(artifact["insights"]) == {"shariah", "cornerstone"}
+    for name in ("offer", "business", "financials", "riskFactors"):
+        routing = artifact["sections"][name]["routing"]
+        assert routing["inputChars"] <= SECTION_CHAR_BUDGET + 2000, (name, routing)
+    assert artifact["cost"]["estimatedCostUsd"] < 2.0
