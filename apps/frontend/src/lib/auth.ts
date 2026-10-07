@@ -1,4 +1,4 @@
-import type { JobName } from '@tuju/contracts'
+import { SessionUser, type JobName, type Tier } from '@tuju/contracts'
 import { apiFetch } from './api'
 
 /**
@@ -15,14 +15,9 @@ import { apiFetch } from './api'
  * mirror the backend's capability-shaped `can()` seam.
  */
 
-/** Ordinal subscription tier (ADR-0005 data model). `premium` reserved for Product C. */
-export type Tier = 'free' | 'pro' | 'premium'
-
-export interface SessionUser {
-  id: string
-  email: string
-  tier: Tier
-}
+// `Tier` and `SessionUser` are owned by @tuju/contracts (ADR-0002); re-exported
+// so FE call sites keep importing them from the auth surface.
+export { SessionUser, type Tier }
 
 /**
  * FE mirror of the backend tier → allowed-job map (ADR-0005). Presentation only:
@@ -43,8 +38,8 @@ export function canRunJob(user: SessionUser | null, job: JobName): boolean {
 
 /** Fetch the current session user from the backend, or null if unauthenticated. */
 export async function fetchSession(): Promise<SessionUser | null> {
-  const res = await apiFetch('/me')
+  const res = await apiFetch('/auth/me')
   if (res.status === 401 || res.status === 403) return null
   if (!res.ok) throw new Error(`Session lookup failed: ${res.status}`)
-  return (await res.json()) as SessionUser
+  return SessionUser.parse(await res.json())
 }
