@@ -4,6 +4,7 @@ import { Logger } from 'nestjs-pino';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { APP_CONFIG, type AppConfig } from './config/config';
+import { applyCors } from './config/cors';
 import { JobBus } from './jobbus/job-bus.service';
 import { BULL_BOARD_PATH, createBullBoardRouter } from './jobbus/bull-board';
 
@@ -16,11 +17,15 @@ async function bootstrap(): Promise<void> {
   // Parse cookies so AuthGuard can read the opaque session cookie (ADR-0005).
   app.use(cookieParser());
 
+  const config = app.get<AppConfig>(APP_CONFIG);
+
+  // Credentialed CORS for the allowlisted SPA origin(s) only (ADR-0005).
+  applyCors(app, config.corsOrigins);
+
   // Bull Board queue-introspection route (ADR-0010 §4).
   const jobBus = app.get(JobBus);
   app.use(BULL_BOARD_PATH, createBullBoardRouter(jobBus.getQueue()));
 
-  const config = app.get<AppConfig>(APP_CONFIG);
   await app.listen(config.port);
 }
 

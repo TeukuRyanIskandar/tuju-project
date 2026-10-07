@@ -5,6 +5,7 @@
  * RDS/S3). Values come from `.env` locally and AWS SSM in prod (ADR-0009) — the
  * app only ever reads them from the environment.
  */
+import { parseCorsOrigins } from './cors';
 
 export interface AppConfig {
   readonly nodeEnv: string;
@@ -12,6 +13,8 @@ export interface AppConfig {
   readonly databaseUrl: string;
   readonly redisUrl: string;
   readonly sessionSecret: string;
+  /** Explicit CORS origin allowlist (comma-separated `CORS_ORIGINS`; never `*`). */
+  readonly corsOrigins: readonly string[];
   readonly cookie: {
     /** Parent domain a future BFF proxy can assume (ADR-0005 keep-it-migratable). */
     readonly domain: string | undefined;
@@ -45,6 +48,7 @@ export function loadConfig(): AppConfig {
     databaseUrl: required('DATABASE_URL'),
     redisUrl: required('REDIS_URL'),
     sessionSecret: required('SESSION_SECRET'),
+    corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS),
     cookie: {
       domain: process.env.COOKIE_DOMAIN || undefined,
       secure,
