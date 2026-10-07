@@ -9,6 +9,13 @@ package emits (ADR-0008).
 
 - Own the shape of the JobBus messages: `JobEnvelope`, `JobResult`, `JobProgress`,
   `JobFailure`, and the job `payloads`/`enums`.
+- Own the shape of the backend read endpoints' HTTP responses, as Zod schemas
+  imported by both `apps/backend` and `apps/frontend` (ADR-0014). These are
+  **not** registered for the Python codegen (not in `modelOrder`, no
+  `.meta({ id })`).
+- Own the prospectus at-a-glance `ProspectusArtifact` schema. Unlike the HTTP
+  schemas it is registered, so a Pydantic model is generated; the AI worker
+  validates the assembled artifact against it before writing to S3 (ADR-0014).
 - Emit a JSON Schema (`schema/contracts.schema.json`) and generate the Python
   models into `services/ai/src/tuju_ai/contracts_generated/` (do not hand-edit
   the generated output).
@@ -42,5 +49,5 @@ pnpm --filter contracts test       # vitest (fixtures conformance)
 
 ## Decisions
 
-System-wide ADRs in `docs/adr/` (esp. ADR-0002, ADR-0007, ADR-0008) govern this
+System-wide ADRs in `docs/adr/` (esp. ADR-0002, ADR-0007, ADR-0008, ADR-0014) govern this
 context. No context-scoped ADRs yet.

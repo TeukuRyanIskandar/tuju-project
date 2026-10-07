@@ -45,7 +45,7 @@ they are the **workspace members** across the two worlds (ADR-0002). The root
 ```
 /
 ├── CONTEXT-MAP.md
-├── docs/adr/                          ← system-wide decisions (ADR-0001–0013)
+├── docs/adr/                          ← system-wide decisions (ADR-0001–0014)
 ├── apps/
 │   ├── backend/CONTEXT.md
 │   └── frontend/CONTEXT.md
