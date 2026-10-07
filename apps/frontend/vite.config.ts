@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite'
 import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 /**
  * TanStack Start 1.x — static SPA build (ADR-0005).
@@ -21,6 +22,7 @@ export default defineConfig({
       },
     }),
     viteReact(),
+    tailwindcss(),
   ],
   test: {
     globals: true,

@@ -4,10 +4,10 @@ Visual language for Product A. Direction: **dense, terminal-style, dark-first**.
 Think a data terminal, not a marketing site: compact rows, monospace numbers,
 hairline borders, one accent, no shadows.
 
-**Status:** tokens are agreed but **not yet implemented**. `src/styles.css` is
-still the scaffold placeholder. The next step is to move these values into
-`styles.css` (Tailwind v4 `@theme` + shadcn semantic variables). Token names
-below are the contract; keep them when implementing.
+**Status:** tokens are implemented in `src/styles.css` (Tailwind v4 `@theme` +
+shadcn semantic variables, self-hosted fonts, dark only). Token names below are
+the contract; keep them when changing values, and change this file first.
+`docs/tokens-preview.html` is a hardcoded copy and can drift.
 
 **Stack (decided):** Tailwind v4 + shadcn/ui. shadcn's semantic names
 (`--background`, `--foreground`, `--primary`, `--muted`, `--border`, `--ring`, ...)

@@ -1,19 +1,270 @@
+/*
+ * Tuju design tokens. Source of truth: apps/frontend/DESIGN.md.
+ * Token names are a contract; change DESIGN.md first.
+ *
+ * Layout of this file:
+ *   1. Imports (Tailwind, self-hosted fonts)
+ *   2. :root            raw tokens (dark only) + shadcn semantic variables
+ *   3. @theme static    tokens whose Tailwind namespace name equals the token name
+ *   4. @theme inline    colour / font mappings so Tailwind utilities exist
+ *   5. base styles, utilities, reduced-motion guard
+ *
+ * Fonts are self-hosted via @fontsource (latin subset only). No runtime calls
+ * to Google Fonts.
+ */
+@import 'tailwindcss';
+
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-600.css';
+
+/* Dark only for v1. shadcn components use `dark:` variants; <html class="dark">
+   is set in __root.tsx. A light theme later means re-declaring :root variables
+   under another selector. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  color-scheme: light dark;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  line-height: 1.5;
+  color-scheme: dark;
+
+  /* Surfaces and borders */
+  --surface-0: #0b0d10; /* app background */
+  --surface-1: #111418; /* panel */
+  --surface-2: #171b21; /* raised: table header, panel header */
+  --surface-3: #1e232b; /* hover / selected row */
+  --border: #262c35; /* hairlines */
+  --border-strong: #343c47; /* decorative dividers only (fails 3:1) */
+  --control-border: #6a7484; /* input and button outlines (>= 3:1, WCAG 1.4.11) */
+
+  /* Text */
+  --fg: #e6e9ee;
+  --fg-2: #a3abb8;
+  --fg-3: #8c95a5;
+
+  /* Accent: active tab, focus ring, selection, primary action only */
+  --accent: #5b9bff;
+  --accent-fg: #06101f;
+  --accent-soft: rgba(91, 155, 255, 0.15);
+
+  /* Market (Bursa: green up, red down). Never use for status. */
+  --up: #26d07c;
+  --up-bg: rgba(38, 208, 124, 0.12);
+  --up-border: rgba(38, 208, 124, 0.35);
+  --down: #ff6b6b;
+  --down-bg: rgba(255, 107, 107, 0.12);
+  --down-border: rgba(255, 107, 107, 0.35);
+  --unch: #8b94a3;
+  --unch-bg: rgba(139, 148, 163, 0.12);
+  --tick-flash-up: rgba(38, 208, 124, 0.28);
+  --tick-flash-down: rgba(255, 107, 107, 0.28);
+
+  /* Status: always rendered with an icon and a text label */
+  --info: #9fb3c8;
+  --warn: #ffd166;
+  --danger: #ff4d6d;
+
+  /* Provenance */
+  --ai: #b39bff;
+  --ai-bg: rgba(179, 155, 255, 0.12);
+  --synthetic: #5ad1e6;
+  --synthetic-bg: rgba(90, 209, 230, 0.1);
+
+  /* Chart series (Okabe-Ito based). shadcn only has 1-5; 6 is ours. */
+  --chart-1: #56b4e9;
+  --chart-2: #e69f00;
+  --chart-3: #b26d3e;
+  --chart-4: #f0e442;
+  --chart-5: #cc79a7;
+  --chart-6: #b0b7c3;
+
+  /* Density and motion */
+  --row-h: 26px; /* table body rows (header rows 24px) */
+  --control-h: 28px; /* buttons, inputs */
+  --motion-fast: 150ms;
+
+  /* Type */
+  --font-ui: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+
+  /*
+   * shadcn semantic variables (DESIGN.md "shadcn and Tailwind v4 mapping").
+   *
+   * --accent is deliberately NOT remapped here: raw --accent stays Tuju's blue
+   * (see above). shadcn's "accent" (subtle hover surface) is provided only at
+   * the Tailwind layer below: --color-accent -> --surface-3, so `bg-accent`
+   * in shadcn components is the hover surface, not bright blue. The brand blue
+   * is reached through `bg-primary` / `text-primary` / `ring-ring`.
+   */
+  --background: var(--surface-0);
+  --foreground: var(--fg);
+  --card: var(--surface-1);
+  --card-foreground: var(--fg);
+  --popover: var(--surface-1);
+  --popover-foreground: var(--fg);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-fg);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--fg);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--fg-3);
+  --destructive: var(--danger);
+  --input: var(--control-border);
+  --ring: var(--accent);
+  /* shadcn base radius = Tuju --radius-lg (4px); the scale is explicit below. */
+  --radius: 4px;
 }
 
-body {
-  margin: 0;
-  padding: 2rem;
+/*
+ * Tokens that already use their Tailwind namespace name, so they live in
+ * `static` (always emitted to :root, no var() indirection needed).
+ */
+@theme static {
+  /* Radius scale, explicit so `sm` stays 2px (shadcn would derive 0.6 * base). */
+  --radius-sm: 2px;
+  --radius-md: 3px; /* DESIGN.md calls this plain `--radius` (3px) */
+  --radius-lg: 4px;
+  --radius-xl: 6px;
+
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
-main {
-  max-width: 42rem;
-  margin: 0 auto;
+@theme {
+  /* No box-shadows (DESIGN.md principle 3). Removes shadow-* utilities. */
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+
+  /* Type scale: 11 / 12 / 13 / 14 / 16 / 20. text-xs(12) text-sm(14)
+     text-base(16) text-xl(20) are Tailwind defaults; add 11 and 13. */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 1.4;
+  --text-body: 13px;
+  --text-body--line-height: 1.4;
+  --tracking-label: 0.09em; /* 11px uppercase section labels */
 }
 
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+@theme inline {
+  /* Tuju tokens */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
+  --color-control-border: var(--control-border);
+
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-3: var(--fg-3);
+
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-up: var(--up);
+  --color-up-bg: var(--up-bg);
+  --color-up-border: var(--up-border);
+  --color-down: var(--down);
+  --color-down-bg: var(--down-bg);
+  --color-down-border: var(--down-border);
+  --color-unch: var(--unch);
+  --color-unch-bg: var(--unch-bg);
+  --color-tick-flash-up: var(--tick-flash-up);
+  --color-tick-flash-down: var(--tick-flash-down);
+
+  --color-info: var(--info);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+
+  --color-ai: var(--ai);
+  --color-ai-bg: var(--ai-bg);
+  --color-synthetic: var(--synthetic);
+  --color-synthetic-bg: var(--synthetic-bg);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+
+  /* shadcn semantic names */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  /* shadcn "accent" = hover surface, NOT Tuju --accent (see :root note). */
+  --color-accent: var(--surface-3);
+  --color-accent-foreground: var(--fg);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Fonts: --font-ui -> --font-sans. --font-mono is in @theme static above. */
+  --font-sans: var(--font-ui);
+
+  --default-transition-duration: var(--motion-fast);
+  --default-font-family: var(--font-ui);
+  --default-mono-font-family: var(--font-mono);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background: var(--surface-0);
+    color: var(--fg);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+  }
+}
+
+/*
+ * Focus: 2px accent outline with 1px offset on every interactive element.
+ * Deliberately unlayered so it wins over utility classes such as
+ * `outline-none` that shadcn components ship with.
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Numbers: monospace and tabular (prices, percentages, volumes, index levels). */
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
