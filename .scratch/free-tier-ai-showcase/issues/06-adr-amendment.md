@@ -1,7 +1,7 @@
 # Build ticket: ADR-0007 amendment (docs)
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02, 03, 05 (needs the real, shipped shapes from all four)
 
 > Ticket 06 of the spec-06 execution effort — documentation only, deliberately
@@ -47,3 +47,9 @@ shapes from tickets 01/02/03/05 are landed (not guessed ahead of time):
 - Any further code changes — this ticket is documentation only. If writing
   the amendment surfaces a real gap in what 01/02/03/05 shipped, flag it
   rather than silently reopening one of those tickets.
+
+## Answer
+
+Written as `docs/adr/0013-system-triggered-ai-jobs-additive-adr-0007-amendment.md`
+from the shipped code; range mentions bumped to 0001-0013; pointer added in
+`packages/contracts/src/index.ts`.

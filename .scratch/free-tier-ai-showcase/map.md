@@ -19,16 +19,16 @@ columns (resolved in `free-tier-disclosures`) are both already in place.
 | 02 | [Daily market brief (end-to-end)](issues/02-daily-market-brief.md) | 01 | resolved |
 | 03 | [Announcement AI summaries (end-to-end)](issues/03-announcement-ai-summaries.md) | 01 | resolved |
 | 04 | [Prospectus parse + section router](issues/04-prospectus-parse-and-section-router.md) | — | resolved |
-| 05 | [Prospectus at-a-glance: LLM analysis + job + read endpoint](issues/05-prospectus-at-a-glance-analysis-and-endpoint.md) | 01, 04 | ready-for-agent |
-| 06 | [ADR-0007 amendment (docs)](issues/06-adr-amendment.md) | 01, 02, 03, 05 | ready-for-agent |
+| 05 | [Prospectus at-a-glance: LLM analysis + job + read endpoint](issues/05-prospectus-at-a-glance-analysis-and-endpoint.md) | 01, 04 | resolved (live-LLM checks pending key) |
+| 06 | [ADR-0007 amendment (docs)](issues/06-adr-amendment.md) | 01, 02, 03, 05 | resolved |
 
 ## Frontier
 
-Tickets **01, 02, 03, 04** are resolved. Ticket 05 is now unblocked (needs
-01 and 04, both done). Ticket 06 is last — it documents the
-job names 02/03/05 actually shipped with: `generate-market-brief` /
-`summarize-announcement` (02/03, resolved) and whatever 05 lands as
-`analyze-prospectus`.
+All six tickets are built. **Open follow-up (needs the operator's OpenRouter
+key):** run `analyze-prospectus` against the 3 real PDFs with a live model,
+confirm all 5 sections + both insights, verify OpenRouter `response_format` /
+`usage.include` / `cache_control` behaviour, and do the Flash vs Pro/Sonnet A/B
+on financials + risk ranking. Everything else was verified with the fake LLM.
 
 ## Decisions / notes so far
 
@@ -108,3 +108,19 @@ job names 02/03/05 actually shipped with: `generate-market-brief` /
   claim-check); the seeded PDFs sit at `prospectus/{fileName}`, outside the
   worker's scoped `analysis/` read prefix. Details in the ticket's `## Answer`.
 
+- **Ticket 05 resolved (fake-LLM verified)** in two commits: contract + Python
+  worker (`610258b`), NestJS side (`fe9964f`). `analyze-prospectus` /
+  `ProspectusPayload { prospectusId }`; OpenRouter behind a sync `LLMClient`
+  seam (`FakeLLMClient` in tests, never network); per-section budgets (240k
+  chars; cornerstone 60k); ~$2/doc cost guard (pre-call projection + post-call
+  actuals); 5-min lock + `asyncio.to_thread` so lock renewal survives the
+  first parse. Backend: `prospectus_analyses` table (migration
+  `1728200000000`), `enqueue-prospectus` ops command (not-yet-analysed
+  predicate, not a cron), `GET /ipo/:id/reference` (worker-facing),
+  `GET /ipo/:id/at-a-glance` + `/artifact` (proxied read). Provenance
+  `source: real` is artifact-only (`SystemSummary` is strict). Known gaps:
+  Shariah join is by normalised company name (no FK IpoListing->Company);
+  `smoke.py` calls `handle_job` without `backend_client` (pre-existing, not
+  fixed); `ProspectusCorpusService` had never been registered in
+  `IngestionModule` (fixed here).
+- **Ticket 06 resolved:** ADR-0013 written against the shipped code.

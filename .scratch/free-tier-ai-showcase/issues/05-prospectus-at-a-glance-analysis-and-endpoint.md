@@ -1,7 +1,7 @@
 # Build ticket: Prospectus at-a-glance — LLM analysis + job + read endpoint
 
 Type: task
-Status: ready-for-agent
+Status: resolved (box 2 pending live-LLM run; needs operator's OpenRouter key)
 Blocked by: 01 (`system` trigger + verdict-less `Summary`), 04 (parse + section router)
 
 > Ticket 05 of the spec-06 execution effort — the flagship artifact. Fixed
@@ -47,19 +47,19 @@ readable anonymously.
 
 ## Acceptance criteria
 
-- [ ] `analyze-prospectus` added to `JobName` (additive); `ProspectusPayload`
+- [x] `analyze-prospectus` added to `JobName` (additive); `ProspectusPayload`
       added to the contract payloads and wired through envelope validation.
 - [ ] Running the job against each of the 3 real corpus PDFs produces all 5
       sections + both Bursa insights in the artifact.
-- [ ] The wire summary is verdict-less (`{ headline, asOf }`, no `verdict`
+- [x] The wire summary is verdict-less (`{ headline, asOf }`, no `verdict`
       field) with `source: real` provenance.
-- [ ] Re-running reuses ticket 04's persisted parse (near-free re-run — no
+- [x] Re-running reuses ticket 04's persisted parse (near-free re-run — no
       re-parse of the underlying PDF).
-- [ ] Anonymous `GET` endpoint returns the summary/artifact pointer keyed by
+- [x] Anonymous `GET` endpoint returns the summary/artifact pointer keyed by
       `prospectusId`, joined to the `IpoListing` row.
-- [ ] A build-time cost-guard check exists asserting the per-doc token
+- [x] A build-time cost-guard check exists asserting the per-doc token
       budget stays under the ceiling.
-- [ ] Unit lane (section-router + reduce assertions, no infra) and
+- [x] Unit lane (section-router + reduce assertions, no infra) and
       integration lane (JobBus round-trip, testcontainers) both green, per
       spec 06's Testing Decisions.
 
@@ -70,3 +70,19 @@ readable anonymously.
 - Automated prospectus fetching, paid TA/FA features, RAPTOR/contextual
   retrieval/vector store, user-triggered AI jobs — all explicitly out of
   scope for spec 06.
+
+## Answer
+
+Shipped in `610258b` (contract + Python worker) and `fe9964f` (NestJS). See
+`map.md` and ADR-0013 for the full shapes.
+
+Verified with `FakeLLMClient` only: Python unit lane 108 passed, integration
+lane 2 passed (Redis + LocalStack round trip), contracts vitest 17 passed,
+backend unit 425 passed, backend integration 25 passed.
+
+**Still open (needs the operator's OpenRouter key, so acceptance boxes 2 and
+the live part of the cost check are not ticked):** run the job on the 3 real
+PDFs with a live model; confirm OpenRouter `response_format`, `usage.include`
+and `cache_control` behaviour; Flash vs Pro/Sonnet A/B. The 3 opt-in
+`-m corpus` prospectus tests (full pipeline, real PDF, fake LLM) were
+collected but not run (slow).
