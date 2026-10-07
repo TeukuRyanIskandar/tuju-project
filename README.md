@@ -38,7 +38,7 @@ tuju-project/
 │                                                                          uv-managed,
 │                                                                          OUTSIDE pnpm/Turbo
 ├── infra/localstack/ local S3 bucket init
-├── docs/adr/         architecture decision records (0001–0012)
+├── docs/adr/         architecture decision records (0001–0013)
 ├── .github/          CI workflows + composite setup actions
 └── docker-compose.yml   local runtime
 ```
@@ -134,7 +134,7 @@ no real secret is ever committed.
 
 ## Docs
 
-- [`docs/adr/`](docs/adr/) — system-wide architecture decisions (0001–0012).
+- [`docs/adr/`](docs/adr/) — system-wide architecture decisions (0001–0013).
 - [`CONTEXT-MAP.md`](CONTEXT-MAP.md) — indexes the per-context `CONTEXT.md` in each
   workspace member (domain vocabulary per context).
 - [`docs/research/`](docs/research/) — research findings (e.g. Bursa market-data sources).

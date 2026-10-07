@@ -1,5 +1,7 @@
 /**
  * @tuju/contracts — the single cross-language contract seam (ADR-0002, ADR-0007).
+ * ADR-0013 is the additive amendment to ADR-0007 (`trigger: 'system'`, verdict-less
+ * `SystemSummary`, the spec-06 job names).
  *
  * Zod v4 is the source of truth. TS types are exported natively (inferred from
  * the Zod schemas). Python Pydantic v2 models are generated from the JSON Schema
