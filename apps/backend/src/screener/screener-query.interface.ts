@@ -14,24 +14,28 @@
  * as the deterministic tiebreaker.
  */
 
-import type { ListingBoard, ProvenanceClass } from '../data/entities/enums';
+import type {
+  Page,
+  ScreenerProvenance,
+  ScreenerRow,
+  ScreenerSectorOption,
+  ScreenerSortKey,
+  SortDirection,
+} from '@tuju/contracts';
+import type { ListingBoard } from '../data/entities/enums';
+
+// Wire shapes live in `@tuju/contracts` (ADR-0014); re-exported so screener
+// code keeps importing them from the seam.
+export type {
+  ScreenerProvenance,
+  ScreenerRow,
+  ScreenerSectorOption,
+  ScreenerSortKey,
+  SortDirection,
+};
 
 /** DI token for the {@link ScreenerQuery} implementation binding. */
 export const SCREENER_QUERY = 'SCREENER_QUERY';
-
-/** Sortable columns — exactly the result row's numeric columns (spec 03). */
-export type ScreenerSortKey =
-  | 'close'
-  | 'pctChange'
-  | 'marketCap'
-  | 'pe'
-  | 'dy'
-  | 'pNta'
-  | 'roe'
-  | 'de';
-
-/** Sort direction; the screener default is `pctChange` + `desc`. */
-export type SortDirection = 'asc' | 'desc';
 
 /**
  * One resolved filter set (spec 03's filter set; every filter optional).
@@ -94,54 +98,8 @@ export interface ScreenerQueryParams {
   limit: number;
 }
 
-/**
- * Per-numeric-class provenance for one row (spec 03 "Illustrative labelling"):
- * a read-time `IngestionRun` lineage join on each class's source row — the
- * latest price bar, the fundamentals snapshot, the indicator snapshot.
- * Reference fields (`stockCode`/`shortName`/`sector`) are `real` reference
- * data by contract (the stock-page precedent), so they carry no per-row class.
- * `null` = that class's source row is absent for the instrument.
- */
-export interface ScreenerProvenance {
-  price: ProvenanceClass | null;
-  fundamentals: ProvenanceClass | null;
-  technicals: ProvenanceClass | null;
-}
-
-/** One screener result row (spec 03's row shape; ratios read, not computed). */
-export interface ScreenerRow {
-  stockCode: string;
-  shortName: string;
-  sector: string;
-  close: number | null;
-  /** (latest close − previous close) ÷ previous close × 100; `null` with < 2 bars. */
-  pctChange: number | null;
-  marketCap: number | null;
-  pe: number | null;
-  dy: number | null;
-  pNta: number | null;
-  roe: number | null;
-  de: number | null;
-  provenance: ScreenerProvenance;
-}
-
 /** One result page: the matched window plus the total match count. */
-export interface ScreenerPage {
-  items: ScreenerRow[];
-  total: number;
-  offset: number;
-  limit: number;
-}
-
-/**
- * One sector option in the `sector` filter's enum domain (spec 03, ticket 03):
- * the `id` IS the FK id `GET /screener?sector=` takes, the `name` is what the
- * FE renders.
- */
-export interface ScreenerSectorOption {
-  id: string;
-  name: string;
-}
+export type ScreenerPage = Page<ScreenerRow>;
 
 /**
  * The repository seam: one screen of the analysed universe, plus the sector

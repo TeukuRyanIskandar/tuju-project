@@ -14,6 +14,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import type { SearchResponse } from '@tuju/contracts';
 import { ReadCacheService, SEARCH_CACHE_PREFIX } from '../cache';
 import {
   INSTRUMENT_SEARCH,
@@ -27,13 +28,8 @@ export const DEFAULT_SEARCH_LIMIT = 20;
 /** Hard cap on ?limit= — clamped, never a 400. */
 export const MAX_SEARCH_LIMIT = 100;
 
-/** The `GET /search` response shape. */
-export interface SearchResponse {
-  /** Echo of the normalised query (trimmed, whitespace collapsed, case preserved). */
-  query: string;
-  /** Trigram-ranked identity rows, capped at the (clamped) limit. */
-  items: SearchResultRow[];
-}
+// The wire shape lives in `@tuju/contracts` (ADR-0014).
+export type { SearchResponse };
 
 /**
  * Normalise once before ranking: trim the ends and collapse internal

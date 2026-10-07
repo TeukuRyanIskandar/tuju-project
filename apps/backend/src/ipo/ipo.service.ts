@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { DataSource } from 'typeorm';
+import type { ProspectusArtifact } from '@tuju/contracts';
 import { Company } from '../data/entities/company.entity';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
 import { ProspectusAnalysis } from '../data/entities/prospectus-analysis.entity';
@@ -66,7 +67,11 @@ export class IpoService {
    * streams the object; no presigned URLs). The pointer is the one NestJS
    * itself persisted from the JobResult, never caller-supplied.
    */
-  async getArtifact(prospectusId: string): Promise<unknown> {
+  /**
+   * The stored artifact, typed as the contract. Not re-validated here: the AI
+   * worker validates against `ProspectusArtifact` before writing to S3 (ADR-0014).
+   */
+  async getArtifact(prospectusId: string): Promise<ProspectusArtifact> {
     const { analysis } = await this.findAnalysed(prospectusId);
     const out = await this.s3.send(
       new GetObjectCommand({
@@ -80,7 +85,7 @@ export class IpoService {
         `Prospectus artifact body is empty for id=${prospectusId}`,
       );
     }
-    return JSON.parse(body) as unknown;
+    return JSON.parse(body) as ProspectusArtifact;
   }
 
   private findListing(prospectusId: string): Promise<IpoListing | null> {

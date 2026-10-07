@@ -18,6 +18,7 @@
  * This is a `.spec.ts` (runs in the default `test` lane per the house
  * pattern) but requires Docker for testcontainers.
  */
+import { ScreenerResponse, parseOrThrow } from '@tuju/contracts';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -264,6 +265,8 @@ describe('Screener endpoint (integration — testcontainers)', () => {
 
   it('default screen returns the analysed universe, default %change desc NULLs last, resolved defaults echoed', async () => {
     const res = await controller.screen({});
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(ScreenerResponse, JSON.parse(JSON.stringify(res)));
     expect(res.sort).toBe('pctChange');
     expect(res.dir).toBe('desc');
     expect(res.offset).toBe(0);

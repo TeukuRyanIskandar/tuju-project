@@ -24,6 +24,12 @@
  * guaranteed available per the ticket.
  */
 
+import {
+  AnnouncementsPage,
+  CorporateActionsPage,
+  StockCorePayload,
+  parseOrThrow,
+} from '@tuju/contracts';
 import { NotFoundException } from '@nestjs/common';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
@@ -75,7 +81,6 @@ import {
 import { StocksController } from './stocks.controller';
 import { StocksService } from './stocks.service';
 import { MAX_PAGE_LIMIT } from './pagination';
-import type { StockCorePayload } from './stocks.types';
 
 jest.setTimeout(180_000);
 
@@ -231,6 +236,8 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
 
   it('core composes the full graph: stored ratios (read, not recomputed), read-time %change, per-block provenance', async () => {
     const core = await service.getCore(MAYBANK.stockCode);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(StockCorePayload, JSON.parse(JSON.stringify(core)));
 
     // Identity ⋈ Company ⋈ Sector, provenance = the instrument row's run class.
     expect(core.identity).toEqual({
@@ -346,6 +353,8 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
   it('announcements list: newest filedAt first, pagination bounds, clamped limit, per-item aggregator provenance', async () => {
     // Defaults: offset 0, limit 50; ordering strictly newest-first.
     const page = await controller.getAnnouncements(MAYBANK.stockCode);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(AnnouncementsPage, JSON.parse(JSON.stringify(page)));
     expect(page.total).toBe(3);
     expect(page.offset).toBe(0);
     expect(page.limit).toBe(50);
@@ -401,6 +410,8 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
 
   it('corporate-actions list: chronological exDate ascending, nullable amount, pagination', async () => {
     const page = await controller.getCorporateActions(MAYBANK.stockCode);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(CorporateActionsPage, JSON.parse(JSON.stringify(page)));
     expect(page.total).toBe(3);
     expect(page.items.map((c) => c.exDate)).toEqual([
       '2025-12-05',

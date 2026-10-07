@@ -1,4 +1,7 @@
-import type { Tier } from './tier-policy';
+import type { SessionUser } from '@tuju/contracts';
+
+// The wire shape lives in `@tuju/contracts` (ADR-0014).
+export type { SessionUser };
 
 /**
  * The opaque server-side session shape (ADR-0005). Stored in Redis, referenced
@@ -6,10 +9,5 @@ import type { Tier } from './tier-policy';
  * revocation is instant (delete the Redis key) — the reason session beats a
  * stateless JWT here.
  */
-export interface SessionUser {
-  userId: string;
-  tier: Tier;
-}
-
 /** The authenticated user resolved onto the request (`req.user`). */
 export type AuthedUser = SessionUser;

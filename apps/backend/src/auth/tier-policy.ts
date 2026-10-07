@@ -1,4 +1,4 @@
-import type { JobName } from '@tuju/contracts';
+import type { JobName, Tier } from '@tuju/contracts';
 
 /**
  * Authorization policy (ADR-0005) — the two durable invariants:
@@ -11,7 +11,7 @@ import type { JobName } from '@tuju/contracts';
  */
 
 /** Ordinal tier field on the user (ADR-0005). `premium` reserved for Product C. */
-export type Tier = 'free' | 'pro' | 'premium';
+export type { Tier };
 
 /**
  * The single source of truth: tier → the job types that tier may enqueue.

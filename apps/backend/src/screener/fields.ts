@@ -17,9 +17,11 @@
  */
 
 import { SCREENER_CACHE_PREFIX } from '../cache/cache-keys';
-import type { ListingBoard } from '../data/entities/enums';
+import type { ScreenerFieldsResponse } from '@tuju/contracts';
 import type { RawScreenerParams } from './params';
-import type { ScreenerSectorOption } from './screener-query.interface';
+
+// The wire shape lives in `@tuju/contracts` (ADR-0014).
+export type { ScreenerFieldsResponse };
 
 /**
  * The class-2 cache key for the fields response — the `…:fields` suffix
@@ -32,7 +34,10 @@ export const SCREENER_FIELDS_CACHE_KEY = `${SCREENER_CACHE_PREFIX}fields`;
 type ScreenerParam = keyof RawScreenerParams & string;
 
 /**
- * One advertised screener filter. A discriminated union on `kind`: an enum
+ * One advertised screener filter. The backend-side refinement of contracts'
+ * `ScreenerFilterField`: params are narrowed to `keyof RawScreenerParams` so a
+ * param the screen endpoint does not understand does not compile. Assignable to
+ * the contracts type. A discriminated union on `kind`: an enum
  * filter points at its domain (`boards`/`sectors`) in the response; a
  * boolean filter takes one `true`/`false` param; a numeric band takes a
  * `minParam` and — unless it is floor-only (`maxParam: null`) — a `maxParam`.
@@ -85,15 +90,3 @@ export const SCREENER_FILTER_FIELDS: readonly ScreenerFilterField[] = [
   { name: 'aboveSma50', kind: 'boolean', param: 'aboveSma50' },
   { name: 'aboveSma200', kind: 'boolean', param: 'aboveSma200' },
 ];
-
-/** The `GET /screener/fields` response: the vocabulary + the enum domains.
- * The sector option shape lives on the seam (`screener-query.interface.ts`) —
- * its single home, shared with the read that fills it. */
-export interface ScreenerFieldsResponse {
-  /** The filter descriptors (see {@link ScreenerFilterField}). */
-  filters: readonly ScreenerFilterField[];
-  /** The `board` domain — MAIN/ACE (the analysed universe; LEAP is dropped). */
-  boards: readonly ListingBoard[];
-  /** The `sector` domain — id + name, name-ordered. */
-  sectors: readonly ScreenerSectorOption[];
-}

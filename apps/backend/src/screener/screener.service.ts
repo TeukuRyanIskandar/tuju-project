@@ -12,6 +12,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
+import type { ScreenerResponse } from '@tuju/contracts';
 import { ReadCacheService, SCREENER_CACHE_PREFIX } from '../cache';
 import { parseScreenerQuery, SCREENER_BOARDS, type RawScreenerParams } from './params';
 import {
@@ -21,20 +22,14 @@ import {
 } from './fields';
 import {
   SCREENER_QUERY,
-  type ScreenerPage,
   type ScreenerQuery,
   type ScreenerQueryParams,
   type ScreenerSortKey,
   type SortDirection,
 } from './screener-query.interface';
 
-/** The `GET /screener` response: one result page + the echoed resolved params. */
-export interface ScreenerResponse extends ScreenerPage {
-  /** Echo of the resolved sort (absent/unknown → spec default `pctChange`). */
-  sort: ScreenerSortKey;
-  /** Echo of the resolved direction (absent/unknown → `desc`). */
-  dir: SortDirection;
-}
+// The wire shape lives in `@tuju/contracts` (ADR-0014).
+export type { ScreenerResponse };
 
 /** `true`/`false`; `null` (no constraint) → `` — one unambiguous fragment. */
 const boolKeyFragment = (value: boolean | null): string =>
@@ -127,7 +122,7 @@ export class ScreenerService {
    */
   async fields(): Promise<ScreenerFieldsResponse> {
     return this.readCache.remember(SCREENER_FIELDS_CACHE_KEY, async () => ({
-      filters: SCREENER_FILTER_FIELDS,
+      filters: [...SCREENER_FILTER_FIELDS],
       boards: [...SCREENER_BOARDS],
       sectors: await this.screenerQuery.sectors(),
     }));

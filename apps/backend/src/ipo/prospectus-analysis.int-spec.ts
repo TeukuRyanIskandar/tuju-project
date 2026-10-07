@@ -20,6 +20,11 @@
  *   5. `GET /ipo/:id/at-a-glance/artifact` proxies the S3 object (ADR-0004 §4).
  */
 import 'reflect-metadata';
+import {
+  ProspectusArtifact,
+  ProspectusAtAGlanceResponse,
+  parseOrThrow,
+} from '@tuju/contracts';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -295,6 +300,11 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
       expect(row.jobId).toBe(GOLDEN.jobId);
       expect(row.correlationId).toBe(GOLDEN.correlationId);
 
+      // Wire-form check against the contract (ADR-0014): what the SPA receives.
+      parseOrThrow(
+        ProspectusAtAGlanceResponse,
+        JSON.parse(JSON.stringify(await controller.atAGlance(GOLDEN_ID))),
+      );
       expect(await controller.atAGlance(GOLDEN_ID)).toEqual({
         prospectusId: GOLDEN_ID,
         companyName: 'Insights Analytics Berhad',
@@ -343,7 +353,13 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
   });
 
   it('GET artifact proxies the S3 object the pointer names (ADR-0004 §4)', async () => {
-    const artifact = { schemaVersion: 1, prospectusId: GOLDEN_ID, headline: 'rich' };
+    // The golden fixture is the contract's own sample artifact (ProspectusArtifact).
+    const artifact: unknown = JSON.parse(
+      readFileSync(
+        resolve(__dirname, '../../../../packages/contracts/fixtures/prospectus-artifact.json'),
+        'utf-8',
+      ),
+    );
     await s3.send(
       new PutObjectCommand({
         Bucket: GOLDEN.pointer.bucket,
@@ -353,5 +369,9 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
       }),
     );
     expect(await controller.artifact(GOLDEN_ID)).toEqual(artifact);
+    parseOrThrow(
+      ProspectusArtifact,
+      JSON.parse(JSON.stringify(await controller.artifact(GOLDEN_ID))),
+    );
   });
 });

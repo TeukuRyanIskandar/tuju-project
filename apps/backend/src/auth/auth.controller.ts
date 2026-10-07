@@ -34,7 +34,7 @@ export class AuthController {
   async login(
     @Body() body: { userId?: string; tier?: Tier },
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ userId: string; tier: Tier }> {
+  ): Promise<SessionUser> {
     // STUB: accept the claimed identity; a feature effort adds real verification.
     const user: SessionUser = {
       userId: body.userId ?? 'stub-user',
@@ -66,7 +66,7 @@ export class AuthController {
 
   /** FE reads `tier` from here to show/hide paywalled UI — presentation only. */
   @Get('me')
-  me(@Req() req: Request & { user?: AuthedUser }): AuthedUser {
+  me(@Req() req: Request & { user?: AuthedUser }): SessionUser {
     if (!req.user) throw new UnauthorizedException();
     return req.user;
   }

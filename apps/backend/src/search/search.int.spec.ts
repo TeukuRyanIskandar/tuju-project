@@ -24,6 +24,7 @@
  * requires Docker for testcontainers; the ticket guarantees Docker is
  * available.
  */
+import { SearchResponse, parseOrThrow } from '@tuju/contracts';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -322,6 +323,8 @@ describe('Search endpoint (integration — testcontainers)', () => {
 
     // A full round-trip through the composed module serves results.
     const res = await controller.search('axiata');
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(SearchResponse, JSON.parse(JSON.stringify(res)));
     expect(res.items.map((r) => r.stockCode)).toEqual(['6888']);
   });
 });

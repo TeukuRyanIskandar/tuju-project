@@ -1,6 +1,12 @@
+import type { ProspectusAtAGlanceResponse } from '@tuju/contracts';
 import { ShariahComplianceStatus } from '../data/entities/enums';
 import type { IpoListing } from '../data/entities/ipo-listing.entity';
 import type { ProspectusAnalysis } from '../data/entities/prospectus-analysis.entity';
+
+// `ProspectusAtAGlanceResponse` (the browser wire shape) lives in
+// `@tuju/contracts` (ADR-0014). `IpoReferenceResponse` below is worker-facing and
+// deliberately stays local.
+export type { ProspectusAtAGlanceResponse };
 
 /**
  * The Python worker's own `JobResult.jobId` prefix (colon-joined) — mirrors
@@ -53,23 +59,6 @@ export interface IpoReferenceResponse {
   listingDate: string | null;
   prospectusS3Key: string;
   shariahStatus: ReferenceShariahStatus | null;
-}
-
-/** `GET /ipo/:prospectusId/at-a-glance` — anonymous public read. */
-export interface ProspectusAtAGlanceResponse {
-  prospectusId: string;
-  companyName: string;
-  board: string | null;
-  listingDate: string | null;
-  offerPrice: string | null;
-  headline: string;
-  asOf: string;
-  /** Always `real`: stored regulatory PDFs, no synthetic/aggregator data. */
-  source: 'real';
-  /** Claim-check pointer (ADR-0004 §4); the fuller artifact is proxied at `artifactPath`. */
-  artifact: { bucket: string; key: string };
-  /** NestJS-proxied read of the rich artifact (ADR-0004 §4 — no presigned URLs). */
-  artifactPath: string;
 }
 
 /** Listing row ⋈ current Shariah status → the worker-facing reference shape. */

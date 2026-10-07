@@ -1,13 +1,7 @@
 import { Controller, Get, NotFoundException } from '@nestjs/common';
+import type { MarketBriefResponse } from '@tuju/contracts';
 import { ReadCacheService } from '../cache';
 import { BRIEF_LATEST_CACHE_KEY, MarketBriefStore } from './market-brief.store';
-
-export interface MarketBriefResponse {
-  briefDate: string;
-  headline: string;
-  asOf: string;
-  artifact: { bucket: string; key: string };
-}
 
 /**
  * Daily market brief read surface (spec 06, ticket 02).

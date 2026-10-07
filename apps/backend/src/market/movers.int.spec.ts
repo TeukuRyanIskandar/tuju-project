@@ -26,6 +26,7 @@
  * This is a `.spec.ts` (runs in the default `test` lane per the house pattern)
  * but requires Docker for testcontainers.
  */
+import { MoversResponse, parseOrThrow } from '@tuju/contracts';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -219,6 +220,8 @@ describe('Movers endpoint (integration — testcontainers)', () => {
 
   it('outside market hours: gainers orders by %change desc, null last, LEAP excluded', async () => {
     const res = await controller.movers({ type: 'gainers', limit: '10' });
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(MoversResponse, JSON.parse(JSON.stringify(res)));
     expect(res.type).toBe('gainers');
     expect(res.limit).toBe(10);
     // GAMMA +2.5%, ALPHA +2%, BETA −16.67% — L001 (LEAP) never appears.

@@ -104,7 +104,10 @@ export class IntradayReplayService {
    * surface joins on (the `MarketIndex` row's kind + its Sector's name; the
    * headline index carries no sector segment).
    */
-  static indexKey(kind: MarketIndexKind, sectorName: string | null): string {
+  static indexKey(
+    kind: `${MarketIndexKind}`, // enum member or the contracts string literal
+    sectorName: string | null,
+  ): string {
     return sectorName === null
       ? `${INTRADAY_INDEX_KEY_PREFIX}:${kind}`
       : `${INTRADAY_INDEX_KEY_PREFIX}:${kind}:${sectorName}`;

@@ -28,6 +28,7 @@
  * required (see `ingestion.int.spec.ts`).
  */
 
+import { MarketAnnouncementsPage, AnnouncementDetail, CorporateActionCalendarWindow, ResultsCalendarWindow, NewsPage, parseOrThrow } from '@tuju/contracts';
 import { randomUUID } from 'node:crypto';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
@@ -199,6 +200,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
   it('market feed: filedAt desc, per-item shape with aggregator lineage, pagination clamps', async () => {
     const page = await controller.getAnnouncements();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(MarketAnnouncementsPage, JSON.parse(JSON.stringify(page)));
     // MAYBANK rows only (CIMB/AXIATA seeded sparse): newest-first order.
     expect(page.total).toBe(5);
     expect(page.offset).toBe(0);
@@ -317,6 +320,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
   it('dealings view: the feed filtered to SHAREHOLDING_CHANGE — the same rows', async () => {
     const dealings = await controller.getDealings();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(MarketAnnouncementsPage, JSON.parse(JSON.stringify(dealings)));
     const filtered = await controller.getAnnouncements('SHAREHOLDING_CHANGE');
     expect(dealings).toEqual(filtered);
     expect(dealings.total).toBe(2);
@@ -331,6 +336,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
   it('corporate-actions calendar: default window 7 back/+30 ahead on exDate, ordered ascending, type/company filters', async () => {
     const calendar = await controller.getCorporateActionCalendar();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(CorporateActionCalendarWindow, JSON.parse(JSON.stringify(calendar)));
     // Default window: [now−7, now+30]; echoes the resolved bounds.
     expect(calendar.from).toBe(isoDay(-7));
     expect(calendar.to).toBe(isoDay(30));
@@ -387,6 +394,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
   it('results calendar: backward-looking when-filed, linked to the FINANCIAL_RESULTS announcement, reportedAt desc', async () => {
     const calendar = await controller.getResultsCalendar();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(ResultsCalendarWindow, JSON.parse(JSON.stringify(calendar)));
     // MAYBANK Q2 + Q1 (filed), AXIATA quarter has NO filing → not on the
     // when-filed calendar (its quarter exists in QuarterlyFinancials).
     expect(calendar.items.length).toBe(2);
@@ -427,6 +436,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
   it('news feed: company-tagged rows with matchedAlias; market feed = untagged rows only', async () => {
     const maybankNews = await controller.getNews(MAYBANK);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(NewsPage, JSON.parse(JSON.stringify(maybankNews)));
     expect(maybankNews.total).toBe(3);
     expect(maybankNews.items.map((n) => n.headline)).toEqual([
       'Maybank posts record profit', // now−1h
@@ -445,6 +456,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
     // Market feed: ONLY untagged rows (conservative-tagging fallout).
     const market = await controller.getNews();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(NewsPage, JSON.parse(JSON.stringify(market)));
     expect(market.items.map((n) => n.headline)).toEqual([
       'Bursa Malaysia closes higher',
       'Ringgit firms against the dollar',
@@ -509,6 +522,8 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
     });
 
     const detail = await controller.getAnnouncementById(row.id);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(AnnouncementDetail, JSON.parse(JSON.stringify(detail)));
     expect(detail).toEqual({
       id: row.id,
       provenance: ProvenanceClass.Aggregator,

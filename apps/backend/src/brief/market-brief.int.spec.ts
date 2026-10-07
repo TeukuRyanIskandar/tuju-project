@@ -20,6 +20,7 @@
  *   4. No brief yet → 404 (never a 500 on an empty table).
  */
 
+import { MarketBriefResponse, parseOrThrow } from '@tuju/contracts';
 import { randomUUID } from 'node:crypto';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource, type Repository } from 'typeorm';
@@ -160,6 +161,8 @@ describe('Daily market brief (integration — testcontainers)', () => {
       expect(latest?.artifactKey).toBe('analysis/brief/2026-09-29.json');
 
       const response = await controller.latest();
+      // Wire-form check against the contract (ADR-0014): what the SPA receives.
+      parseOrThrow(MarketBriefResponse, JSON.parse(JSON.stringify(response)));
       expect(response).toEqual({
         briefDate: '2026-09-29',
         headline: 'FBM KLCI (demo) closed higher (+1.23%) on illustrative data.',

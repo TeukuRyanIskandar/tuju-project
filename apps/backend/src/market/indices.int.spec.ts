@@ -26,6 +26,7 @@
  * populate `MarketIndex` + `IndexLevel` rows via the `SyntheticIndexAdapter`,
  * then pin expectations against what that ingest actually produced.
  */
+import { IndicesResponse, IndexSeriesResponse, SectorsResponse, parseOrThrow } from '@tuju/contracts';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
@@ -192,6 +193,8 @@ describe('Indices + sectors endpoints (integration — testcontainers)', () => {
 
   it('outside hours: returns headline + sector indices from Postgres, provenance synthetic', async () => {
     const res = await controller.indices();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(IndicesResponse, JSON.parse(JSON.stringify(res)));
     expect(res.indices.length).toBeGreaterThan(0);
 
     const headline = res.indices.find((i) => i.kind === MarketIndexKind.Headline);
@@ -292,6 +295,8 @@ describe('Indices + sectors endpoints (integration — testcontainers)', () => {
       .findOneOrFail({ where: { kind: MarketIndexKind.Headline } });
 
     const res = await controller.indexSeries(headlineIndex.id, undefined);
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(IndexSeriesResponse, JSON.parse(JSON.stringify(res)));
     expect(res.id).toBe(headlineIndex.id);
     expect(res.range).toBe('1y'); // default
     expect(res.points.length).toBeGreaterThan(0);
@@ -357,6 +362,8 @@ describe('Indices + sectors endpoints (integration — testcontainers)', () => {
   it('outside hours: sectors is exactly the sector subset of /market/indices (same machinery)', async () => {
     const indicesRes = await controller.indices();
     const sectorsRes = await controller.sectors();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(SectorsResponse, JSON.parse(JSON.stringify(sectorsRes)));
 
     const expectedSectors = indicesRes.indices
       .filter((i) => i.kind === MarketIndexKind.Sector)

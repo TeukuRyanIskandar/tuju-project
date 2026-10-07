@@ -13,27 +13,13 @@
  * fields only, no prices/fundamentals (those live on the stock page).
  */
 
+import type { SearchResultRow } from '@tuju/contracts';
+
+// The wire shape lives in `@tuju/contracts` (ADR-0014).
+export type { SearchResultRow };
+
 /** DI token for the {@link InstrumentSearch} implementation binding. */
 export const INSTRUMENT_SEARCH = 'INSTRUMENT_SEARCH';
-
-/**
- * One search result row — instrument identity joined to issuer identity.
- * All strings; the numeric columns of the model are never surfaced here.
- */
-export interface SearchResultRow {
-  /** Stable Bursa 4-digit code (unique natural key). */
-  stockCode: string;
-  /** Mutable short ticker name (e.g. `MAYBANK`). */
-  shortName: string;
-  /** Mutable full instrument name. */
-  fullName: string;
-  /** Issuer registered name (`Company.fullName`). */
-  companyName: string;
-  /** Listing board (`MAIN`/`ACE` — LEAP is outside the analysed universe). */
-  board: string;
-  /** Bursa sector name (joined through `Company.sector`). */
-  sectorName: string;
-}
 
 /** The repository seam: rank-band search over the analysed universe. */
 export interface InstrumentSearch {

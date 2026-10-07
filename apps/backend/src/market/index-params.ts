@@ -13,8 +13,10 @@
  * series needs anyway (a holiday-shortened week must not make `1m` empty).
  */
 
+import type { IndexSeriesRange as ContractsIndexSeriesRange } from '@tuju/contracts';
+
 /** Valid range values for the index series endpoint. */
-export type IndexSeriesRange = '1m' | '3m' | '6m' | '1y' | '3y' | '5y' | 'all';
+export type IndexSeriesRange = ContractsIndexSeriesRange;
 
 /** Default range when absent or unknown. */
 export const DEFAULT_SERIES_RANGE: IndexSeriesRange = '1y';

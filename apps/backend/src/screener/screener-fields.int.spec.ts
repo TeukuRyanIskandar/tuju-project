@@ -18,6 +18,7 @@
  * This is a `.spec.ts` (runs in the default `test` lane per the house
  * pattern) but requires Docker for testcontainers.
  */
+import { ScreenerFieldsResponse, parseOrThrow } from '@tuju/contracts';
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { Test, type TestingModule } from '@nestjs/testing';
@@ -192,6 +193,8 @@ describe('Screener fields endpoint (integration — testcontainers)', () => {
 
   it('advertises the pinned filter vocabulary, the MAIN/ACE board domain, and the sector domain name-ordered from Postgres', async () => {
     const res = await controller.fields();
+    // Wire-form check against the contract (ADR-0014): what the SPA receives.
+    parseOrThrow(ScreenerFieldsResponse, JSON.parse(JSON.stringify(res)));
     expect(res.filters).toEqual(SCREENER_FILTER_FIELDS);
     expect(res.boards).toEqual(['MAIN', 'ACE']);
     expect(res.sectors.map((s) => s.name)).toEqual(ORDERED_SECTOR_NAMES);

@@ -22,7 +22,11 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
 
 - Talks to the AI world **only** through the JobBus + `@tuju/contracts` — never
   imports Python code (ADR-0002).
-- Consumes `@tuju/contracts` TS types via `workspace:*`; does not redefine message shapes.
+- Consumes `@tuju/contracts` TS types via `workspace:*`; does not redefine message or HTTP response
+  shapes (ADR-0014). `*.types.ts` files only re-export them. Production code imports contracts
+  **type-only** (contracts is ESM, the backend CommonJS); Jest maps the package to its TS source
+  so specs can parse responses with the Zod schemas.
+- Worker-facing `GET /ipo/:id/reference` stays a backend-local type (not a browser response).
 
 ## Glossary
 

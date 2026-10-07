@@ -16,6 +16,8 @@
  * volume ramp — the guard and the boards provably share one window.
  */
 
+import type { MoversBoardType as ContractsMoversBoardType } from '@tuju/contracts';
+
 import { pctChange } from '../stocks/serialisation';
 import { instrumentSeed, SYNTHETIC_BASE_SEED } from './reference-universe';
 
@@ -84,7 +86,7 @@ export function intradayVolume(dailyVolume: number, minutes: number): number {
 }
 
 /** The three precomputed movers boards (spec 05 option A: no floor). */
-export type MoversBoardType = 'gainers' | 'losers' | 'actives';
+export type MoversBoardType = ContractsMoversBoardType;
 
 export const MOVERS_BOARD_TYPES: readonly MoversBoardType[] = [
   'gainers',

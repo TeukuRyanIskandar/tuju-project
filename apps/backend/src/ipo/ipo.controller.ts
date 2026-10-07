@@ -1,4 +1,5 @@
 import { Controller, Get, Param } from '@nestjs/common';
+import type { ProspectusArtifact } from '@tuju/contracts';
 import { ReadCacheService } from '../cache';
 import { IpoService } from './ipo.service';
 import type {
@@ -47,7 +48,9 @@ export class IpoController {
   }
 
   @Get(':prospectusId/at-a-glance/artifact')
-  artifact(@Param('prospectusId') prospectusId: string): Promise<unknown> {
+  artifact(
+    @Param('prospectusId') prospectusId: string,
+  ): Promise<ProspectusArtifact> {
     return this.readCache.remember(prospectusArtifactCacheKey(prospectusId), () =>
       this.ipo.getArtifact(prospectusId),
     );
