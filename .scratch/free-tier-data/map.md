@@ -11,7 +11,7 @@ into build tickets. Backend only. Ticket work lands in `apps/backend`.
 | 02 | [Source-adapter seam](issues/02-source-adapter-seam.md) | 1 | 01 | **resolved** (committed `7b10846`) |
 | 03 | [Synthetic co-generation generator](issues/03-synthetic-cogeneration-generator.md) | 1 | 01 | **resolved** (committed `7b10846`) |
 | 04 | [Ingestion worker + indicators + ADR-0012](issues/04-ingestion-worker-and-indicators.md) | 2 | 02, 03 | **resolved** (committed `7b10846`; post-review fixes `7fc11ab`) |
-| 05 | [Nightly re-ingest idempotency](issues/05-nightly-reingest-idempotency.md) | — | — | **resolved** (option B; implemented, uncommitted) |
+| 05 | [Nightly re-ingest idempotency](issues/05-nightly-reingest-idempotency.md) | — | — | **resolved** (option B; committed `455d921`) |
 
 ## Wave structure
 

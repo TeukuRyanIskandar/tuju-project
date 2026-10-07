@@ -1,7 +1,7 @@
 # Build ticket: Nightly re-ingest idempotency (runNightly is single-shot only)
 
 Type: task
-Status: resolved (option B — idempotent upserts on natural keys; implemented, uncommitted)
+Status: resolved (option B — idempotent upserts on natural keys; committed `455d921`)
 Blocked by: (none)
 
 > Filed on the free-tier-data effort (spec-01 scope) from findings made by the

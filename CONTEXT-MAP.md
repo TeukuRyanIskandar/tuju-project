@@ -23,7 +23,7 @@ first, then the producer (`apps/backend`) and consumer (`services/ai`) contexts.
 
 ## Decisions
 
-- **System-wide decisions** live in `docs/adr/` at the repo root (ADR-0001–0011).
+- **System-wide decisions** live in `docs/adr/` at the repo root (ADR-0001–0012).
 - **Context-specific decisions**, if any emerge later, live in
   `<context-path>/docs/adr/`. None exist yet; the root ADR set still covers every
   context.

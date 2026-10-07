@@ -4,10 +4,20 @@ Bursa Malaysia intelligence platform — one web app, three products. Leading wi
 **Product A**: a one-stop dashboard with automated technical + fundamental analysis
 and IPO/prospectus document analysis.
 
-**Status:** the monorepo skeleton is complete (scaffold tickets 01–07). Every
+**Status:** the monorepo skeleton is complete (scaffold tickets 01–07): every
 workspace builds, the contract seam generates TS + Python types behind a drift
-gate, `docker compose up` runs the full stack, and CI is wired. No product
-features yet — those are the next efforts.
+gate, `docker compose up` runs the full stack, and CI is wired. On top of it:
+
+- **Free-tier backend, specs 01–05 — shipped:** data ingestion + domain model
+  (synthetic co-generation generator, dedicated ingestion worker, ADR-0012),
+  search + stock page, screener, announcements / news / corporate events, and
+  market overview (movers, indices, sectors).
+- **Spec 06 AI showcase — in progress:** the system-triggered daily market brief
+  and announcement summaries run end-to-end over the JobBus, but the narratives
+  are deterministic templates (no real LLM yet). The prospectus parse + section
+  router is built; the prospectus at-a-glance LLM job is pending.
+- **Not yet:** the frontend is still a placeholder SPA, and auth login is a stub
+  (ADR-0005).
 
 This repository is a monorepo with a **deliberate two-world layout** (ADR-0002).
 
@@ -17,7 +27,7 @@ This repository is a monorepo with a **deliberate two-world layout** (ADR-0002).
 tuju-project/
 ├── apps/
 │   ├── frontend/     @tuju/frontend   TanStack Start 1.x static SPA  ─┐
-│   └── backend/      @tuju/backend    NestJS 11 (JobBus, auth, DB)    ├─ TS world:
+│   └── backend/      @tuju/backend    NestJS 11 API + ingest worker   ├─ TS world:
 ├── packages/                                                          │  pnpm workspace
 │   └── contracts/    @tuju/contracts  Zod v4 contract seam           ─┘  + Turborepo graph
 │
@@ -26,7 +36,7 @@ tuju-project/
 │                                                                          uv-managed,
 │                                                                          OUTSIDE pnpm/Turbo
 ├── infra/localstack/ local S3 bucket init
-├── docs/adr/         architecture decision records (0001–0011)
+├── docs/adr/         architecture decision records (0001–0012)
 ├── .github/          CI workflows + composite setup actions
 └── docker-compose.yml   local runtime
 ```
@@ -86,14 +96,15 @@ docker compose up --build
 
 Brings up the whole stack with zero AWS credentials (ADR-0006):
 
-| Service      | Port   | Notes                                                    |
-| ------------ | ------ | -------------------------------------------------------- |
-| `frontend`   | 8080   | static SPA served by nginx                               |
-| `backend`    | 3000   | NestJS; runs migrations on boot; `/health`, Bull Board   |
-| `ai-worker`  | —      | consumes the `analysis` queue; `--scale ai-worker=N`     |
-| `redis`      | 6379   | BullMQ broker + sessions, AOF on                         |
-| `postgres`   | 5432   | system of record                                         |
-| `localstack` | 4566   | S3 emulator for claim-check artifacts                    |
+| Service            | Port | Notes                                                              |
+| ------------------ | ---- | ------------------------------------------------------------------ |
+| `frontend`         | 8080 | static SPA served by nginx                                         |
+| `backend`          | 3000 | NestJS API; runs migrations on boot; `/health`, Bull Board         |
+| `ingestion-worker` | —    | headless NestJS (same image, `worker-main.ts`); owns all ingest crons (ADR-0012) |
+| `ai-worker`        | —    | consumes the `analysis` queue; `--scale ai-worker=N`               |
+| `redis`            | 6379 | BullMQ broker + sessions, AOF on                                   |
+| `postgres`         | 5432 | system of record                                                   |
+| `localstack`       | 4566 | S3 emulator for claim-check artifacts                              |
 
 Every dependency is reached by a connection-URL env var, so the same containers
 run in prod with only the targets changed.
@@ -121,7 +132,7 @@ no real secret is ever committed.
 
 ## Docs
 
-- [`docs/adr/`](docs/adr/) — system-wide architecture decisions (0001–0011).
+- [`docs/adr/`](docs/adr/) — system-wide architecture decisions (0001–0012).
 - [`CONTEXT-MAP.md`](CONTEXT-MAP.md) — indexes the per-context `CONTEXT.md` in each
   workspace member (domain vocabulary per context).
 - [`docs/research/`](docs/research/) — research findings (e.g. Bursa market-data sources).
