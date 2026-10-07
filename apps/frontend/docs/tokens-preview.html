@@ -1,0 +1,583 @@
+<!doctype html>
+<!--
+  Reference preview of the design tokens in ../DESIGN.md. Standalone static file:
+  values are hardcoded and will drift from src/styles.css. Delete once the /_tokens
+  dev route exists. Loads fonts from Google Fonts for convenience only; the app
+  itself must self-host fonts via @fontsource.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tuju - Design Tokens v0 (Terminal Dark)</title>
+<!-- Preview only. Production self-hosts fonts via @fontsource (no runtime Google calls). -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   TOKENS - map 1:1 to apps/frontend/src/styles.css
+   (shadcn semantic names + Tuju market extensions)
+   ============================================================ */
+:root {
+  /* Surfaces: cool near-black ramp */
+  --surface-0: #0b0d10;  /* app background */
+  --surface-1: #111418;  /* panel */
+  --surface-2: #171b21;  /* raised / table header */
+  --surface-3: #1e232b;  /* hover / selected row */
+  --border: #262c35;
+  --border-strong: #343c47;   /* decorative dividers only */
+  --control-border: #616b79;  /* inputs, buttons: >=3:1 (WCAG 1.4.11) */
+
+  /* Text */
+  --fg: #e6e9ee;
+  --fg-2: #a3abb8;
+  --fg-3: #7d8696;
+
+  /* Accent (focus, selection, active tab) */
+  --accent: #5b9bff;
+  --accent-fg: #06101f;
+  --accent-soft: rgba(91, 155, 255, 0.15);
+
+  /* Market (Bursa: green up / red down) */
+  --up: #26d07c;
+  --up-bg: rgba(38, 208, 124, 0.12);
+  --up-border: rgba(38, 208, 124, 0.35);
+  --down: #ff6b6b;
+  --down-bg: rgba(255, 107, 107, 0.12);
+  --down-border: rgba(255, 107, 107, 0.35);
+  --unch: #8b94a3;
+  --unch-bg: rgba(139, 148, 163, 0.12);
+  --tick-flash-up: rgba(38, 208, 124, 0.28);
+  --tick-flash-down: rgba(255, 107, 107, 0.28);
+
+  /* Status (always paired with icon/label, never colour alone) */
+  --info: #9fb3c8;
+  --warn: #ffd166;
+  --danger: #ff4d6d;
+
+  /* Provenance */
+  --ai: #b39bff;
+  --ai-bg: rgba(179, 155, 255, 0.12);
+  --synthetic: #5ad1e6;
+  --synthetic-bg: rgba(90, 209, 230, 0.10);
+
+  /* Charts: colour-blind-safe (Okabe-Ito, lifted for dark) */
+  --chart-1: #56b4e9;
+  --chart-2: #e69f00;
+  --chart-3: #00c48c;
+  --chart-4: #f0e442;
+  --chart-5: #cc79a7;
+  --chart-6: #ff8c42;
+  --chart-7: #8fa3ff;
+  --chart-8: #b0b7c3;
+
+  /* Shape + density */
+  --radius-sm: 2px;
+  --radius: 3px;
+  --radius-lg: 4px;
+  --row-h: 26px;
+  --control-h: 28px;
+
+  /* Type */
+  --font-ui: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --motion-fast: 150ms;
+}
+
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--fg);
+  font: 400 13px/1.4 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+.num, td.num, .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.up { color: var(--up); } .down { color: var(--down); } .unch { color: var(--unch); }
+
+/* ---------- page chrome ---------- */
+header.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 16px;
+  height: 36px; padding: 0 16px;
+  background: var(--surface-1); border-bottom: 1px solid var(--border);
+}
+.logo { font: 600 13px var(--font-mono); color: var(--accent); letter-spacing: .08em; }
+header.top nav { display: flex; gap: 2px; }
+header.top nav a {
+  color: var(--fg-2); text-decoration: none; padding: 0 10px; height: 36px;
+  display: inline-flex; align-items: center; border-bottom: 2px solid transparent;
+}
+header.top nav a:hover { color: var(--fg); background: var(--surface-2); }
+header.top nav a[aria-current] { color: var(--fg); border-bottom-color: var(--accent); }
+header.top .spacer { flex: 1; }
+.clock { color: var(--fg-3); font: 400 12px var(--font-mono); }
+
+main { max-width: 1240px; margin: 0 auto; padding: 20px 16px 64px; }
+h1 { font: 600 20px/1.2 var(--font-ui); margin: 0 0 4px; }
+h2 {
+  font: 600 11px/1 var(--font-ui); text-transform: uppercase; letter-spacing: .09em;
+  color: var(--fg-3); margin: 32px 0 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+p.lede { color: var(--fg-2); margin: 0; max-width: 72ch; }
+.grid { display: grid; gap: 8px; }
+.g-4 { grid-template-columns: repeat(4, 1fr); }
+.g-3 { grid-template-columns: repeat(3, 1fr); }
+.g-2 { grid-template-columns: repeat(2, 1fr); }
+.g-8 { grid-template-columns: repeat(8, 1fr); }
+@media (max-width: 860px) { .g-4, .g-3, .g-2 { grid-template-columns: 1fr 1fr; } .g-8 { grid-template-columns: repeat(4,1fr); } }
+
+/* ---------- swatches ---------- */
+.sw { border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; background: var(--surface-1); }
+.sw .chip { height: 44px; border-bottom: 1px solid var(--border); display: flex; align-items: flex-end; padding: 4px 8px; font: 500 11px var(--font-mono); }
+.sw .meta { padding: 6px 8px; font: 400 11px/1.35 var(--font-mono); color: var(--fg-2); }
+.sw .meta b { color: var(--fg); font-weight: 500; display: block; }
+
+/* ---------- panels + tables ---------- */
+.panel { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.panel > .ph {
+  display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px;
+  background: var(--surface-2); border-bottom: 1px solid var(--border);
+  font: 600 11px var(--font-ui); text-transform: uppercase; letter-spacing: .07em; color: var(--fg-2);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.panel > .ph .r { margin-left: auto; color: var(--fg-3); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.pb { padding: 10px; }
+
+table { width: 100%; border-collapse: collapse; }
+th {
+  height: 24px; padding: 0 10px; text-align: left; font: 500 11px var(--font-ui);
+  color: var(--fg-3); background: var(--surface-2); border-bottom: 1px solid var(--border);
+  text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+}
+th.num, td.num { text-align: right; }
+td { height: var(--row-h); padding: 0 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody tr:hover { background: var(--surface-3); }
+tbody tr.sel { background: var(--accent-soft); box-shadow: inset 2px 0 0 var(--accent); }
+tbody tr:last-child td { border-bottom: 0; }
+td .code { font: 600 12px var(--font-mono); }
+td .name { color: var(--fg-3); margin-left: 8px; font-size: 12px; }
+
+/* tick flash: functional motion only */
+@keyframes flash-up { from { background: var(--tick-flash-up); } to { background: transparent; } }
+@keyframes flash-down { from { background: var(--tick-flash-down); } to { background: transparent; } }
+.flash-up { animation: flash-up 600ms ease-out; }
+.flash-down { animation: flash-down 600ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .flash-up, .flash-down { animation: none; } * { transition: none !important; } }
+
+/* ---------- chips / badges ---------- */
+.chg { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; height: 18px; border-radius: var(--radius-sm); font: 500 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.chg.up { background: var(--up-bg); } .chg.down { background: var(--down-bg); } .chg.unch { background: var(--unch-bg); }
+.badge { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 6px; border-radius: var(--radius-sm); font: 500 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--border-strong); color: var(--fg-2); }
+.badge.ai { color: var(--ai); background: var(--ai-bg); border-color: rgba(179,155,255,.4); }
+.badge.syn { color: var(--synthetic); background: var(--synthetic-bg); border: 1px dashed rgba(90,209,230,.55); }
+.badge.info { color: var(--info); border-color: rgba(159,179,200,.45); }
+.badge.warn { color: var(--warn); border-color: rgba(255,209,102,.4); }
+.badge.danger { color: var(--danger); border-color: rgba(255,77,109,.45); }
+
+/* ---------- controls ---------- */
+.btn {
+  height: var(--control-h); padding: 0 12px; border-radius: var(--radius); font: 500 12.5px var(--font-ui);
+  border: 1px solid var(--control-border); background: var(--surface-2); color: var(--fg); cursor: pointer;
+  transition: background var(--motion-fast), border-color var(--motion-fast);
+}
+.btn:hover { background: var(--surface-3); }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--fg-2); }
+.btn.ghost:hover { background: var(--surface-2); color: var(--fg); }
+:is(.btn, input, select, a):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input.field {
+  height: var(--control-h); padding: 0 8px; width: 200px; border-radius: var(--radius);
+  background: var(--surface-0); border: 1px solid var(--control-border); color: var(--fg); font: 400 13px var(--font-mono);
+}
+input.field::placeholder { color: var(--fg-3); }
+kbd { font: 500 10.5px var(--font-mono); padding: 1px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); color: var(--fg-2); background: var(--surface-2); }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* ---------- ticker strip ---------- */
+.strip { display: flex; overflow: hidden; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.strip > div { flex: 1; min-width: 0; padding: 6px 12px; border-right: 1px solid var(--border); }
+.strip > div:last-child { border-right: 0; }
+.strip .lbl { font: 500 10.5px var(--font-ui); color: var(--fg-3); text-transform: uppercase; letter-spacing: .07em; }
+.strip .val { font: 600 15px var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ---------- type specimen ---------- */
+.tscale > div { display: flex; align-items: baseline; gap: 16px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.tscale .k { width: 150px; flex: none; font: 400 11px var(--font-mono); color: var(--fg-3); }
+
+/* ---------- contrast table ---------- */
+.ok { color: var(--up); } .bad { color: var(--down); }
+.note { color: var(--fg-3); font-size: 12px; margin-top: 8px; }
+.sparkbar { display:flex; height: 10px; border-radius: 2px; overflow: hidden; }
+.sparkbar i { flex: 1; }
+
+/* ---------- section examples ---------- */
+.ex-label { font: 500 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .08em; color: var(--fg-3); margin: 14px 0 6px; }
+.layers { background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; }
+.layers .l1 { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; }
+.layers .l2 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 10px; margin-top: 8px; }
+.layers .l3 { background: var(--surface-3); border-radius: var(--radius-sm); padding: 6px 10px; margin-top: 6px; }
+.layers small { display:block; color: var(--fg-3); font: 400 11px var(--font-mono); margin-bottom: 2px; }
+.alert { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border: 1px solid var(--border); border-left-width: 3px; border-radius: var(--radius); background: var(--surface-1); margin-bottom: 6px; }
+.alert.info { border-left-color: var(--info); } .alert.warn { border-left-color: var(--warn); } .alert.danger { border-left-color: var(--danger); }
+.alert b { font-weight: 600; }
+.alert .ic { font: 700 12px var(--font-mono); width: 16px; text-align: center; flex: none; }
+.alert.info .ic { color: var(--info); } .alert.warn .ic { color: var(--warn); } .alert.danger .ic { color: var(--danger); }
+.ai-card { border: 1px solid rgba(179,155,255,.4); background: var(--ai-bg); border-radius: var(--radius-lg); padding: 10px 12px; }
+.syn-card { border: 1px dashed rgba(90,209,230,.55); background: var(--synthetic-bg); border-radius: var(--radius-lg); padding: 10px 12px; }
+.tabs { display:flex; border-bottom: 1px solid var(--border); }
+.tabs span { padding: 6px 12px; color: var(--fg-2); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.tabs span.on { color: var(--fg); border-bottom-color: var(--accent); }
+.legend { display:flex; gap: 14px; flex-wrap: wrap; font: 400 11.5px var(--font-mono); color: var(--fg-2); margin-top: 6px; }
+.legend i { display:inline-block; width: 16px; height: 0; border-top: 2px solid; vertical-align: middle; margin-right: 6px; }
+svg text { font-family: var(--font-mono); font-size: 10px; fill: var(--fg-3); }
+
+/* ---------- TradingView-style charts ---------- */
+.tvhead .sym { font: 600 12px var(--font-mono); color: var(--fg); text-transform: none; letter-spacing: 0; }
+.tvhead .dim { font: 400 12px var(--font-ui); color: var(--fg-3); text-transform: none; letter-spacing: 0; }
+.tvhead .tfs { margin-left: auto; display: flex; gap: 2px; }
+.tvhead .tfs button { height: 20px; padding: 0 7px; background: transparent; border: 0; border-radius: var(--radius-sm); color: var(--fg-2); font: 500 11px var(--font-ui); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.tvhead .tfs button:hover { background: var(--surface-3); color: var(--fg); }
+.tvhead .tfs button.on { color: var(--accent); background: var(--accent-soft); }
+.tvlegend { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 8px 12px 0; font: 400 12px var(--font-mono); font-variant-numeric: tabular-nums; min-height: 28px; }
+.tvlegend b { font-weight: 400; color: var(--fg-3); margin-right: 4px; }
+.tvwrap { padding: 0 0 6px; background: var(--surface-1); border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
+.tvwrap svg { display: block; width: 100%; height: auto; cursor: crosshair; }
+.tvwrap svg text { font-size: 11px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <span class="logo">TUJU</span>
+  <nav aria-label="Primary">
+    <a href="#" aria-current="page">Market</a>
+    <a href="#">Screener</a>
+    <a href="#">Disclosures</a>
+    <a href="#">IPO</a>
+  </nav>
+  <span class="spacer"></span>
+  <input class="field" placeholder="Search ticker or company" aria-label="Search" />
+  <kbd>/</kbd>
+  <span class="clock">MYT 15:42:08</span>
+</header>
+
+<main>
+  <h1>Design tokens v0 - Terminal Dark</h1>
+  <p class="lede">Dense, mono-numeric, hairline borders, one blue accent. Market colours (green up / red down) are kept separate from status colours so a "danger" state never reads as a price drop. Preview only: nothing here is wired to the repo yet.</p>
+
+  <h2>Surfaces + borders</h2>
+  <div class="grid g-4" id="surfaces"></div>
+  <div class="ex-label">Example: how the layers stack</div>
+  <div class="layers">
+    <small>surface-0 / app background</small>
+    <div class="l1">
+      <small>surface-1 / panel, 1px --border</small>
+      <div class="l2">
+        <small>surface-2 / raised: table header, panel header</small>
+        <div class="l3"><small>surface-3 / hover or selected row</small>Depth comes from lightness steps and hairlines, never shadows.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Text + accent</h2>
+  <div class="grid g-4" id="text"></div>
+  <div class="ex-label">Example: text hierarchy and accent in use</div>
+  <div class="grid g-2">
+    <div class="panel"><div class="ph">Tenaga Nasional <span class="r">TENAGA &middot; MAIN</span></div>
+      <div class="pb">
+        <div style="font:600 16px var(--font-ui)">Q3 earnings beat consensus</div>
+        <div style="color:var(--fg-2);margin-top:4px">Secondary text: revenue rose on higher tariff pass-through and lower fuel costs.</div>
+        <div style="color:var(--fg-3);margin-top:4px;font-size:12px">Muted text: filed 14 Oct 2026 &middot; Announcement 2026-10-14-0183</div>
+      </div></div>
+    <div class="panel"><div class="ph">Accent usage</div>
+      <div class="pb">
+        <div class="tabs"><span class="on">Overview</span><span>Technicals</span><span>Fundamentals</span></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary">Primary action</button>
+          <input class="field" style="width:150px;outline:2px solid var(--accent);outline-offset:1px" value="focused input" aria-label="Focused example" />
+          <span style="background:var(--accent-soft);box-shadow:inset 2px 0 0 var(--accent);padding:3px 10px">selected row</span>
+        </div>
+        <p class="note">Accent is reserved for: active tab, focus ring, selection, primary action. Nothing else.</p>
+      </div></div>
+  </div>
+
+  <h2>Market colours</h2>
+  <div class="grid g-3">
+    <div class="panel"><div class="ph">Up / down / unchanged</div><div class="pb">
+      <div class="row">
+        <span class="chg up">&#9650; +1.24%</span>
+        <span class="chg down">&#9660; -0.87%</span>
+        <span class="chg unch">&#9644; 0.00%</span>
+      </div>
+      <p class="note">Always shipped with a sign and an arrow, so colour is never the only signal.</p>
+    </div></div>
+    <div class="panel"><div class="ph">Tick flash (functional motion)</div><div class="pb">
+      <div class="row">
+        <span class="num flash-up" id="f1" style="padding:2px 8px">1,642.18</span>
+        <span class="num flash-down" id="f2" style="padding:2px 8px">1,641.97</span>
+        <button class="btn" onclick="replay()">Replay</button>
+      </div>
+      <p class="note">600ms fade, disabled under prefers-reduced-motion.</p>
+    </div></div>
+    <div class="panel"><div class="ph">Market tokens</div><div class="pb num" style="font-size:12px;line-height:1.8">
+      --up <span class="up">#26d07c</span><br/>
+      --down <span class="down">#ff6b6b</span><br/>
+      --unch <span class="unch">#8b94a3</span>
+    </div></div>
+  </div>
+
+  <h2>Status + provenance</h2>
+  <div class="row">
+    <span class="badge info">Info</span>
+    <span class="badge warn">Delayed 15m</span>
+    <span class="badge danger">Suspended</span>
+    <span class="badge ai">&#10022; AI summary</span>
+    <span class="badge syn">Synthetic data</span>
+  </div>
+  <p class="note">AI = violet solid. Synthetic/demo data = cyan dashed. Both specs already require this provenance to be visible.</p>
+  <div class="ex-label">Example: status banners (icon + label, never colour alone)</div>
+  <div class="alert info"><span class="ic">i</span><div><b>Info.</b> Index levels recompute nightly after the 17:30 ingest.</div></div>
+  <div class="alert warn"><span class="ic">!</span><div><b>Delayed 15 minutes.</b> Quotes shown are not real-time.</div></div>
+  <div class="alert danger"><span class="ic">&times;</span><div><b>Trading suspended.</b> PCHEM has been suspended pending an announcement.</div></div>
+  <div class="ex-label">Example: provenance containers</div>
+  <div class="grid g-2">
+    <div class="ai-card"><span class="badge ai">&#10022; AI summary</span>
+      <p style="margin:8px 0 4px">The company guided for flat margins next quarter and flagged higher financing costs as the main risk.</p>
+      <span style="color:var(--fg-3);font-size:12px">Generated 14 Oct 2026 16:05 MYT &middot; not investment advice</span></div>
+    <div class="syn-card"><span class="badge syn">Synthetic data</span>
+      <p style="margin:8px 0 4px">Prices on this page are generated for demonstration and do not reflect real trading.</p>
+      <span style="color:var(--fg-3);font-size:12px">Dashed border marks anything that is not live market data.</span></div>
+  </div>
+
+  <h2>Chart series (Okabe-Ito based, not yet simulator-tested)</h2>
+  <div class="grid g-8" id="charts"></div>
+  <div class="ex-label">Example: line chart, TradingView style (hover for crosshair; right price axis, last-price tag, volume pane)</div>
+  <div class="panel"><div class="ph tvhead">
+      <span class="sym">TENAGA</span><span class="dim">Tenaga Nasional &middot; 1D &middot; MYX</span>
+      <span class="tfs"><button>1W</button><button>1M</button><button class="on">3M</button><button>6M</button><button>1Y</button></span>
+      <span class="badge syn">Synthetic</span>
+    </div>
+    <div class="tvlegend" id="lg-line"></div>
+    <div class="tvwrap" id="ch-line"></div>
+  </div>
+
+  <div class="ex-label">Example: bar chart (OHLC), TradingView style (tick left = open, tick right = close; colour = close vs open)</div>
+  <div class="panel"><div class="ph tvhead">
+      <span class="sym">MAYBANK</span><span class="dim">Malayan Banking &middot; 1D &middot; MYX</span>
+      <span class="tfs"><button>1W</button><button>1M</button><button class="on">3M</button><button>6M</button><button>1Y</button></span>
+      <span class="badge syn">Synthetic</span>
+    </div>
+    <div class="tvlegend" id="lg-bar"></div>
+    <div class="tvwrap" id="ch-bar"></div>
+  </div>
+
+  <h2>Type</h2>
+  <div class="panel pb tscale">
+    <div><span class="k">20 / UI 600</span><span style="font:600 20px var(--font-ui)">Bursa Malaysia overview</span></div>
+    <div><span class="k">16 / UI 600</span><span style="font:600 16px var(--font-ui)">Top movers today</span></div>
+    <div><span class="k">13 / UI 400 (default)</span><span>Announcement summary text sits at the default body size.</span></div>
+    <div><span class="k">12 / UI 400</span><span style="font-size:12px;color:var(--fg-2)">Secondary metadata and table captions.</span></div>
+    <div><span class="k">11 / UI caps</span><span style="font:600 11px var(--font-ui);text-transform:uppercase;letter-spacing:.09em;color:var(--fg-3)">Section label</span></div>
+    <div><span class="k">13 / Mono tabular</span><span class="num" style="font-size:13px">1,642.18 &nbsp; 0.5250 &nbsp; 12,480,300 &nbsp; -0.87%</span></div>
+    <div><span class="k">15 / Mono 600</span><span class="num" style="font:600 15px var(--font-mono)">MAYBANK 10.42</span></div>
+  </div>
+
+  <h2>In context: density check</h2>
+  <div class="strip" style="margin-bottom:8px">
+    <div><div class="lbl">FBM KLCI</div><div class="val">1,642.18</div><span class="chg up">&#9650; +0.42%</span></div>
+    <div><div class="lbl">FBM 100</div><div class="val">11,904.55</div><span class="chg up">&#9650; +0.31%</span></div>
+    <div><div class="lbl">FBM ACE</div><div class="val">4,718.02</div><span class="chg down">&#9660; -0.66%</span></div>
+    <div><div class="lbl">Volume</div><div class="val">3.42B</div><span class="chg unch">&#9644; 0.0%</span></div>
+    <div><div class="lbl">Up / Down</div><div class="val"><span class="up">612</span> <span style="color:var(--fg-3)">/</span> <span class="down">488</span></div></div>
+  </div>
+
+  <div class="grid g-2" style="grid-template-columns: 2fr 1fr">
+    <div class="panel">
+      <div class="ph">Top movers <span class="badge syn">Synthetic</span><span class="r">5 of 30 &middot; 26px rows</span></div>
+      <table>
+        <thead><tr><th>Symbol</th><th class="num">Last</th><th class="num">Chg</th><th class="num">%</th><th class="num">Volume</th></tr></thead>
+        <tbody>
+          <tr><td><span class="code">MAYBANK</span><span class="name">Malayan Banking</span></td><td class="num">10.420</td><td class="num up">+0.180</td><td class="num"><span class="chg up">+1.76%</span></td><td class="num">12,480,300</td></tr>
+          <tr class="sel"><td><span class="code">TENAGA</span><span class="name">Tenaga Nasional</span></td><td class="num">14.880</td><td class="num up">+0.220</td><td class="num"><span class="chg up">+1.50%</span></td><td class="num">8,102,900</td></tr>
+          <tr><td><span class="code">PCHEM</span><span class="name">Petronas Chemicals</span></td><td class="num">4.630</td><td class="num down">-0.090</td><td class="num"><span class="chg down">-1.91%</span></td><td class="num">5,774,100</td></tr>
+          <tr><td><span class="code">SDPLNT</span><span class="name">Sime Darby Plantation</span></td><td class="num">4.920</td><td class="num down">-0.060</td><td class="num"><span class="chg down">-1.20%</span></td><td class="num">2,310,000</td></tr>
+          <tr><td><span class="code">PBBANK</span><span class="name">Public Bank</span></td><td class="num">4.410</td><td class="num unch">0.000</td><td class="num"><span class="chg unch">0.00%</span></td><td class="num">9,640,500</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <div class="ph">Daily brief <span class="badge ai">&#10022; AI</span></div>
+      <div class="pb">
+        <p style="margin:0 0 8px">Banks led the index higher while plantation names gave back early gains. Breadth stayed narrowly positive.</p>
+        <div class="row" style="font-size:12px;color:var(--fg-3)"><span>as of 15:30 MYT</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Controls</h2>
+  <div class="row">
+    <button class="btn primary">Run screener</button>
+    <button class="btn">Export CSV</button>
+    <button class="btn ghost">Reset</button>
+    <input class="field" placeholder="Min market cap" aria-label="Min market cap" />
+    <span style="color:var(--fg-3)">Press <kbd>/</kbd> to search, <kbd>g</kbd> <kbd>s</kbd> for screener</span>
+  </div>
+
+  <h2>Contrast (WCAG, computed live from the tokens above)</h2>
+  <div class="panel"><table id="contrast"><thead><tr><th>Foreground</th><th>Background</th><th class="num">Ratio</th><th>Needs</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+</main>
+
+<script>
+const css = getComputedStyle(document.documentElement);
+const v = n => css.getPropertyValue(n).trim();
+
+function swatches(el, items) {
+  document.getElementById(el).innerHTML = items.map(([name, fg]) => {
+    const val = v(name);
+    return `<div class="sw"><div class="chip" style="background:${val};color:${fg||'var(--fg)'}">${val}</div><div class="meta"><b>${name}</b></div></div>`;
+  }).join('');
+}
+swatches('surfaces', [['--surface-0'],['--surface-1'],['--surface-2'],['--surface-3'],['--border'],['--border-strong']]);
+swatches('text', [['--fg','#000'],['--fg-2','#000'],['--fg-3','#000'],['--accent','var(--accent-fg)']]);
+document.getElementById('charts').innerHTML = [1,2,3,4,5,6,7,8].map(i =>
+  `<div class="sw"><div class="chip" style="background:var(--chart-${i});color:#000">${v('--chart-'+i)}</div><div class="meta"><b>--chart-${i}</b></div></div>`).join('');
+
+function replay() {
+  for (const id of ['f1','f2']) {
+    const e = document.getElementById(id);
+    const c = e.classList.contains('flash-up') ? 'flash-up' : 'flash-down';
+    e.classList.remove(c); void e.offsetWidth; e.classList.add(c);
+  }
+}
+
+// contrast
+const lum = hex => {
+  const [r,g,b] = [1,3,5].map(i => parseInt(hex.slice(i,i+2),16)/255)
+    .map(c => c <= .03928 ? c/12.92 : ((c+.055)/1.055)**2.4);
+  return .2126*r + .7152*g + .0722*b;
+};
+const ratio = (a,b) => { const [x,y] = [lum(a),lum(b)].sort((p,q)=>q-p); return (x+.05)/(y+.05); };
+const pairs = [
+  ['--fg','--surface-0',4.5],['--fg','--surface-3',4.5],
+  ['--fg-2','--surface-1',4.5],['--fg-2','--surface-3',4.5],
+  ['--fg-3','--surface-0',4.5],['--fg-3','--surface-1',4.5],['--fg-3','--surface-2',4.5],
+  ['--up','--surface-1',4.5],['--up','--surface-3',4.5],
+  ['--down','--surface-1',4.5],['--down','--surface-3',4.5],
+  ['--unch','--surface-1',4.5],
+  ['--accent','--surface-1',4.5],['--accent-fg','--accent',4.5],
+  ['--info','--surface-1',4.5],['--warn','--surface-1',4.5],['--danger','--surface-1',4.5],
+  ['--ai','--surface-1',4.5],['--synthetic','--surface-1',4.5],
+  ['--control-border','--surface-1',3.0],
+];
+document.querySelector('#contrast tbody').innerHTML = pairs.map(([f,b,need]) => {
+  const r = ratio(v(f), v(b));
+  const ok = r >= need;
+  return `<tr><td class="mono">${f}</td><td class="mono">${b}</td><td class="num">${r.toFixed(2)}:1</td><td class="num" style="text-align:left">${need}:1${need===3?' (UI)':''}</td><td class="${ok?'ok':'bad'}">${ok?'Pass':'FAIL'}</td></tr>`;
+}).join('');
+
+/* ---------- TradingView-style charts (synthetic, seeded) ---------- */
+(function () {
+  const mulberry = a => () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function series(seed, start, n, drift) {
+    const r = mulberry(seed), out = []; let close = start, d = new Date(Date.UTC(2026, 4, 4));
+    while (out.length < n) {
+      if (d.getUTCDay() % 6 !== 0) {
+        const open = close, chg = (r() - 0.5 + drift) * 0.026;
+        close = +(open * (1 + chg)).toFixed(2);
+        const hi = +(Math.max(open, close) * (1 + r() * 0.009)).toFixed(2);
+        const lo = +(Math.min(open, close) * (1 - r() * 0.009)).toFixed(2);
+        const vol = Math.round((4e6 + r() * 9e6) * (1 + Math.abs(chg) * 28));
+        out.push({ d: new Date(d), o: open, h: hi, l: lo, c: close, v: vol });
+      }
+      d.setUTCDate(d.getUTCDate() + 1);
+    }
+    return out;
+  }
+  const fmtD = d => d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + " '" + String(d.getUTCFullYear()).slice(2);
+  const fmtV = v => v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : (v / 1e3).toFixed(0) + 'K';
+  const sgn = x => (x >= 0 ? '+' : '') + x.toFixed(2);
+  const niceTicks = (lo, hi, want) => {
+    const raw = (hi - lo) / want, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+    const out = []; for (let t = Math.ceil(lo / step) * step; t <= hi; t += step) out.push(+t.toFixed(4)); return out;
+  };
+  const sma = (data, n) => data.map((_, i) => i < n - 1 ? null : data.slice(i - n + 1, i + 1).reduce((a, b) => a + b.c, 0) / n);
+
+  function chart(elId, lgId, data, kind, uid) {
+    const W = 1100, H = 410, L = 8, R = 62, T = 10, PH = 272, VG = 12, VH = 70, AX = 24;
+    const n = data.length, plotW = W - L - R, step = plotW / n, x = i => L + step * (i + 0.5);
+    const lo = Math.min(...data.map(d => kind === 'line' ? d.c : d.l)), hi = Math.max(...data.map(d => kind === 'line' ? d.c : d.h));
+    const pad = (hi - lo) * 0.08, pmin = lo - pad, pmax = hi + pad;
+    const y = p => T + PH * (1 - (p - pmin) / (pmax - pmin));
+    const vmax = Math.max(...data.map(d => d.v)), vb = T + PH + VG + VH, vy = v => vb - VH * (v / vmax);
+    const up = d => d.c >= d.o, col = d => up(d) ? 'var(--up)' : 'var(--down)';
+    const last = data[n - 1], prev = data[n - 2];
+    const lineCol = 'var(--chart-1)', lastCol = kind === 'line' ? lineCol : col(last);
+    const ma = sma(data, 20);
+    let g = '';
+    niceTicks(pmin, pmax, 6).forEach(t => { g += `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--border)" stroke-opacity=".7"/><text x="${W - R + 8}" y="${y(t) + 4}">${t.toFixed(2)}</text>`; });
+    for (let i = 10; i < n; i += 15) g += `<line x1="${x(i)}" x2="${x(i)}" y1="${T}" y2="${vb}" stroke="var(--border)" stroke-opacity=".45"/><text x="${x(i)}" y="${H - 7}" text-anchor="middle">${fmtD(data[i].d).slice(0, -4)}</text>`;
+    g += `<line x1="${L}" x2="${W - R}" y1="${vb}" y2="${vb}" stroke="var(--border-strong)"/><line x1="${W - R}" x2="${W - R}" y1="${T}" y2="${vb}" stroke="var(--border)"/>`;
+    data.forEach((d, i) => { g += `<rect x="${x(i) - step * 0.36}" y="${vy(d.v)}" width="${step * 0.72}" height="${vb - vy(d.v)}" fill="${col(d)}" fill-opacity=".45"/>`; });
+    if (kind === 'line') {
+      const pts = data.map((d, i) => `${x(i).toFixed(1)},${y(d.c).toFixed(1)}`);
+      g += `<defs><linearGradient id="ar${uid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--chart-1)" stop-opacity=".30"/><stop offset="1" stop-color="var(--chart-1)" stop-opacity="0"/></linearGradient></defs>`;
+      g += `<path d="M${pts.join(' L')} L${x(n - 1)},${T + PH} L${x(0)},${T + PH} Z" fill="url(#ar${uid})"/>`;
+      g += `<polyline fill="none" stroke="var(--chart-2)" stroke-width="1.25" points="${ma.map((m, i) => m == null ? '' : `${x(i).toFixed(1)},${y(m).toFixed(1)}`).filter(Boolean).join(' ')}"/>`;
+      g += `<polyline fill="none" stroke="${lineCol}" stroke-width="2" stroke-linejoin="round" points="${pts.join(' ')}"/>`;
+    } else {
+      const tk = Math.max(2.5, step * 0.38);
+      data.forEach((d, i) => { const c = col(d), xi = x(i); g += `<g stroke="${c}" stroke-width="1.5"><line x1="${xi}" x2="${xi}" y1="${y(d.h)}" y2="${y(d.l)}"/><line x1="${xi - tk}" x2="${xi}" y1="${y(d.o)}" y2="${y(d.o)}"/><line x1="${xi}" x2="${xi + tk}" y1="${y(d.c)}" y2="${y(d.c)}"/></g>`; });
+    }
+    const ly = y(last.c);
+    g += `<line x1="${L}" x2="${W - R}" y1="${ly}" y2="${ly}" stroke="${lastCol}" stroke-dasharray="3 3" stroke-opacity=".8"/>`;
+    g += `<rect x="${W - R}" y="${ly - 10}" width="${R - 2}" height="20" rx="2" fill="${lastCol}"/><text x="${W - R + 7}" y="${ly + 4}" style="fill:#0b0d10;font-weight:600">${last.c.toFixed(2)}</text>`;
+    g += `<g id="xh${uid}" style="display:none;pointer-events:none"><line id="xv${uid}" y1="${T}" y2="${vb}" stroke="var(--fg-3)" stroke-dasharray="4 4"/><line id="xhz${uid}" x1="${L}" x2="${W - R}" stroke="var(--fg-3)" stroke-dasharray="4 4"/>
+      <rect id="xpr${uid}" x="${W - R}" width="${R - 2}" height="20" rx="2" fill="var(--surface-3)" stroke="var(--border-strong)"/><text id="xpt${uid}" x="${W - R + 7}" style="fill:var(--fg)"></text>
+      <rect id="xdr${uid}" y="${vb + 2}" width="78" height="18" rx="2" fill="var(--surface-3)" stroke="var(--border-strong)"/><text id="xdt${uid}" y="${vb + 15}" text-anchor="middle" style="fill:var(--fg)"></text></g>`;
+    g += `<rect id="ov${uid}" x="${L}" y="${T}" width="${plotW}" height="${vb - T}" fill="transparent"/>`;
+
+    const el = document.getElementById(elId), lg = document.getElementById(lgId);
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${kind === 'line' ? 'Line chart with 20-day moving average and volume' : 'OHLC bar chart with volume'}">${g}</svg>`;
+
+    const legend = i => {
+      const d = data[i], pv = data[i - 1] || d, ch = d.c - pv.c, pc = ch / pv.c * 100, cc = ch >= 0 ? 'up' : 'down';
+      lg.innerHTML = kind === 'line'
+        ? `<span><b>C</b><span class="${cc}">${d.c.toFixed(2)}</span></span><span class="${cc}">${sgn(ch)} (${sgn(pc)}%)</span><span style="color:var(--chart-2)"><b style="color:var(--chart-2)">MA 20</b>${ma[i] == null ? '--' : ma[i].toFixed(2)}</span><span><b>Vol</b>${fmtV(d.v)}</span>`
+        : `<span><b>O</b><span class="${cc}">${d.o.toFixed(2)}</span></span><span><b>H</b><span class="${cc}">${d.h.toFixed(2)}</span></span><span><b>L</b><span class="${cc}">${d.l.toFixed(2)}</span></span><span><b>C</b><span class="${cc}">${d.c.toFixed(2)}</span></span><span class="${cc}">${sgn(ch)} (${sgn(pc)}%)</span><span><b>Vol</b>${fmtV(d.v)}</span>`;
+    };
+    legend(n - 1);
+
+    const svg = el.querySelector('svg'), $ = id => svg.querySelector('#' + id + uid);
+    svg.addEventListener('mousemove', e => {
+      const b = svg.getBoundingClientRect(), mx = (e.clientX - b.left) * W / b.width, my = (e.clientY - b.top) * H / b.height;
+      const i = Math.max(0, Math.min(n - 1, Math.floor((mx - L) / step)));
+      if (mx < L || mx > W - R || my < T || my > vb) { leave(); return; }
+      const cy = Math.max(T, Math.min(T + PH, my)), price = pmin + (1 - (cy - T) / PH) * (pmax - pmin);
+      $('xh').style.display = ''; $('xv').setAttribute('x1', x(i)); $('xv').setAttribute('x2', x(i));
+      $('xhz').setAttribute('y1', cy); $('xhz').setAttribute('y2', cy);
+      $('xpr').setAttribute('y', cy - 10); $('xpt').setAttribute('y', cy + 4); $('xpt').textContent = price.toFixed(2);
+      const dx = Math.max(L + 39, Math.min(W - R - 39, x(i)));
+      $('xdr').setAttribute('x', dx - 39); $('xdt').setAttribute('x', dx); $('xdt').textContent = fmtD(data[i].d);
+      legend(i);
+    });
+    const leave = () => { $('xh').style.display = 'none'; legend(n - 1); };
+    svg.addEventListener('mouseleave', leave);
+  }
+  chart('ch-line', 'lg-line', series(11, 13.4, 110, 0.035), 'line', 'a');
+  chart('ch-bar', 'lg-bar', series(29, 9.6, 90, 0.015), 'bar', 'b');
+})();
+</script>
+</body>
+</html>

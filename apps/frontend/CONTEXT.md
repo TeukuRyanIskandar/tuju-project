@@ -22,6 +22,10 @@ additive, not a rewrite.
 - Consumes `@tuju/contracts` TS types (e.g. `JobName`) via `workspace:*`; no
   cross-language imports (ADR-0002).
 
+## Design
+
+Visual language, tokens and chart patterns live in [`DESIGN.md`](DESIGN.md).
+
 ## Glossary
 
 - **Static SPA** — the v1 build target; CDN-served assets, no FE request-path server.
