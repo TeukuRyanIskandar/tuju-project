@@ -1,5 +1,7 @@
 import { HeadContent, Outlet, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 
+import { AppShell } from '#/components/app-shell'
+import { ErrorPage, NotFoundPage } from '#/components/status-pages'
 import type { RouterContext } from '../router'
 
 import appCss from '../styles.css?url'
@@ -13,8 +15,19 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     ],
     links: [{ rel: 'stylesheet', href: appCss }],
   }),
+  component: RootLayout,
+  notFoundComponent: NotFoundPage,
+  errorComponent: ErrorPage,
   shellComponent: RootDocument,
 })
+
+function RootLayout() {
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  )
+}
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
@@ -23,7 +36,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children ?? <Outlet />}
+        {children}
         <Scripts />
       </body>
     </html>

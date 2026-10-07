@@ -275,7 +275,7 @@ export function TokensPage({ readToken }: TokensPageProps = {}) {
   const read = useTokenReader(readToken)
 
   return (
-    <main className="mx-auto max-w-[1240px] px-4 pt-5 pb-16">
+    <div className="mx-auto max-w-[1240px] px-4 pt-5 pb-16">
       {/* Keyframes only: colours come from the real tick-flash tokens. The reduced-motion guard in styles.css covers them. */}
       <style>{`
         @keyframes tokens-flash-up { from { background: var(--tick-flash-up); } to { background: transparent; } }
@@ -633,6 +633,6 @@ export function TokensPage({ readToken }: TokensPageProps = {}) {
       <Section title="Contrast">
         <ContrastTable read={read} />
       </Section>
-    </main>
+    </div>
   )
 }
