@@ -288,9 +288,15 @@ assistive technologies and expert review.
 
 ## Preview
 
-An interactive HTML preview of these tokens (surfaces, text, market colours,
-status, provenance, type scale, density examples, both charts, live contrast
-table) is at [`docs/tokens-preview.html`](docs/tokens-preview.html). It is a
-standalone file with hardcoded values, so it can drift from `src/styles.css`.
-The `/_tokens` dev route planned for implementation is its intended
-replacement; delete the preview once that exists.
+Two previews of these tokens exist:
+
+- **`/_tokens` (the reference).** A React route in `src/routes/[_]tokens.tsx`
+  (page in `src/dev/`) that renders surfaces, text, market colours, status,
+  provenance, both charts, the type scale, density examples and a live contrast
+  table using the real `src/styles.css` tokens and the real `src/components`. It
+  is dev-only: run `pnpm --filter @tuju/frontend dev` and open `/_tokens`. It is
+  not in the production build.
+- **[`docs/tokens-preview.html`](docs/tokens-preview.html)** (kept). A standalone
+  file with hardcoded values that opens without running the app. Because it is a
+  copy, it can drift from `src/styles.css`; when the two disagree, `/_tokens` is
+  right.

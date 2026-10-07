@@ -1,7 +1,7 @@
 # `/_tokens` dev route
 
 Type: task
-Status: ready-for-agent
+Status: done
 Blocked by: 06, 08
 
 ## Task
@@ -18,3 +18,6 @@ Blocked by: 06, 08
 The route renders in dev and is absent from the production build.
 
 ## Comments
+
+- Done, uncommitted. `/_tokens` route (`src/routes/[_]tokens.tsx`, page in `src/dev/`), DESIGN.md Preview section updated, `docs/tokens-preview.html` kept. Frontend `test`, `typecheck` and `build` pass. Production `dist` has no page strings; `beforeLoad` throws not-found when not in dev.
+- Not verified: visual check in a browser, keyboard or screen-reader testing.
