@@ -244,6 +244,45 @@ def test_cost_ceiling_abort_is_terminal_and_writes_no_result_artifact() -> None:
     assert "what-to-watch" not in llm.steps
 
 
+def test_malformed_artifact_fails_the_job_and_writes_nothing(monkeypatch) -> None:
+    """ADR-0014 §3: the assembled artifact is validated before the S3 write."""
+    import tuju_ai.handler as handler_mod
+
+    real = handler_mod.analyze_prospectus
+
+    def corrupted(**kw):
+        artifact = real(**kw)
+        del artifact["headline"]  # required by the ProspectusArtifact contract
+        return artifact
+
+    monkeypatch.setattr(handler_mod, "analyze_prospectus", corrupted)
+    runtime, _p, _l = _runtime()
+    store, fake = store_with_pdf()
+    with pytest.raises(TerminalJobError, match="contract validation"):
+        handle_job(
+            JOB_ANALYZE_PROSPECTUS, envelope(), artifact_store=store,
+            report_progress=lambda _p: None, backend_client=FakeBackend(),
+            prospectus_runtime=runtime,
+        )
+    assert (BUCKET, f"analysis/prospectus/{PROSPECTUS_ID}/at-a-glance.json") not in fake.objects
+
+
+def test_artifact_with_unknown_key_is_rejected_before_write(monkeypatch) -> None:
+    import tuju_ai.handler as handler_mod
+
+    real = handler_mod.analyze_prospectus
+
+    def drifted(**kw):
+        artifact = real(**kw)
+        artifact["insights"]["cornerstone"]["surprise"] = True
+        return artifact
+
+    monkeypatch.setattr(handler_mod, "analyze_prospectus", drifted)
+    runtime, _p, _l = _runtime()
+    with pytest.raises(TerminalJobError, match="contract validation"):
+        _run(runtime=runtime)
+
+
 def test_persistently_malformed_llm_output_is_terminal() -> None:
     llm = FakeLLMClient(garbage_first={"financials": 5})
     runtime = ProspectusRuntime(llm_client=llm, parse_fn=CountedParse())

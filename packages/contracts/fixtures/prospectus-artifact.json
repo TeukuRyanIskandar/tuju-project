@@ -1,0 +1,268 @@
+{
+  "schemaVersion": "prospectus-at-a-glance-1",
+  "prospectusId": "5f3c1a2e-9b7d-4e1a-8c3f-2d6b7a9e0f41",
+  "provenance": {
+    "source": "real",
+    "pdfSha256": "9f2b6c1d4e8a7035b1c9d2e4f6a8b0c1d3e5f70912a4b6c8d0e2f41a3b5c7d9e",
+    "model": "example/model",
+    "generatedAt": "2026-10-07T02:04:30+00:00"
+  },
+  "company": {
+    "name": "Example Industries Berhad",
+    "board": "ACE",
+    "listingDate": "2025-06-30"
+  },
+  "headline": "Watch customer concentration and how fast the RM45m proceeds are deployed into new capacity",
+  "sections": {
+    "offer": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "details of our ipo",
+          "utilisation of proceeds"
+        ],
+        "routedChars": 93,
+        "inputChars": 93,
+        "truncated": false
+      },
+      "data": {
+        "summary": "Public issue plus offer for sale to fund expansion.",
+        "totalShares": "150,000,000 shares",
+        "publicIssueShares": "120,000,000 new shares",
+        "offerForSaleShares": "30,000,000 existing shares",
+        "priceRange": "RM0.50 per share",
+        "marketCapAtIpo": "RM300 million",
+        "grossProceeds": "RM60 million",
+        "useOfProceeds": [
+          {
+            "purpose": "Capacity expansion",
+            "amount": "RM35 million",
+            "percentOfProceeds": "58%"
+          },
+          {
+            "purpose": "Working capital",
+            "amount": "RM15 million",
+            "percentOfProceeds": "25%"
+          },
+          {
+            "purpose": "Listing expenses",
+            "amount": "RM10 million",
+            "percentOfProceeds": "17%"
+          }
+        ]
+      }
+    },
+    "business": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "business overview"
+        ],
+        "routedChars": 37,
+        "inputChars": 37,
+        "truncated": false
+      },
+      "data": {
+        "lines": [
+          "Manufactures and supplies industrial components in Malaysia.",
+          "Sells mainly to a small set of multinational customers.",
+          "Plans to add a new plant funded by the IPO proceeds."
+        ]
+      }
+    },
+    "financials": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "financial highlights"
+        ],
+        "routedChars": 35,
+        "inputChars": 35,
+        "truncated": false
+      },
+      "data": {
+        "currency": "RM",
+        "periods": [
+          {
+            "period": "FY2022",
+            "revenue": "100m",
+            "grossProfit": null,
+            "profitAfterTax": "8m",
+            "netMargin": null
+          },
+          {
+            "period": "FY2023",
+            "revenue": "120m",
+            "grossProfit": null,
+            "profitAfterTax": "11m",
+            "netMargin": null
+          },
+          {
+            "period": "FY2024",
+            "revenue": "150m",
+            "grossProfit": null,
+            "profitAfterTax": "16m",
+            "netMargin": null
+          }
+        ],
+        "trend": "Revenue and profit grew every year over the three-year track record.",
+        "highlights": [
+          "Revenue CAGR of about 22%",
+          "Margins widened as scale grew"
+        ]
+      }
+    },
+    "riskFactors": {
+      "routing": {
+        "source": "fallback",
+        "located": false,
+        "matchedHeadings": [],
+        "routedChars": 257,
+        "inputChars": 257,
+        "truncated": false
+      },
+      "data": {
+        "summary": "Customer concentration and execution risk dominate.",
+        "themes": [
+          {
+            "rank": 1,
+            "theme": "Customer concentration",
+            "severity": "high",
+            "summary": "A few customers account for most revenue."
+          },
+          {
+            "rank": 2,
+            "theme": "Expansion execution",
+            "severity": "medium",
+            "summary": "The new plant may be delayed or over budget."
+          },
+          {
+            "rank": 3,
+            "theme": "Foreign exchange",
+            "severity": "low",
+            "summary": "Part of revenue and costs is in foreign currency."
+          }
+        ]
+      }
+    },
+    "whatToWatch": {
+      "derivedFrom": [
+        "offer",
+        "business",
+        "financials",
+        "riskFactors"
+      ],
+      "data": {
+        "headline": "Watch customer concentration and how fast the RM45m proceeds are deployed into new capacity",
+        "items": [
+          {
+            "point": "Customer concentration",
+            "why": "Highest-ranked risk theme",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Capacity expansion",
+            "why": "Largest planned use of proceeds",
+            "sourceSection": "offer"
+          },
+          {
+            "point": "Revenue and profit grew every year over the three-year track",
+            "why": "Track-record trend",
+            "sourceSection": "financials"
+          },
+          {
+            "point": "Manufactures and supplies industrial components in Malaysia.",
+            "why": "Core business",
+            "sourceSection": "business"
+          }
+        ]
+      }
+    }
+  },
+  "insights": {
+    "shariah": {
+      "status": "compliant",
+      "source": "sc-shariah-list",
+      "note": null
+    },
+    "cornerstone": {
+      "present": true,
+      "investors": [
+        {
+          "name": "Example Cornerstone Fund A",
+          "allocation": "20,000,000 shares",
+          "notes": null
+        },
+        {
+          "name": "Example Cornerstone Fund B",
+          "allocation": "10,000,000 shares",
+          "notes": "Six-month lock-up"
+        }
+      ],
+      "summary": "Two cornerstone investors take up part of the offering.",
+      "inputChars": 99,
+      "truncated": false,
+      "llmCalled": true
+    }
+  },
+  "cost": {
+    "model": "example/model",
+    "calls": 6,
+    "promptTokens": 2469,
+    "completionTokens": 617,
+    "cachedTokens": 940,
+    "estimatedCostUsd": 0.014124,
+    "ceilingUsd": 2.0,
+    "perCall": [
+      {
+        "step": "offer",
+        "promptTokens": 347,
+        "completionTokens": 146,
+        "cachedTokens": 0,
+        "costUsd": 0.003231
+      },
+      {
+        "step": "business",
+        "promptTokens": 277,
+        "completionTokens": 47,
+        "cachedTokens": 188,
+        "costUsd": 0.001028
+      },
+      {
+        "step": "financials",
+        "promptTokens": 332,
+        "completionTokens": 96,
+        "cachedTokens": 188,
+        "costUsd": 0.001928
+      },
+      {
+        "step": "risk-factors",
+        "promptTokens": 388,
+        "completionTokens": 113,
+        "cachedTokens": 188,
+        "costUsd": 0.002351
+      },
+      {
+        "step": "cornerstone-investors",
+        "promptTokens": 326,
+        "completionTokens": 74,
+        "cachedTokens": 188,
+        "costUsd": 0.00158
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 799,
+        "completionTokens": 141,
+        "cachedTokens": 188,
+        "costUsd": 0.004004
+      }
+    ]
+  },
+  "parse": {
+    "parsedNow": true,
+    "reusedParse": false
+  }
+}

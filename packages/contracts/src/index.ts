@@ -16,5 +16,6 @@ export * from './enums.js';
 export * from './payloads.js';
 export * from './envelope.js';
 export * from './result.js';
+export * from './artifact.js';
 export { buildJsonSchema, modelOrder } from './jsonSchema.js';
 export * from './http/index.js';

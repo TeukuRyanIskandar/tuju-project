@@ -5,6 +5,7 @@ import './enums.js';
 import './payloads.js';
 import './envelope.js';
 import './result.js';
+import './artifact.js';
 
 /**
  * The canonical, ordered list of top-level model names emitted into both worlds.
@@ -32,6 +33,34 @@ export const modelOrder = [
   'SystemSummary',
   'JobResult',
   'JobFailure',
+  // Prospectus at-a-glance artifact (ADR-0014 §3): leaf sub-schemas first, then
+  // the composed artifact. HTTP response schemas are deliberately NOT listed.
+  'ProspectusProvenance',
+  'ProspectusCompany',
+  'ProspectusRouting',
+  'ProspectusUseOfProceedsItem',
+  'ProspectusOfferData',
+  'ProspectusBusinessData',
+  'ProspectusFinancialPeriod',
+  'ProspectusFinancialsData',
+  'ProspectusRiskTheme',
+  'ProspectusRiskData',
+  'ProspectusWatchItem',
+  'ProspectusWatchData',
+  'ProspectusOfferSection',
+  'ProspectusBusinessSection',
+  'ProspectusFinancialsSection',
+  'ProspectusRiskSection',
+  'ProspectusWatchSection',
+  'ProspectusSections',
+  'ProspectusShariahInsight',
+  'ProspectusCornerstoneInvestor',
+  'ProspectusCornerstoneInsight',
+  'ProspectusInsights',
+  'ProspectusCostCall',
+  'ProspectusCostReport',
+  'ProspectusParseInfo',
+  'ProspectusArtifact',
 ] as const;
 
 /** Recursively rewrite bare `$ref: "Name"` into `$ref: "#/$defs/Name"`. */

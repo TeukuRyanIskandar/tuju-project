@@ -44,6 +44,7 @@ from .contracts_generated import (
     JobProgress,
     JobResult,
     MarketBriefJobEnvelope,
+    ProspectusArtifact,
     ProspectusJobEnvelope,
     Summary,
     SystemSummary,
@@ -502,6 +503,16 @@ def _handle_prospectus(
     except (LLMConfigError, LLMPermanentError, MalformedModelOutput) as exc:
         raise TerminalJobError(f"LLM analysis failed permanently: {exc}") from exc
     artifact["parse"] = {"parsedNow": parsed_now, "reusedParse": not parsed_now}
+
+    # ADR-0014 §3: strict pre-write validation against the generated contract
+    # model. A malformed artifact is caught here, not in the browser; the
+    # assembly above is untouched and nothing is written to S3 on failure.
+    try:
+        ProspectusArtifact.model_validate(artifact)
+    except ValidationError as exc:
+        raise TerminalJobError(
+            f"Prospectus artifact failed contract validation: {exc}"
+        ) from exc
 
     # --- claim-check + result --------------------------------------------------
     pointer = artifact_store.put_artifact(

@@ -6,8 +6,8 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from pydantic import (AwareDatetime, BaseModel, ConfigDict, conint,
-                      constr)
+from pydantic import (AwareDatetime, BaseModel, ConfigDict, Field,
+                      confloat, conint, constr)
 
 
 class AnnouncementSummaryPayload(BaseModel):
@@ -65,11 +65,149 @@ class MarketBriefPayload(BaseModel):
     )
 
 
+class ProspectusBusinessData(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    lines: list[str] = Field(..., min_length=1)
+
+
+class ProspectusCompany(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    name: constr(min_length=1)
+    board: str | None
+    listingDate: str | None
+
+
+class ProspectusCornerstoneInvestor(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    name: str
+    allocation: str | None
+    notes: str | None
+
+
+class ProspectusCostCall(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    step: str
+    promptTokens: conint(ge=0, le=9007199254740991)
+    completionTokens: conint(ge=0, le=9007199254740991)
+    cachedTokens: conint(ge=0, le=9007199254740991)
+    costUsd: confloat(ge=0.0)
+
+
+class ProspectusCostReport(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    model: constr(min_length=1)
+    calls: conint(ge=0, le=9007199254740991)
+    promptTokens: conint(ge=0, le=9007199254740991)
+    completionTokens: conint(ge=0, le=9007199254740991)
+    cachedTokens: conint(ge=0, le=9007199254740991)
+    estimatedCostUsd: confloat(ge=0.0)
+    ceilingUsd: confloat(ge=0.0)
+    perCall: list[ProspectusCostCall]
+
+
+class ProspectusFinancialPeriod(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    period: str
+    revenue: str | None
+    grossProfit: str | None
+    profitAfterTax: str | None
+    netMargin: str | None
+
+
+class ProspectusFinancialsData(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    currency: str | None
+    periods: list[ProspectusFinancialPeriod]
+    trend: constr(min_length=1)
+    highlights: list[str]
+
+
+class ProspectusParseInfo(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    parsedNow: bool
+    reusedParse: bool
+
+
 class ProspectusPayload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
     prospectusId: constr(min_length=1)
+
+
+class ProspectusProvenance(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    source: Literal['real']
+    pdfSha256: constr(min_length=1)
+    model: constr(min_length=1)
+    generatedAt: AwareDatetime
+
+
+class ProspectusRiskTheme(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    rank: conint(ge=-9007199254740991, le=9007199254740991)
+    theme: str
+    severity: Literal['low', 'medium', 'high']
+    summary: str | None
+
+
+class ProspectusRouting(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    source: Literal['located', 'fallback']
+    located: bool
+    matchedHeadings: list[str]
+    routedChars: conint(ge=0, le=9007199254740991)
+    inputChars: conint(ge=0, le=9007199254740991)
+    truncated: bool
+
+
+class ProspectusShariahInsight(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    status: Literal['compliant', 'non-compliant', 'unknown']
+    source: Literal['sc-shariah-list', 'unavailable']
+    note: str | None
+
+
+class ProspectusUseOfProceedsItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    purpose: str
+    amount: str | None
+    percentOfProceeds: str | None
+
+
+class ProspectusWatchItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    point: str
+    why: str | None
+    sourceSection: str | None
 
 
 class Summary(BaseModel):
@@ -142,6 +280,42 @@ class MarketBriefJobEnvelope(BaseModel):
     payload: MarketBriefPayload
 
 
+class ProspectusBusinessSection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    routing: ProspectusRouting
+    data: ProspectusBusinessData
+
+
+class ProspectusCornerstoneInsight(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    present: bool
+    investors: list[ProspectusCornerstoneInvestor]
+    summary: str | None
+    inputChars: conint(ge=0, le=9007199254740991)
+    truncated: bool
+    llmCalled: bool
+
+
+class ProspectusFinancialsSection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    routing: ProspectusRouting
+    data: ProspectusFinancialsData
+
+
+class ProspectusInsights(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    shariah: ProspectusShariahInsight
+    cornerstone: ProspectusCornerstoneInsight
+
+
 class ProspectusJobEnvelope(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -153,6 +327,60 @@ class ProspectusJobEnvelope(BaseModel):
     payload: ProspectusPayload
 
 
+class ProspectusOfferData(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    summary: str | None
+    totalShares: str | None
+    publicIssueShares: str | None
+    offerForSaleShares: str | None
+    priceRange: str | None
+    marketCapAtIpo: str | None
+    grossProceeds: str | None
+    useOfProceeds: list[ProspectusUseOfProceedsItem]
+
+
+class ProspectusOfferSection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    routing: ProspectusRouting
+    data: ProspectusOfferData
+
+
+class ProspectusRiskData(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    summary: str | None
+    themes: list[ProspectusRiskTheme] = Field(..., min_length=1)
+
+
+class ProspectusRiskSection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    routing: ProspectusRouting
+    data: ProspectusRiskData
+
+
+class ProspectusWatchData(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    headline: constr(min_length=1)
+    items: list[ProspectusWatchItem] = Field(..., min_length=1)
+
+
+class ProspectusWatchSection(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    derivedFrom: tuple[Literal['offer'], Literal['business'], Literal['financials'], Literal['riskFactors']]
+    data: ProspectusWatchData
+
+
 class TechnicalJobEnvelope(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -162,3 +390,29 @@ class TechnicalJobEnvelope(BaseModel):
     trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: TechnicalPayload
+
+
+class ProspectusSections(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    offer: ProspectusOfferSection
+    business: ProspectusBusinessSection
+    financials: ProspectusFinancialsSection
+    riskFactors: ProspectusRiskSection
+    whatToWatch: ProspectusWatchSection
+
+
+class ProspectusArtifact(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    schemaVersion: Literal['prospectus-at-a-glance-1']
+    prospectusId: constr(min_length=1)
+    provenance: ProspectusProvenance
+    company: ProspectusCompany
+    headline: constr(min_length=1)
+    sections: ProspectusSections
+    insights: ProspectusInsights
+    cost: ProspectusCostReport
+    parse: ProspectusParseInfo

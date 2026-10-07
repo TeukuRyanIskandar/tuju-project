@@ -328,6 +328,373 @@
       "properties": {},
       "additionalProperties": false
     },
+    "ProspectusArtifact": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "prospectus-at-a-glance-1"
+        },
+        "prospectusId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "$ref": "#/$defs/ProspectusProvenance"
+        },
+        "company": {
+          "$ref": "#/$defs/ProspectusCompany"
+        },
+        "headline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sections": {
+          "$ref": "#/$defs/ProspectusSections"
+        },
+        "insights": {
+          "$ref": "#/$defs/ProspectusInsights"
+        },
+        "cost": {
+          "$ref": "#/$defs/ProspectusCostReport"
+        },
+        "parse": {
+          "$ref": "#/$defs/ProspectusParseInfo"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "prospectusId",
+        "provenance",
+        "company",
+        "headline",
+        "sections",
+        "insights",
+        "cost",
+        "parse"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusBusinessData": {
+      "type": "object",
+      "properties": {
+        "lines": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "lines"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusBusinessSection": {
+      "type": "object",
+      "properties": {
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        },
+        "data": {
+          "$ref": "#/$defs/ProspectusBusinessData"
+        }
+      },
+      "required": [
+        "routing",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusCompany": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "board": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "listingDate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "board",
+        "listingDate"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusCornerstoneInsight": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "investors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusCornerstoneInvestor"
+          }
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inputChars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "llmCalled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "present",
+        "investors",
+        "summary",
+        "inputChars",
+        "truncated",
+        "llmCalled"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusCornerstoneInvestor": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "allocation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "allocation",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusCostCall": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "completionTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cachedTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "step",
+        "promptTokens",
+        "completionTokens",
+        "cachedTokens",
+        "costUsd"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusCostReport": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calls": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "promptTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "completionTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cachedTokens": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "estimatedCostUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "ceilingUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "perCall": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusCostCall"
+          }
+        }
+      },
+      "required": [
+        "model",
+        "calls",
+        "promptTokens",
+        "completionTokens",
+        "cachedTokens",
+        "estimatedCostUsd",
+        "ceilingUsd",
+        "perCall"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusFinancialPeriod": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "string"
+        },
+        "revenue": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grossProfit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "profitAfterTax": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "netMargin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "period",
+        "revenue",
+        "grossProfit",
+        "profitAfterTax",
+        "netMargin"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusFinancialsData": {
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "periods": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusFinancialPeriod"
+          }
+        },
+        "trend": {
+          "type": "string",
+          "minLength": 1
+        },
+        "highlights": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "currency",
+        "periods",
+        "trend",
+        "highlights"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusFinancialsSection": {
+      "type": "object",
+      "properties": {
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        },
+        "data": {
+          "$ref": "#/$defs/ProspectusFinancialsData"
+        }
+      },
+      "required": [
+        "routing",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusInsights": {
+      "type": "object",
+      "properties": {
+        "shariah": {
+          "$ref": "#/$defs/ProspectusShariahInsight"
+        },
+        "cornerstone": {
+          "$ref": "#/$defs/ProspectusCornerstoneInsight"
+        }
+      },
+      "required": [
+        "shariah",
+        "cornerstone"
+      ],
+      "additionalProperties": false
+    },
     "ProspectusJobEnvelope": {
       "type": "object",
       "properties": {
@@ -366,6 +733,102 @@
       ],
       "additionalProperties": false
     },
+    "ProspectusOfferData": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "totalShares": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publicIssueShares": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "offerForSaleShares": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "priceRange": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "marketCapAtIpo": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "grossProceeds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "useOfProceeds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusUseOfProceedsItem"
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "totalShares",
+        "publicIssueShares",
+        "offerForSaleShares",
+        "priceRange",
+        "marketCapAtIpo",
+        "grossProceeds",
+        "useOfProceeds"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusOfferSection": {
+      "type": "object",
+      "properties": {
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        },
+        "data": {
+          "$ref": "#/$defs/ProspectusOfferData"
+        }
+      },
+      "required": [
+        "routing",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusParseInfo": {
+      "type": "object",
+      "properties": {
+        "parsedNow": {
+          "type": "boolean"
+        },
+        "reusedParse": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "parsedNow",
+        "reusedParse"
+      ],
+      "additionalProperties": false
+    },
     "ProspectusPayload": {
       "type": "object",
       "properties": {
@@ -376,6 +839,321 @@
       },
       "required": [
         "prospectusId"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusProvenance": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "real"
+        },
+        "pdfSha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        }
+      },
+      "required": [
+        "source",
+        "pdfSha256",
+        "model",
+        "generatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRiskData": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "themes": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusRiskTheme"
+          }
+        }
+      },
+      "required": [
+        "summary",
+        "themes"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRiskSection": {
+      "type": "object",
+      "properties": {
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        },
+        "data": {
+          "$ref": "#/$defs/ProspectusRiskData"
+        }
+      },
+      "required": [
+        "routing",
+        "data"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRiskTheme": {
+      "type": "object",
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "theme": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "rank",
+        "theme",
+        "severity",
+        "summary"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRouting": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "located",
+            "fallback"
+          ]
+        },
+        "located": {
+          "type": "boolean"
+        },
+        "matchedHeadings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "routedChars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "inputChars": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "source",
+        "located",
+        "matchedHeadings",
+        "routedChars",
+        "inputChars",
+        "truncated"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusSections": {
+      "type": "object",
+      "properties": {
+        "offer": {
+          "$ref": "#/$defs/ProspectusOfferSection"
+        },
+        "business": {
+          "$ref": "#/$defs/ProspectusBusinessSection"
+        },
+        "financials": {
+          "$ref": "#/$defs/ProspectusFinancialsSection"
+        },
+        "riskFactors": {
+          "$ref": "#/$defs/ProspectusRiskSection"
+        },
+        "whatToWatch": {
+          "$ref": "#/$defs/ProspectusWatchSection"
+        }
+      },
+      "required": [
+        "offer",
+        "business",
+        "financials",
+        "riskFactors",
+        "whatToWatch"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusShariahInsight": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "compliant",
+            "non-compliant",
+            "unknown"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "sc-shariah-list",
+            "unavailable"
+          ]
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "source",
+        "note"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusUseOfProceedsItem": {
+      "type": "object",
+      "properties": {
+        "purpose": {
+          "type": "string"
+        },
+        "amount": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "percentOfProceeds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "purpose",
+        "amount",
+        "percentOfProceeds"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusWatchData": {
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "minLength": 1
+        },
+        "items": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusWatchItem"
+          }
+        }
+      },
+      "required": [
+        "headline",
+        "items"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusWatchItem": {
+      "type": "object",
+      "properties": {
+        "point": {
+          "type": "string"
+        },
+        "why": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sourceSection": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "point",
+        "why",
+        "sourceSection"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusWatchSection": {
+      "type": "object",
+      "properties": {
+        "derivedFrom": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "string",
+              "const": "offer"
+            },
+            {
+              "type": "string",
+              "const": "business"
+            },
+            {
+              "type": "string",
+              "const": "financials"
+            },
+            {
+              "type": "string",
+              "const": "riskFactors"
+            }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4
+        },
+        "data": {
+          "$ref": "#/$defs/ProspectusWatchData"
+        }
+      },
+      "required": [
+        "derivedFrom",
+        "data"
       ],
       "additionalProperties": false
     },

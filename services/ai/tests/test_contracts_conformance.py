@@ -19,6 +19,7 @@ from tuju_ai.contracts_generated import (
     JobProgress,
     JobResult,
     MarketBriefJobEnvelope,
+    ProspectusArtifact,
     ProspectusJobEnvelope,
     TechnicalJobEnvelope,
 )
@@ -48,6 +49,7 @@ def _load(name: str) -> dict:
         ("job-result-system.json", JobResult),
         ("job-result-prospectus.json", JobResult),
         ("job-failure.json", JobFailure),
+        ("prospectus-artifact.json", ProspectusArtifact),
     ],
 )
 def test_golden_fixture_conforms(fixture: str, model: type) -> None:
@@ -97,3 +99,21 @@ def test_prospectus_envelope_requires_prospectus_id() -> None:
     bad["payload"] = {}
     with pytest.raises(ValidationError):
         ProspectusJobEnvelope.model_validate(bad)
+
+
+def test_prospectus_artifact_rejects_missing_headline() -> None:
+    from pydantic import ValidationError
+
+    bad = _load("prospectus-artifact.json")
+    del bad["headline"]
+    with pytest.raises(ValidationError):
+        ProspectusArtifact.model_validate(bad)
+
+
+def test_prospectus_artifact_rejects_unknown_key() -> None:
+    from pydantic import ValidationError
+
+    bad = _load("prospectus-artifact.json")
+    bad["extra"] = 1
+    with pytest.raises(ValidationError):
+        ProspectusArtifact.model_validate(bad)

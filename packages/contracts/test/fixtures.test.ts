@@ -9,6 +9,7 @@ import {
   JobProgress,
   JobResult,
   MarketBriefJobEnvelope,
+  ProspectusArtifact,
   ProspectusJobEnvelope,
   TechnicalJobEnvelope,
 } from '../src/index.js';
@@ -117,5 +118,49 @@ describe('the prospectus job', () => {
     const good = load('job-result-prospectus.json') as { summary: Record<string, unknown> };
     const bad = { ...good, summary: { ...good.summary, source: 'real' } };
     expect(() => JobResult.parse(bad)).toThrow();
+  });
+});
+
+describe('the prospectus artifact', () => {
+  type Artifact = {
+    headline?: string;
+    provenance: Record<string, unknown>;
+    sections: { whatToWatch: Record<string, unknown> };
+    [k: string]: unknown;
+  };
+  const good = (): Artifact => load('prospectus-artifact.json') as Artifact;
+
+  it('prospectus-artifact.json', () => {
+    expect(() => ProspectusArtifact.parse(load('prospectus-artifact.json'))).not.toThrow();
+  });
+
+  it('accepts a Z-suffixed generatedAt too', () => {
+    const a = good();
+    a.provenance.generatedAt = '2026-10-07T02:04:30Z';
+    expect(() => ProspectusArtifact.parse(a)).not.toThrow();
+  });
+
+  it('rejects a missing headline', () => {
+    const a = good();
+    delete a.headline;
+    expect(() => ProspectusArtifact.parse(a)).toThrow();
+  });
+
+  it('rejects an unknown top-level key', () => {
+    expect(() => ProspectusArtifact.parse({ ...good(), extra: 1 })).toThrow();
+  });
+
+  it('rejects a whatToWatch section that carries routing', () => {
+    const a = good();
+    a.sections.whatToWatch.routing = {};
+    expect(() => ProspectusArtifact.parse(a)).toThrow();
+  });
+
+  it('rejects an out-of-enum risk severity', () => {
+    const a = good() as unknown as {
+      sections: { riskFactors: { data: { themes: Record<string, unknown>[] } } };
+    };
+    a.sections.riskFactors.data.themes[0].severity = 'critical';
+    expect(() => ProspectusArtifact.parse(a)).toThrow();
   });
 });

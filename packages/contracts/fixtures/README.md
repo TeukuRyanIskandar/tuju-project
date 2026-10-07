@@ -25,3 +25,4 @@ suites in lock-step.
 | `job-result-system.json`         | `JobResult` (verdict-less `SystemSummary`) |
 | `job-result-prospectus.json`     | `JobResult` (prospectus, verdict-less `SystemSummary`) |
 | `job-failure.json`               | `JobFailure`             |
+| `prospectus-artifact.json`       | `ProspectusArtifact` (the S3 at-a-glance artifact, ADR-0014) |
