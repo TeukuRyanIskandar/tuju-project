@@ -12,6 +12,7 @@ import { IntradayReplayService } from './intraday-replay.service';
 import { PurgeService } from './purge.service';
 import { IngestionScheduler } from './ingestion.scheduler';
 import { ProspectusCorpusService } from './prospectus-corpus.service';
+import { ProspectusEnqueueService } from './prospectus-enqueue.service';
 
 /**
  * Ingestion worker module (spec 01 process shape; ticket 04, ADR-0012).
@@ -36,6 +37,7 @@ import { ProspectusCorpusService } from './prospectus-corpus.service';
     AdaptersModule,
     CacheModule,
     JobBusModule,
+    S3Module,
   ],
   providers: [
     IngestionRunService,
@@ -44,6 +46,8 @@ import { ProspectusCorpusService } from './prospectus-corpus.service';
     IntradayReplayService,
     PurgeService,
     IngestionScheduler,
+    ProspectusCorpusService,
+    ProspectusEnqueueService,
   ],
   exports: [
     EodIngestService,
@@ -51,6 +55,8 @@ import { ProspectusCorpusService } from './prospectus-corpus.service';
     PurgeService,
     ReferenceDataService,
     IngestionRunService,
+    ProspectusCorpusService,
+    ProspectusEnqueueService,
   ],
 })
 export class IngestionModule {}

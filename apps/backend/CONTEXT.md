@@ -55,6 +55,12 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
 - **IPO listing** — a curated calendar row (manual entry). May be a
   non-ordinary-share IPO (REIT/ETF) even though such instruments are outside the
   analysed universe.
+- **Prospectus analysis** — the thin Postgres row (`prospectus_analyses`, unique
+  per `IpoListing`) written when an `analyze-prospectus` result lands: verdict-less
+  headline + asOf + the S3 claim-check pointer to the rich five-section artifact.
+  Row-exists means analysed (the not-yet-processed predicate for `enqueue-prospectus`).
+  Served anonymously at `GET /ipo/:prospectusId/at-a-glance` (+ `/artifact` proxy);
+  the worker reads its IPO input from `GET /ipo/:prospectusId/reference`.
 - **Announcement** — an official disclosure a listed company files with Bursa
   (results, entitlements, dealings, etc.). Distinct from a news article.
 - **Announcement category** — a stable internal classification of an Announcement
@@ -176,6 +182,16 @@ pnpm --filter backend test        # jest (unit)
 pnpm --filter backend test:int    # jest integration (testcontainers)
 pnpm --filter backend typecheck   # tsc --noEmit
 pnpm --filter backend migration:run
+```
+
+Ops commands (one-shot, run via the ingestion worker entrypoint —
+`node dist/worker-main.js <command>`; manual actions, never crons):
+
+```bash
+seed-prospectus [corpusDir]          # upload curated prospectus PDFs to S3 + upsert IpoListing rows (spec 06 t04)
+enqueue-prospectus [ipoListingId]    # enqueue analyze-prospectus (trigger 'system') for every IpoListing with a
+                                     # prospectusS3Key and no prospectus_analyses row yet; idempotent on re-run.
+                                     # Pass an id (or `--force <id>`) to re-run one already-analysed listing (spec 06 t05)
 ```
 
 ## Decisions

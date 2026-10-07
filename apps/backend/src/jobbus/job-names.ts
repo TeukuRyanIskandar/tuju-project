@@ -18,6 +18,8 @@ export const JobNames = {
   // Spec-06 system-triggered showcase jobs (free-tier-ai-showcase, tickets 02/03).
   marketBrief: 'generate-market-brief',
   announcementSummary: 'summarize-announcement',
+  // Spec-06 flagship (ticket 05): system-triggered by the `enqueue-prospectus` ops command.
+  prospectus: 'analyze-prospectus',
 } as const satisfies Record<string, JobName>;
 
 /** The stub job used to prove the JobBus round-trips end-to-end (ADR-0001). */

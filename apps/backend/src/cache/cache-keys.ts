@@ -55,3 +55,12 @@ export const READ_CACHE_PREFIXES = [
  * persists a new brief.
  */
 export const BRIEF_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}brief:`;
+
+/**
+ * Spec-06 prospectus at-a-glance reads (`GET /ipo/:prospectusId/at-a-glance`
+ * and its proxied artifact, ticket 05). Same posture as
+ * {@link BRIEF_CACHE_PREFIX}: DELIBERATELY NOT in {@link READ_CACHE_PREFIXES}
+ * (a result lands on the JobBus's async cadence, not the nightly ingest), so
+ * `ProspectusAnalysisStore` invalidates the affected keys itself on persist.
+ */
+export const PROSPECTUS_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}prospectus:`;

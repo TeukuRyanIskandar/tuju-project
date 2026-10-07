@@ -7,6 +7,7 @@ import { EodIngestService } from './ingestion/eod-ingest.service';
 import { IntradayReplayService } from './ingestion/intraday-replay.service';
 import { PurgeService } from './ingestion/purge.service';
 import { ProspectusCorpusService } from './ingestion/prospectus-corpus.service';
+import { ProspectusEnqueueService } from './ingestion/prospectus-enqueue.service';
 import { DEFAULT_PROSPECTUS_CORPUS_DIR } from './ingestion/prospectus-corpus';
 
 /**
@@ -29,6 +30,16 @@ import { DEFAULT_PROSPECTUS_CORPUS_DIR } from './ingestion/prospectus-corpus';
  *                       a cron — map decision). Optional arg: the corpus
  *                       directory (default: the repo's demo corpus, or
  *                       PROSPECTUS_CORPUS_DIR).
+ *   - `enqueue-prospectus` enqueue a system-triggered `analyze-prospectus` job
+ *                       for every curated `IpoListing` that has a
+ *                       `prospectusS3Key` and NO `prospectus_analyses` row yet
+ *                       (spec 06, ticket 05; the not-yet-processed predicate
+ *                       that bounds AI cost — safe to re-run, a second run
+ *                       enqueues nothing once results have landed). Not a cron.
+ *                       Optional arg: an `IpoListing.id` (uuid) to (re-)run just
+ *                       that one even if already analysed; `--force <id>` is
+ *                       accepted as the same thing. Needs the `ai-worker` to be
+ *                       running and `seed-prospectus` to have been run first.
  *   - `serve` (default) register the crons and stay resident
  *
  * Usage: `node dist/worker-main.js [command] [args...]`.
@@ -73,6 +84,15 @@ async function bootstrap(): Promise<void> {
         { command, corpusDir, result },
         'worker.command.seed-prospectus.done',
       );
+      await app.close();
+      return;
+    }
+    case 'enqueue-prospectus': {
+      // `enqueue-prospectus [id]` or `enqueue-prospectus --force <id>`.
+      const args = process.argv.slice(3).filter((a) => a !== '--force');
+      const result = await app.get(ProspectusEnqueueService).enqueue(args[0]);
+      logger.log({ command, result }, 'worker.command.enqueue-prospectus.done');
+      // Give BullMQ's connection a beat to flush before the context closes.
       await app.close();
       return;
     }

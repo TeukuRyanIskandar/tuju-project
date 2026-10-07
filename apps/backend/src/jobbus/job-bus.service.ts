@@ -18,6 +18,15 @@ import { REDIS_CLIENT } from '../redis/redis.module';
 import { ANALYSIS_QUEUE, JobNames } from './job-names';
 
 /**
+ * BullMQ dedup id for an `analyze-prospectus` job (hyphen form; BullMQ forbids
+ * `:` in custom ids). Shared by `JobBus.deriveJobId` and the ops enqueue
+ * service's in-flight check so both agree on one string.
+ */
+export function prospectusBullJobId(prospectusId: string): string {
+  return `prospectus-${prospectusId}`;
+}
+
+/**
  * The `JobBus` seam (ADR-0001 guardrail, signatures pinned in ADR-0007 §8).
  *
  * App code talks to `JobBus`, never to BullMQ directly — this contains a future
@@ -136,8 +145,8 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
    * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
    * Each job family picks its own discriminating fields (TA/FA: symbol +
    * timeframe/period, hour-bucketed; the spec-06 showcase jobs: date-bucketed
-   * for the market brief, the announcement id alone for the summary — see each
-   * branch below).
+   * for the market brief, the announcement id alone for the summary, the
+   * prospectus id alone for the at-a-glance — see each branch below).
    *
    * NB: BullMQ forbids `:` in a custom job id (it namespaces Redis keys with
    * `:`), so every segment is joined with `-` and any stray separator chars in
@@ -160,6 +169,13 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
         // job history (ticket 03 acceptance criteria).
         const announcementId = String(payload.announcementId ?? 'unknown');
         return `ann-${announcementId}`;
+      }
+      case JobNames.prospectus: {
+        // One job per prospectus, independent of asOf (ticket 05): a re-run of
+        // the same curated IPO overwrites the same thin row. Hyphen form —
+        // the Python worker's own `JobResult.jobId` is the colon form
+        // `prospectus:{id}` (see `prospectusBullJobId`).
+        return prospectusBullJobId(String(payload.prospectusId ?? 'unknown'));
       }
       default: {
         const symbol = String(payload.symbol ?? 'unknown');

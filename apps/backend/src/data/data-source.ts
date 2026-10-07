@@ -16,6 +16,7 @@ import {
   NewsArticle,
   NewsArticleTag,
   PriceBar,
+  ProspectusAnalysis,
   QuarterlyFinancials,
   Sector,
   ShariahStatus,
@@ -29,6 +30,7 @@ import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReI
 import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-DisclosureReadModel';
 import { MarketIndexModel1728000000000 } from './migrations/1728000000000-MarketIndexModel';
 import { ShowcaseJobsModel1728100000000 } from './migrations/1728100000000-ShowcaseJobsModel';
+import { ProspectusAnalysis1728200000000 } from './migrations/1728200000000-ProspectusAnalysis';
 
 /**
  * Standalone TypeORM DataSource used by the CLI (migration:run/revert).
@@ -64,6 +66,7 @@ export const AppDataSource = new DataSource({
     Watchlist,
     WatchlistItem,
     MarketBrief,
+    ProspectusAnalysis,
   ],
   migrations: [
     InitialSchema1727600000000,
@@ -72,5 +75,6 @@ export const AppDataSource = new DataSource({
     DisclosureReadModel1727900000000,
     MarketIndexModel1728000000000,
     ShowcaseJobsModel1728100000000,
+    ProspectusAnalysis1728200000000,
   ],
 });

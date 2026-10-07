@@ -15,7 +15,9 @@ gate, `docker compose up` runs the full stack, and CI is wired. On top of it:
 - **Spec 06 AI showcase — in progress:** the system-triggered daily market brief
   and announcement summaries run end-to-end over the JobBus, but the narratives
   are deterministic templates (no real LLM yet). The prospectus parse + section
-  router is built; the prospectus at-a-glance LLM job is pending.
+  router is built, and the prospectus at-a-glance job (`analyze-prospectus`) is
+  wired end-to-end (`enqueue-prospectus` ops command → worker → `GET
+  /ipo/:prospectusId/at-a-glance`).
 - **Not yet:** the frontend is still a placeholder SPA, and auth login is a stub
   (ADR-0005).
 

@@ -26,6 +26,7 @@ export * from './index-level.entity';
 export * from './watchlist.entity';
 export * from './watchlist-item.entity';
 export * from './market-brief.entity';
+export * from './prospectus-analysis.entity';
 
 // Scaffold entity (pre-existing) — re-exported for a single import surface.
 export * from './analysis-result.entity';
