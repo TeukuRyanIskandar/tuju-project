@@ -184,3 +184,92 @@ def test_tables_are_carried_into_section_content() -> None:
 
     assert "|2024|100|" in routed[ProspectusSection.FINANCIALS].content
     assert routed[ProspectusSection.FINANCIALS].located is True
+
+
+def test_flat_docling_levels_use_section_numbering_for_hierarchy() -> None:
+    from tuju_ai.prospectus.router import route_sections
+
+    # Docling reports every real Bursa heading at level 1; the dotted numbering
+    # ("2.5" under "2.") carries the hierarchy, so "2.5 RISK FACTORS" must end
+    # at "2.6", not swallow the summary and not stop at the first sub-heading.
+    routed = route_sections(
+        _parse(
+            [
+                ("h", "2. PROSPECTUS SUMMARY", 1),
+                ("text", "Summary intro."),
+                ("h", "2.5 RISK FACTORS", 1),
+                ("text", "Risk summary."),
+                ("h", "(i) Customer concentration", 1),
+                ("text", "Concentration detail."),
+                ("h", "2.6 DIRECTORS", 1),
+                ("text", "Director bios."),
+            ]
+        )
+    )
+
+    risk = routed[ProspectusSection.RISK_FACTORS]
+    assert risk.located is True
+    assert risk.matchedHeadings == ["risk factors"]
+    assert "Risk summary." in risk.content
+    assert "Concentration detail." in risk.content
+    assert "Summary intro." not in risk.content
+    assert "Director bios." not in risk.content
+
+
+def test_page_break_continuation_of_enclosing_chapter_is_transparent() -> None:
+    from tuju_ai.prospectus.router import route_sections
+
+    routed = route_sections(
+        _parse(
+            [
+                ("h", "2.5 RISK FACTORS", 1),
+                ("text", "Risk page one."),
+                ("h", "2. PROSPECTUS SUMMARY (Cont'd)", 1),
+                ("text", "Risk page two."),
+                ("h", "2.6 DIRECTORS", 1),
+                ("text", "Director bios."),
+            ]
+        )
+    )
+
+    risk = routed[ProspectusSection.RISK_FACTORS].content
+    assert "Risk page one." in risk and "Risk page two." in risk
+    assert "Director bios." not in risk
+
+
+def test_real_bursa_chapter_titles_are_recognised() -> None:
+    from tuju_ai.prospectus.skeleton import matches_skeleton
+
+    assert matches_skeleton("4. DETAILS OF OUR IPO") is ProspectusSection.OFFER
+    assert (
+        matches_skeleton("3. DETAILS OF OUR PUBLIC OFFERING")
+        is ProspectusSection.OFFER
+    )
+    assert matches_skeleton("7. BUSINESS OVERVIEW") is ProspectusSection.BUSINESS
+    assert matches_skeleton("2.9 FINANCIAL HIGHLIGHTS") is ProspectusSection.FINANCIALS
+    assert (
+        matches_skeleton("2.9 FINANCIAL AND OPERATIONAL HIGHLIGHTS")
+        is ProspectusSection.FINANCIALS
+    )
+    assert matches_skeleton("2.5 RISK FACTORS") is ProspectusSection.RISK_FACTORS
+    # A risk-factor bullet about the business is NOT the business chapter.
+    assert matches_skeleton("(i) Our business is concentrated on a few customers") is None
+
+
+def test_matched_heading_with_empty_slice_falls_back() -> None:
+    from tuju_ai.prospectus.router import route_sections
+
+    routed = route_sections(
+        _parse(
+            [
+                ("h", "Risk Factors", 1),  # heading only — no content under it
+                ("h", "Timetable", 1),
+                ("text", "Balloting Friday."),
+            ]
+        )
+    )
+
+    risk = routed[ProspectusSection.RISK_FACTORS]
+    assert risk.located is False
+    assert risk.matchedHeadings == []
+    assert "Balloting" in risk.content

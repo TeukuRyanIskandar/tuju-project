@@ -26,6 +26,9 @@ SECTION_SKELETON: dict[ProspectusSection, tuple[str, ...]] = {
     ProspectusSection.OFFER: (
         r"^the offering\b",
         r"^details? of the offering\b",
+        # Real Bursa chapter titles: "Details of our IPO" / "Details of our
+        # Public Offering" (all three demo-corpus prospectuses).
+        r"^details? of (our|the) (ipo|public offering|offering)\b",
         r"^structure of the (offering|ipo|initial public offering)\b",
         r"^offer for sale\b",
         r"^new issue\b",
@@ -37,7 +40,9 @@ SECTION_SKELETON: dict[ProspectusSection, tuple[str, ...]] = {
     # The business in its own chapter(s).
     ProspectusSection.BUSINESS: (
         r"^business overview\b",
-        r"^our business\b",
+        # Anchored at both ends: "Our business is concentrated on ..." is a
+        # risk-factor bullet, not the business chapter.
+        r"^our business$",
         r"^the business of (the|our) company\b",
         r"^business model\b",
         r"^business$",
@@ -50,6 +55,7 @@ SECTION_SKELETON: dict[ProspectusSection, tuple[str, ...]] = {
         r"^historical financial information\b",
         r"^summary financial information\b",
         r"^financial highlights\b",
+        r"^financial and operational highlights\b",
         r"^financial information\b",
         r"^financial statements?\b",
     ),
@@ -62,7 +68,10 @@ SECTION_SKELETON: dict[ProspectusSection, tuple[str, ...]] = {
 
 _LEADING_ENUMERATION = re.compile(
     r"^(?:"
-    r"\d+(?:\.\d+)*[.)]"  # 2. / 2.1. / 3)
+    # Dotted-no-trailing-dot FIRST (2.5 / 4.9.2): otherwise "2." wins the
+    # alternation and strands "5 risk factors".
+    r"\d+(?:\.\d+)+(?=\s)"
+    r"|\d+(?:\.\d+)*[.)]"  # 2. / 2.1. / 3)
     r"|\([a-z0-9]+\)"  # (a) / (iii) / (3)
     r"|[a-z][.)]"  # a. / b)
     r"|(?:part|section|chapter)\s+\d+(?:\.\d+)*\s*[-–—:.]?\s*"  # Section 2 -

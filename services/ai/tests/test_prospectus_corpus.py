@@ -75,7 +75,19 @@ def _settings() -> Settings:
         s3_region="ap-southeast-1",
         s3_bucket="tuju-artifacts",
         s3_prefix="analysis",
+        backend_api_url="http://backend-unused",
     )
+
+
+# Routing reality pinned per document (tuned with scripts/inspect_corpus.py).
+# Every section is located except Fibromat's business chapter: the demo corpus
+# is Part-1-only and Fibromat's "Business Overview" chapter lives in Part 2,
+# so the router must fall back to whole-document content there, explicitly.
+EXPECTED_FALLBACKS: dict[str, set[ProspectusSection]] = {
+    "fbbhd_fibromat-m-berhad_2025-04-11_part1.pdf": {ProspectusSection.BUSINESS},
+    "iab_insights-analytics-berhad_2025-10-07_part1.pdf": set(),
+    "lsh_lim-seong-ha-capital-berhad_2025_part1of3.pdf": set(),
+}
 
 
 @pytest.fixture(scope="module")
@@ -102,6 +114,10 @@ def test_real_prospectus_routes_all_four_sections(
 
     for section in ProspectusSection:
         result = routed[section]
+        assert result.located is (section not in EXPECTED_FALLBACKS[pdf.name]), (
+            f"{pdf.name}: {section.value} located={result.located}, "
+            f"matched={result.matchedHeadings}"
+        )
         # Located or EXPLICIT fallback — never a silent empty section; and
         # always enough content for the ticket-05 prompts to work with.
         assert isinstance(result.located, bool)
