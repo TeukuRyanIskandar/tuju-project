@@ -1,6 +1,6 @@
 # Frontend foundation effort - Product A
 
-Status: in-progress
+Status: done
 
 ## What this is
 
@@ -53,6 +53,13 @@ at-a-glance) is out of scope and becomes separate feature efforts afterwards.
 
 00, 04 and 06 have no blockers and can run in parallel.
 
-## Open questions
+## Carried forward
 
-- Production SPA origin and shared parent domain (ADR-0005) for `CORS_ORIGINS`.
+- Production SPA origin and shared parent domain (ADR-0005) for `CORS_ORIGINS`,
+  `COOKIE_DOMAIN`, `COOKIE_SECURE`, `COOKIE_SAMESITE` and the frontend
+  `VITE_API_BASE_URL`. Commented-out placeholders exist in `.env.example`,
+  `apps/frontend/.env.example` and next to `CORS_ORIGINS` in `docker-compose.yml`.
+  Local credentialed CORS is proven (ticket 11).
+- Backend runtime validation of the S3 prospectus artifact
+  (`apps/backend/src/ipo/ipo.service.ts`, an unchecked `as ProspectusArtifact`).
+  It needs a CJS export of `@tuju/contracts` first (ticket 11 review).
