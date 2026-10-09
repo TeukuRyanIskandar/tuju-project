@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
 import { DataModule } from '../data/data.module';
 import { AdaptersModule } from '../data/adapters/adapters.module';
+import { AnalysisModule } from '../analysis/analysis.module';
 import { CacheModule } from '../cache/cache.module';
 import { S3Module } from '../s3/s3.module';
 import { JobBusModule } from '../jobbus/job-bus.module';
@@ -13,6 +14,8 @@ import { PurgeService } from './purge.service';
 import { IngestionScheduler } from './ingestion.scheduler';
 import { ProspectusCorpusService } from './prospectus-corpus.service';
 import { ProspectusEnqueueService } from './prospectus-enqueue.service';
+import { KlciSeedService } from './klci-seed.service';
+import { KlciEnqueueService } from './klci-enqueue.service';
 
 /**
  * Ingestion worker module (spec 01 process shape; ticket 04, ADR-0012).
@@ -35,6 +38,7 @@ import { ProspectusEnqueueService } from './prospectus-enqueue.service';
     ScheduleModule.forRoot(),
     DataModule,
     AdaptersModule,
+    AnalysisModule,
     CacheModule,
     JobBusModule,
     S3Module,
@@ -42,6 +46,8 @@ import { ProspectusEnqueueService } from './prospectus-enqueue.service';
   providers: [
     IngestionRunService,
     ReferenceDataService,
+    KlciSeedService,
+    KlciEnqueueService,
     EodIngestService,
     IntradayReplayService,
     PurgeService,
@@ -54,6 +60,8 @@ import { ProspectusEnqueueService } from './prospectus-enqueue.service';
     IntradayReplayService,
     PurgeService,
     ReferenceDataService,
+    KlciSeedService,
+    KlciEnqueueService,
     IngestionRunService,
     ProspectusCorpusService,
     ProspectusEnqueueService,

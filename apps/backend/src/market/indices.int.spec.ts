@@ -76,7 +76,9 @@ import { INDEX_ADAPTER, type IndexAdapter } from '../data/adapters/adapter.inter
 import type { IndexLevelsDto } from '../data/adapters/dto';
 import { EodIngestService } from '../ingestion/eod-ingest.service';
 import { IngestionRunService } from '../ingestion/ingestion-run.service';
+import { KlciEnqueueService } from '../ingestion/klci-enqueue.service';
 import { ReferenceDataService } from '../ingestion/reference-data.service';
+import { KlciSeedService } from '../ingestion/klci-seed.service';
 import { IntradayReplayService } from '../ingestion/intraday-replay.service';
 import { JobBus } from '../jobbus/job-bus.service';
 import { REQUIRES_JOB_KEY } from '../auth/requires-job.decorator';
@@ -529,9 +531,19 @@ async function runNightlyIngest(
       { provide: REDIS_CLIENT, useValue: redisClient },
       IngestionRunService,
       ReferenceDataService,
+      KlciSeedService,
       ReadCacheService,
       JobBus,
       EodIngestService,
+      // Ticket-05 nightly follow-on seam: never fires on the synthetic demo
+      // adapters (yfinance-only), so a no-op stub satisfies the constructor.
+      {
+        provide: KlciEnqueueService,
+        useValue: {
+          enqueue: async () =>
+            ({ enqueued: [], skipped: [], alreadyInFlight: [], failed: [] }) as const,
+        },
+      },
     ],
   });
   const ingestModule = await (indexAdapterOverride

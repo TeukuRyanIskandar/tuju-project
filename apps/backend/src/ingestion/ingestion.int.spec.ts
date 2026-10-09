@@ -66,7 +66,9 @@ import { ProvenanceClass } from '../data/entities/enums';
 
 import { EodIngestService } from './eod-ingest.service';
 import { IngestionRunService } from './ingestion-run.service';
+import { KlciEnqueueService } from './klci-enqueue.service';
 import { ReferenceDataService } from './reference-data.service';
+import { KlciSeedService } from './klci-seed.service';
 import { IntradayReplayService, INTRADAY_KEY_PREFIX } from './intraday-replay.service';
 import { PurgeService } from './purge.service';
 import { REFERENCE_UNIVERSE } from './reference-universe';
@@ -140,9 +142,19 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         { provide: REDIS_CLIENT, useValue: redis },
         IngestionRunService,
         ReferenceDataService,
+        KlciSeedService,
         ReadCacheService,
         JobBus,
         EodIngestService,
+        // Ticket-05 nightly follow-on seam: never fires on the synthetic demo
+        // adapters (yfinance-only), so a no-op stub satisfies the constructor.
+        {
+          provide: KlciEnqueueService,
+          useValue: {
+            enqueue: async () =>
+              ({ enqueued: [], skipped: [], alreadyInFlight: [], failed: [] }) as const,
+          },
+        },
         IntradayReplayService,
         PurgeService,
       ],

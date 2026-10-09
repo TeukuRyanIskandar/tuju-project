@@ -9,6 +9,8 @@ import { PurgeService } from './ingestion/purge.service';
 import { ProspectusCorpusService } from './ingestion/prospectus-corpus.service';
 import { ProspectusEnqueueService } from './ingestion/prospectus-enqueue.service';
 import { DEFAULT_PROSPECTUS_CORPUS_DIR } from './ingestion/prospectus-corpus';
+import { KlciSeedService } from './ingestion/klci-seed.service';
+import { KlciEnqueueService } from './ingestion/klci-enqueue.service';
 
 /**
  * Ingestion worker entrypoint (spec 01 process shape; ticket 04, ADR-0012).
@@ -40,6 +42,19 @@ import { DEFAULT_PROSPECTUS_CORPUS_DIR } from './ingestion/prospectus-corpus';
  *                       that one even if already analysed; `--force <id>` is
  *                       accepted as the same thing. Needs the `ai-worker` to be
  *                       running and `seed-prospectus` to have been run first.
+ *   - `seed-klci`       upsert Sector / Company / Instrument (+ aliases) for
+ *                       the KLCI 30 universe (PoC Phase A). Idempotent on
+ *                       natural keys; safe to re-run when membership names
+ *                       change.
+ *   - `ingest-klci`     bars → fundamentals → materialise snapshots/indicators
+ *                       for the KLCI 30 (requires `seed-klci` first). Opens an
+ *                       IngestionRun matching adapter provenance (`real` when
+ *                       DATA_SOURCE=yfinance).
+ *   - `enqueue-klci`    fan-out system `analyze-technical` + `analyze-fundamental`
+ *                       for the KLCI 30 (or one stockCode). Skips ready/
+ *                       facts_only same UTC day unless `--force`. Upserts
+ *                       analysis rows to pending. Optional: `enqueue-klci
+ *                       [--force] [stockCode]`.
  *   - `serve` (default) register the crons and stay resident
  *
  * Usage: `node dist/worker-main.js [command] [args...]`.
@@ -93,6 +108,30 @@ async function bootstrap(): Promise<void> {
       const result = await app.get(ProspectusEnqueueService).enqueue(args[0]);
       logger.log({ command, result }, 'worker.command.enqueue-prospectus.done');
       // Give BullMQ's connection a beat to flush before the context closes.
+      await app.close();
+      return;
+    }
+    case 'seed-klci': {
+      const result = await app.get(KlciSeedService).seedKlci();
+      logger.log({ command, result }, 'worker.command.seed-klci.done');
+      await app.close();
+      return;
+    }
+    case 'ingest-klci': {
+      const result = await app.get(EodIngestService).ingestKlci();
+      logger.log({ command, result }, 'worker.command.ingest-klci.done');
+      await app.close();
+      return;
+    }
+    case 'enqueue-klci': {
+      const raw = process.argv.slice(3);
+      const force = raw.includes('--force');
+      const stockCode = raw.filter((a) => a !== '--force')[0];
+      const result = await app.get(KlciEnqueueService).enqueue({
+        stockCode,
+        force,
+      });
+      logger.log({ command, result }, 'worker.command.enqueue-klci.done');
       await app.close();
       return;
     }
