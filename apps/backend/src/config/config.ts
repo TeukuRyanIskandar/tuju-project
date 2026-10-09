@@ -7,6 +7,8 @@
  */
 import { parseCorsOrigins } from './cors';
 
+export type DataSourceMode = 'synthetic' | 'yfinance';
+
 export interface AppConfig {
   readonly nodeEnv: string;
   readonly port: number;
@@ -15,6 +17,8 @@ export interface AppConfig {
   readonly sessionSecret: string;
   /** Explicit CORS origin allowlist (comma-separated `CORS_ORIGINS`; never `*`). */
   readonly corsOrigins: readonly string[];
+  /** Market/fundamentals adapter binding (`DATA_SOURCE`; default `synthetic`). */
+  readonly dataSource: DataSourceMode;
   readonly cookie: {
     /** Parent domain a future BFF proxy can assume (ADR-0005 keep-it-migratable). */
     readonly domain: string | undefined;
@@ -24,6 +28,13 @@ export interface AppConfig {
     /** Session TTL in seconds (mirrors the Redis session TTL). */
     readonly maxAgeSeconds: number;
   };
+}
+
+export function parseDataSource(raw: string | undefined): DataSourceMode {
+  if (raw === 'yfinance') {
+    return 'yfinance';
+  }
+  return 'synthetic';
 }
 
 function required(name: string): string {
@@ -49,6 +60,7 @@ export function loadConfig(): AppConfig {
     redisUrl: required('REDIS_URL'),
     sessionSecret: required('SESSION_SECRET'),
     corsOrigins: parseCorsOrigins(process.env.CORS_ORIGINS),
+    dataSource: parseDataSource(process.env.DATA_SOURCE),
     cookie: {
       domain: process.env.COOKIE_DOMAIN || undefined,
       secure,
