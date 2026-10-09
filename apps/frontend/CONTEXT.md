@@ -24,8 +24,10 @@ additive, not a rewrite.
 - **Tier = show/hide only.** `src/lib/auth.ts` reads `tier` from `/auth/me` for
   presentation and asks capability questions (`canRunJob`); it never enforces.
   The backend always re-checks at the enqueue seam.
-- Consumes `@tuju/contracts` TS types (e.g. `JobName`) via `workspace:*`; no
-  cross-language imports (ADR-0002).
+- Consumes `@tuju/contracts` via `workspace:*`: TS types (e.g. `JobName`) and,
+  since the data layer, runtime values too — the HTTP response Zod schemas,
+  `ProspectusArtifact` and `parseOrThrow` (ADR-0014). No cross-language imports
+  (ADR-0002).
 
 ## Data layer
 
@@ -71,4 +73,4 @@ pnpm --filter frontend typecheck  # tsc --noEmit
 ## Decisions
 
 System-wide ADRs in `docs/adr/` govern this context (esp. ADR-0005, ADR-0010,
-ADR-0002). No context-scoped ADRs yet.
+ADR-0002, ADR-0014). No context-scoped ADRs yet.

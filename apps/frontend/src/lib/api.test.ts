@@ -67,6 +67,13 @@ describe('apiGet', () => {
     expect((err as Error).message).toContain('/things/a')
   })
 
+  it('throws ContractParseError (not a bare SyntaxError) on a non-JSON 2xx body', async () => {
+    stubFetch(new Response('<!doctype html><html></html>', { status: 200 }))
+    const err = await apiGet('/auth/me', Thing).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ContractParseError)
+    expect((err as Error).message).toContain('body is not JSON')
+  })
+
   it('rejects an unknown key (strict contract objects)', async () => {
     stubFetch(json({ id: 'a', n: 1, extra: true }))
     await expect(apiGet('/things/a', Thing)).rejects.toBeInstanceOf(ContractParseError)

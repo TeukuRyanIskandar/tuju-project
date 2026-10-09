@@ -1,13 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { QueryFunctionContext } from '@tanstack/react-query'
+import { ContractParseError } from '@tuju/contracts'
 import { apiUrl } from '../lib/api'
 import { announcementQuery, announcementsQuery } from './announcements'
 import { sessionQuery } from './auth'
-import { prospectusAtAGlanceQuery } from './ipo'
+import { prospectusArtifactQuery, prospectusAtAGlanceQuery } from './ipo'
 import { indexSeriesQuery, moversQuery } from './market'
 import { screenerQuery } from './screener'
 import { searchQuery } from './search'
 import { stockAnnouncementsQuery, stockCoreQuery } from './stocks'
+import artifactFixture from '../../../../packages/contracts/fixtures/prospectus-artifact.json?raw'
 
 /** Run a builder's queryFn against a stubbed fetch and return the requested URL. */
 async function run(
@@ -117,6 +119,16 @@ describe('src/api query builders', () => {
     expect(q.queryKey).toEqual(['ipo', 'p 1', 'at-a-glance'])
     await expect(run(q, {})).rejects.toThrow()
     expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(apiUrl('/ipo/p%201/at-a-glance'))
+  })
+
+  it('prospectusArtifactQuery hits /ipo/:id/at-a-glance/artifact and parses the contract', async () => {
+    const q = prospectusArtifactQuery('p 1')
+    expect(q.queryKey).toEqual(['ipo', 'p 1', 'at-a-glance', 'artifact'])
+    await expect(run(q, {})).rejects.toBeInstanceOf(ContractParseError)
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(apiUrl('/ipo/p%201/at-a-glance/artifact'))
+    const fixture: unknown = JSON.parse(artifactFixture)
+    const { result } = await run(q, fixture)
+    expect(result).toEqual(fixture)
   })
 
   it('sessionQuery resolves null when anonymous', async () => {

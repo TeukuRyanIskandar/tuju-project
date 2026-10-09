@@ -1,4 +1,4 @@
-import { parseOrThrow } from '@tuju/contracts'
+import { ContractParseError, parseOrThrow } from '@tuju/contracts'
 import type { z } from 'zod'
 
 /**
@@ -86,7 +86,19 @@ export async function apiGet<S extends z.ZodType>(
 ): Promise<z.output<S>> {
   const res = await apiFetch(path, init)
   if (!res.ok) throw new ApiError(res.status, await readBody(res), path)
-  const json: unknown = await res.json()
+  const text = await res.text()
+  let json: unknown
+  try {
+    json = JSON.parse(text)
+  } catch (error) {
+    // A 2xx that is not JSON (e.g. an SPA fallback page) is a contract failure,
+    // not a transient one: surface it typed so it is not retried.
+    throw new ContractParseError(
+      path,
+      [{ code: 'custom', path: [], message: 'body is not JSON', input: text }],
+      error,
+    )
+  }
   return VALIDATE_RESPONSES ? parseOrThrow(schema, json, path) : (json as z.output<S>)
 }
 

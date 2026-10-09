@@ -105,6 +105,22 @@ describe('SearchBox keyboard', () => {
     expect(input).toHaveAttribute('aria-activedescendant', options[2]!.id)
   })
 
+  it('a new result set clears a highlight made on the previous one', async () => {
+    const { user, input } = await mount()
+    fetchMock.mockImplementation(async (url: string) => {
+      const q = new URL(url, 'http://x').searchParams.get('q') ?? ''
+      return new Response(JSON.stringify({ query: q, items: q === 'b' ? ROWS : ROWS.slice(0, 1) }), { status: 200 })
+    })
+    await user.type(input, 'b')
+    await settled()
+    // Arrow on the previous (placeholder) list while the next query is in flight.
+    await user.type(input, '1')
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}')
+    expect(screen.getAllByRole('option')).toHaveLength(3)
+    await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(1))
+    expect(input).not.toHaveAttribute('aria-activedescendant')
+  })
+
   it('Escape closes the list, then clears the text', async () => {
     const { user, input } = await mount()
     await user.type(input, 'b')

@@ -88,6 +88,8 @@ services:
       # Browser origins allowed to call the API with credentials (ADR-0005).
       # Explicit list only — "*" / empty entries abort startup. The compose
       # frontend is served on :8080; Vite dev server on :5173.
+      # Production origin / COOKIE_DOMAIN / COOKIE_SECURE / COOKIE_SAMESITE:
+      # see the commented-out placeholders in .env.example (ADR-0005 open question).
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8080}
       LOG_LEVEL: info
     ports:

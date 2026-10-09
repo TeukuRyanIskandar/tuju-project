@@ -47,6 +47,10 @@ export function SearchBox() {
   const pending = stale || (hasText && query.isFetching)
   const showPopup = open && hasText
 
+  // A new result set invalidates the highlight: an index into the previous
+  // list would point at a different stock, or past the end of a shorter one.
+  useEffect(() => setActiveIndex(-1), [query.data])
+
   // "/" focuses the search from anywhere outside a text field.
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {

@@ -13,9 +13,11 @@ A stateless job **consumer**:
   showcase jobs `generate-market-brief` / `summarize-announcement`, and the flagship
   `analyze-prospectus`) over Redis;
   connection by env (ADR-0006).
-- **Runtime conformance (ADR-0011)** — validates the incoming `JobEnvelope` and
-  outgoing `JobResult` against the generated Pydantic v2 models
-  (`contracts_generated`, do not edit).
+- **Runtime conformance (ADR-0011, ADR-0014)** — validates the incoming `JobEnvelope`
+  and outgoing `JobResult` against the generated Pydantic v2 models
+  (`contracts_generated`, do not edit). The prospectus handler also validates the
+  assembled artifact against the generated `ProspectusArtifact` **before** the S3
+  write; a mismatch is a terminal job failure and nothing is written.
 - **Step-based progress (ADR-0007 §4)** — emits `JobProgress` via `job.updateProgress`.
 - **Claim-check (ADR-0004)** — writes the artifact to S3 (LocalStack locally) and
   returns a pointer + thin summary. **Never writes Postgres.**
@@ -55,4 +57,4 @@ uv run pytest -m integration            # testcontainers layer
 ## Decisions
 
 System-wide ADRs in `docs/adr/` govern this context (esp. ADR-0001, 0003, 0004,
-0006, 0007, 0010, 0011). No context-scoped ADRs yet.
+0006, 0007, 0010, 0011, 0014). No context-scoped ADRs yet.
