@@ -73,6 +73,20 @@ export enum ListingBoard {
 }
 
 /**
+ * Thin TA/FA analysis row status — mirrors contracts `StockAnalysisStatus`
+ * (PoC Phase A). Kept as a local string enum so entities never value-import
+ * `@tuju/contracts` (CommonJS boot guard).
+ */
+export enum StockAnalysisStatus {
+  Pending = 'pending',
+  Running = 'running',
+  Ready = 'ready',
+  FactsOnly = 'facts_only',
+  Failed = 'failed',
+  Stale = 'stale',
+}
+
+/**
  * {@link MarketIndex} discriminator (spec 05): the FBM KLCI analogue `headline`
  * index vs the per-`Sector` indices. A `sector` row FKs its `Sector` (null on
  * the headline row); membership is derived (headline = the whole analysed

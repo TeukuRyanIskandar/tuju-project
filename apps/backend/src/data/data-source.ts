@@ -21,6 +21,8 @@ import {
   Sector,
   ShariahStatus,
   SyntheticRun,
+  TechnicalAnalysis,
+  FundamentalAnalysis,
   Watchlist,
   WatchlistItem,
 } from './entities';
@@ -31,6 +33,7 @@ import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-Dis
 import { MarketIndexModel1728000000000 } from './migrations/1728000000000-MarketIndexModel';
 import { ShowcaseJobsModel1728100000000 } from './migrations/1728100000000-ShowcaseJobsModel';
 import { ProspectusAnalysis1728200000000 } from './migrations/1728200000000-ProspectusAnalysis';
+import { StockAnalyses1728300000000 } from './migrations/1728300000000-StockAnalyses';
 
 /**
  * Standalone TypeORM DataSource used by the CLI (migration:run/revert).
@@ -67,6 +70,8 @@ export const AppDataSource = new DataSource({
     WatchlistItem,
     MarketBrief,
     ProspectusAnalysis,
+    TechnicalAnalysis,
+    FundamentalAnalysis,
   ],
   migrations: [
     InitialSchema1727600000000,
@@ -76,5 +81,6 @@ export const AppDataSource = new DataSource({
     MarketIndexModel1728000000000,
     ShowcaseJobsModel1728100000000,
     ProspectusAnalysis1728200000000,
+    StockAnalyses1728300000000,
   ],
 });

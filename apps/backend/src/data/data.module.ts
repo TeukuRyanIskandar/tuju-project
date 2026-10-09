@@ -22,6 +22,8 @@ import {
   Sector,
   ShariahStatus,
   SyntheticRun,
+  TechnicalAnalysis,
+  FundamentalAnalysis,
   Watchlist,
   WatchlistItem,
 } from './entities';
@@ -32,6 +34,7 @@ import { DisclosureReadModel1727900000000 } from './migrations/1727900000000-Dis
 import { MarketIndexModel1728000000000 } from './migrations/1728000000000-MarketIndexModel';
 import { ShowcaseJobsModel1728100000000 } from './migrations/1728100000000-ShowcaseJobsModel';
 import { ProspectusAnalysis1728200000000 } from './migrations/1728200000000-ProspectusAnalysis';
+import { StockAnalyses1728300000000 } from './migrations/1728300000000-StockAnalyses';
 
 /**
  * All domain entities managed by the data layer. Registered in both this module
@@ -60,6 +63,8 @@ const ENTITIES = [
   WatchlistItem,
   MarketBrief,
   ProspectusAnalysis,
+  TechnicalAnalysis,
+  FundamentalAnalysis,
 ];
 
 /**
@@ -88,6 +93,7 @@ const ENTITIES = [
           MarketIndexModel1728000000000,
           ShowcaseJobsModel1728100000000,
           ProspectusAnalysis1728200000000,
+          StockAnalyses1728300000000,
         ],
       }),
     }),
