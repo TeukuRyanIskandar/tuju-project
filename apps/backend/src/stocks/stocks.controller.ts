@@ -1,16 +1,18 @@
 /**
  * Stock-page HTTP surface (spec 02; ticket 03; category/type filters added by
- * spec 04 ticket 02) — three anonymous read endpoints over the
- * already-ingested model:
+ * spec 04 ticket 02; PoC Phase A series + analysis reads by build ticket 06):
  *
  *   GET /stocks/:code                        → core snapshot (shape B)
  *   GET /stocks/:code/announcements?category&offset=&limit= → newest-first page
  *   GET /stocks/:code/corporate-actions?type&offset=&limit= → chronological page
+ *   GET /stocks/:code/series?interval=1d&range=2y → EOD OHLC series
+ *   GET /stocks/:code/analysis/technical     → thin TA envelope
+ *   GET /stocks/:code/analysis/fundamental   → thin FA envelope
+ *   GET /stocks/:code/analysis/technical/artifact → proxied rich JSON (cost stripped)
+ *   GET /stocks/:code/analysis/fundamental/artifact → proxied rich JSON (cost stripped)
  *
- * Deliberately carries NO `@RequiresJob`: these are free-tier browse routes —
- * the global TierGuard passes any route without it (ADR-0005). The controller
- * only resolves query params and delegates; composition, provenance and the
- * class-2 cache live in `StocksService`.
+ * Deliberately carries NO `@RequiresJob`: these are free-tier / PoC browse
+ * routes — the global TierGuard passes any route without it (ADR-0005).
  */
 
 import { Controller, Get, Param, Query } from '@nestjs/common';
@@ -22,17 +24,14 @@ import type {
   AnnouncementsPage,
   CorporateActionsPage,
   StockCorePayload,
+  StockFundamentalAnalysisResponse,
+  StockSeriesResponse,
+  StockTechnicalAnalysisResponse,
 } from './stocks.types';
 
 @Controller('stocks')
 export class StocksController {
   constructor(private readonly stocks: StocksService) {}
-
-  /** The bounded core snapshot — one round trip, identity ⋈ fundamentals ⋈ technicals ⋈ shariah. */
-  @Get(':code')
-  async getCore(@Param('code') code: string): Promise<StockCorePayload> {
-    return this.stocks.getCore(code);
-  }
 
   /**
    * Announcements for the stock, newest `filedAt` first. `?category=` is a
@@ -61,5 +60,49 @@ export class StocksController {
     const page = resolvePagination(offset, limit);
     const types = parseEnumList(type, Object.values(CorporateActionType));
     return this.stocks.getCorporateActions(code, page.offset, page.limit, types);
+  }
+
+  /** PoC-fixed ~2y EOD OHLC series (`interval=1d` / `range=2y` only). */
+  @Get(':code/series')
+  async getSeries(
+    @Param('code') code: string,
+    @Query('interval') interval?: string,
+    @Query('range') range?: string,
+  ): Promise<StockSeriesResponse> {
+    return this.stocks.getSeries(code, interval, range);
+  }
+
+  @Get(':code/analysis/technical/artifact')
+  async getTechnicalArtifact(
+    @Param('code') code: string,
+  ): Promise<Record<string, unknown>> {
+    return this.stocks.getTechnicalArtifact(code);
+  }
+
+  @Get(':code/analysis/fundamental/artifact')
+  async getFundamentalArtifact(
+    @Param('code') code: string,
+  ): Promise<Record<string, unknown>> {
+    return this.stocks.getFundamentalArtifact(code);
+  }
+
+  @Get(':code/analysis/technical')
+  async getTechnicalAnalysis(
+    @Param('code') code: string,
+  ): Promise<StockTechnicalAnalysisResponse> {
+    return this.stocks.getTechnicalAnalysis(code);
+  }
+
+  @Get(':code/analysis/fundamental')
+  async getFundamentalAnalysis(
+    @Param('code') code: string,
+  ): Promise<StockFundamentalAnalysisResponse> {
+    return this.stocks.getFundamentalAnalysis(code);
+  }
+
+  /** The bounded core snapshot — one round trip, identity ⋈ fundamentals ⋈ technicals ⋈ shariah. */
+  @Get(':code')
+  async getCore(@Param('code') code: string): Promise<StockCorePayload> {
+    return this.stocks.getCore(code);
   }
 }

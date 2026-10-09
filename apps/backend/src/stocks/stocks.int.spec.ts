@@ -24,13 +24,19 @@
  * guaranteed available per the ticket.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import {
   AnnouncementsPage,
   CorporateActionsPage,
   StockCorePayload,
+  StockFundamentalAnalysisResponse,
+  StockSeriesResponse,
+  StockTechnicalAnalysisResponse,
   parseOrThrow,
 } from '@tuju/contracts';
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
 import { Test } from '@nestjs/testing';
@@ -49,6 +55,7 @@ import {
   Company,
   CorporateAction,
   FundamentalsSnapshot,
+  FundamentalAnalysis,
   IndicatorSnapshot,
   IngestionRun,
   Instrument,
@@ -60,23 +67,27 @@ import {
   Sector,
   ShariahStatus,
   SyntheticRun,
+  TechnicalAnalysis,
   Watchlist,
   WatchlistItem,
 } from '../data/entities';
 import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from '../data/migrations/1727700000000-FreeTierDomainModel';
 import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
+import { StockAnalyses1728300000000 } from '../data/migrations/1728300000000-StockAnalyses';
 import {
   AnnouncementCategory,
   CorporateActionType,
   ListingBoard,
   ProvenanceClass,
   ShariahComplianceStatus,
+  StockAnalysisStatus,
 } from '../data/entities/enums';
 import {
   REFERENCE_UNIVERSE,
   type ReferenceCompany,
 } from '../ingestion/reference-universe';
+import { S3_CLIENT } from '../s3/s3.module';
 
 import { StocksController } from './stocks.controller';
 import { StocksService } from './stocks.service';
@@ -103,10 +114,23 @@ const ALL_ENTITIES = [
   IpoListing,
   Watchlist,
   WatchlistItem,
+  TechnicalAnalysis,
+  FundamentalAnalysis,
 ];
 
-// MAYBANK 1155 (full graph), CIMB 1023 (sparse), AXIATA 6888 (loss-maker).
-const [MAYBANK, CIMB, AXIATA] = REFERENCE_UNIVERSE;
+// MAYBANK 1155 (full graph), CIMB 1023 (sparse), AXIATA 6888 (loss-maker),
+// INARI 0200 (seeded but outside KLCI 30 — ticket 06 hard-gate).
+const [MAYBANK, CIMB, , AXIATA, INARI] = REFERENCE_UNIVERSE;
+
+const TECHNICAL_ARTIFACT = JSON.parse(
+  readFileSync(
+    resolve(
+      __dirname,
+      '../../../../packages/contracts/fixtures/technical-analysis-artifact.json',
+    ),
+    'utf-8',
+  ),
+) as Record<string, unknown>;
 
 /** Stored MAYBANK-scale fundamental figures (asserted as-read, never recomputed). */
 const MAYBANK_FUNDAMENTALS = {
@@ -202,7 +226,12 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
       url: pgContainer.getConnectionUri(),
       synchronize: false,
       entities: ALL_ENTITIES,
-      migrations: [InitialSchema1727600000000, FreeTierDomainModel1727700000000, DisclosureReadModel1727900000000],
+      migrations: [
+        InitialSchema1727600000000,
+        FreeTierDomainModel1727700000000,
+        DisclosureReadModel1727900000000,
+        StockAnalyses1728300000000,
+      ],
     });
     await dataSource.initialize();
     await dataSource.runMigrations();
@@ -211,11 +240,20 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
       maxRetriesPerRequest: null,
     });
 
+    const fakeS3 = {
+      send: async () => ({
+        Body: {
+          transformToString: async () => JSON.stringify(TECHNICAL_ARTIFACT),
+        },
+      }),
+    };
+
     const moduleRef = await Test.createTestingModule({
       controllers: [StocksController],
       providers: [
         { provide: DataSource, useValue: dataSource },
         { provide: REDIS_CLIENT, useValue: redis },
+        { provide: S3_CLIENT, useValue: fakeS3 },
         ReadCacheService,
         StocksService,
       ],
@@ -553,6 +591,106 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
     expect(await redis.get(unknownKey)).toBeNull();
   });
 
+  it('series: KLCI-30 shape, empty points, bad query 400, outside-30 404', async () => {
+    const series = await service.getSeries(MAYBANK.stockCode, '1d', '2y');
+    parseOrThrow(StockSeriesResponse, JSON.parse(JSON.stringify(series)));
+    expect(series.code).toBe(MAYBANK.stockCode);
+    expect(series.interval).toBe('1d');
+    expect(series.range).toBe('2y');
+    expect(series.demoLabel).toBe('private-demo');
+    expect(series.provenance).toBe(ProvenanceClass.Synthetic);
+    expect(series.points).toHaveLength(3);
+    expect(series.points[0]).toEqual({
+      date: '2026-09-28',
+      open: '9.750000',
+      high: '10.100000',
+      low: '9.700000',
+      close: '9.800000',
+      volume: '12300000',
+    });
+
+    const empty = await service.getSeries(CIMB.stockCode);
+    parseOrThrow(StockSeriesResponse, JSON.parse(JSON.stringify(empty)));
+    expect(empty.points).toEqual([]);
+    expect(empty.provenance).toBe(ProvenanceClass.Real);
+
+    await expect(service.getSeries(MAYBANK.stockCode, '1h', '2y')).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.getSeries(MAYBANK.stockCode, '1d', '1y')).rejects.toThrow(
+      BadRequestException,
+    );
+
+    await expect(service.getSeries(INARI.stockCode)).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(service.getTechnicalAnalysis(INARI.stockCode)).rejects.toThrow(
+      NotFoundException,
+    );
+    await expect(service.getSeries('9999')).rejects.toThrow(NotFoundException);
+  });
+
+  it('analysis thin: pending without row; ready + artifactPath; read-time stale; cost stripped', async () => {
+    const pending = await service.getTechnicalAnalysis(MAYBANK.stockCode);
+    parseOrThrow(
+      StockTechnicalAnalysisResponse,
+      JSON.parse(JSON.stringify(pending)),
+    );
+    expect(pending).toEqual({
+      code: MAYBANK.stockCode,
+      status: 'pending',
+      headline: null,
+      asOf: null,
+      artifact: null,
+      artifactPath: null,
+      errorMessage: null,
+      jobName: 'analyze-technical',
+    });
+
+    const faPending = await service.getFundamentalAnalysis(MAYBANK.stockCode);
+    parseOrThrow(
+      StockFundamentalAnalysisResponse,
+      JSON.parse(JSON.stringify(faPending)),
+    );
+    expect(faPending.status).toBe('pending');
+    expect(faPending.jobName).toBe('analyze-fundamental');
+
+    const bucket = 'tuju-artifacts';
+    const key = `analysis/technical/${MAYBANK.stockCode}.json`;
+    const asOfBehind = new Date('2026-09-28T18:00:00.000Z');
+    await dataSource.getRepository(TechnicalAnalysis).save(
+      dataSource.getRepository(TechnicalAnalysis).create({
+        instrumentId: maybankInstrumentId,
+        status: StockAnalysisStatus.Ready,
+        headline: 'SMA cross held',
+        asOf: asOfBehind,
+        artifactBucket: bucket,
+        artifactKey: key,
+        errorMessage: null,
+        correlationId: randomUUID(),
+        jobId: `analyze-technical:1D:${MAYBANK.stockCode}:2026-09-28`,
+      }),
+    );
+
+    const thin = await service.getTechnicalAnalysis(MAYBANK.stockCode);
+    parseOrThrow(StockTechnicalAnalysisResponse, JSON.parse(JSON.stringify(thin)));
+    expect(thin.status).toBe('stale');
+    expect(thin.headline).toBe('SMA cross held');
+    expect(thin.artifact).toEqual({ bucket, key });
+    expect(thin.artifactPath).toBe(
+      `/stocks/${MAYBANK.stockCode}/analysis/technical/artifact`,
+    );
+
+    const artifact = await service.getTechnicalArtifact(MAYBANK.stockCode);
+    expect(artifact).not.toHaveProperty('cost');
+    expect(artifact.schemaVersion).toBe('technical-analysis-1');
+    expect(artifact.symbol).toBe('1155');
+
+    await expect(
+      service.getFundamentalArtifact(MAYBANK.stockCode),
+    ).rejects.toThrow(NotFoundException);
+  });
+
   /** Seed runs of each provenance class + the three companies and their graphs. */
   async function seedFixtures(): Promise<void> {
     realRefRun = await seedRun('PublicReferenceAdapter', ProvenanceClass.Real);
@@ -684,6 +822,9 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
 
     // CIMB: sparse — identity only.
     await seedListed(CIMB, sector.id);
+
+    // INARI: seeded but outside KLCI 30 (hard-gate 404 on PoC routes).
+    await seedListed(INARI, sector.id);
   }
 
   /** Seed one listed company + its ordinary-share instrument (real lineage). */

@@ -24,22 +24,42 @@
  * (ticket 01).
  */
 
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { DataSource, In, MoreThanOrEqual } from 'typeorm';
 import { ReadCacheService, STOCKS_CACHE_PREFIX } from '../cache';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
+import { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entity';
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
+import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import {
   AnnouncementCategory,
   CorporateActionType,
   ProvenanceClass,
 } from '../data/entities/enums';
+import { isKlci30 } from '../ingestion/klci30-universe';
+import { seriesSinceDate } from '../market/index-params';
+import { S3_CLIENT } from '../s3/s3.module';
 import { pctChange, toNumber } from './serialisation';
+import {
+  isStockSeriesQuery,
+  omitArtifactCost,
+  pendingFundamentalAnalysis,
+  pendingTechnicalAnalysis,
+  STOCK_SERIES_RANGE_DAYS,
+  toFundamentalAnalysisResponse,
+  toTechnicalAnalysisResponse,
+} from './stock-analysis-read';
 import type {
   AnnouncementsPage,
   AnnouncementItem,
@@ -49,6 +69,10 @@ import type {
   IdentityBlock,
   ShariahBlock,
   StockCorePayload,
+  StockFundamentalAnalysisResponse,
+  StockSeriesPoint,
+  StockSeriesResponse,
+  StockTechnicalAnalysisResponse,
   TechnicalsBlock,
 } from './stocks.types';
 
@@ -57,6 +81,7 @@ export class StocksService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly readCache: ReadCacheService,
+    @Inject(S3_CLIENT) private readonly s3: S3Client,
   ) {}
 
   /** `GET /stocks/:code` — the class-2-cached core snapshot. */
@@ -91,6 +116,68 @@ export class StocksService {
       `${STOCKS_CACHE_PREFIX}${stockCode}:corporate-actions:${normaliseEnumKey(types)}:${offset}:${limit}`,
       () => this.loadCorporateActions(stockCode, offset, limit, types),
     );
+  }
+
+  /** `GET /stocks/:code/series?interval=1d&range=2y` — KLCI-30 hard-gated. */
+  async getSeries(
+    stockCode: string,
+    interval?: string,
+    range?: string,
+  ): Promise<StockSeriesResponse> {
+    if (!isStockSeriesQuery(interval, range)) {
+      throw new BadRequestException(
+        'Only interval=1d and range=2y are supported',
+      );
+    }
+    return this.loadSeries(stockCode);
+  }
+
+  /** `GET /stocks/:code/analysis/technical` — thin envelope; pending when no row. */
+  async getTechnicalAnalysis(
+    stockCode: string,
+  ): Promise<StockTechnicalAnalysisResponse> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.dataSource
+      .getRepository(TechnicalAnalysis)
+      .findOne({ where: { instrumentId: instrument.id } });
+    if (!row) return pendingTechnicalAnalysis(stockCode);
+    const latestEod = await this.latestEodCloseDay(instrument.id);
+    return toTechnicalAnalysisResponse(stockCode, row, latestEod);
+  }
+
+  /** `GET /stocks/:code/analysis/fundamental` — thin envelope; pending when no row. */
+  async getFundamentalAnalysis(
+    stockCode: string,
+  ): Promise<StockFundamentalAnalysisResponse> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.dataSource
+      .getRepository(FundamentalAnalysis)
+      .findOne({ where: { instrumentId: instrument.id } });
+    if (!row) return pendingFundamentalAnalysis(stockCode);
+    const latestEod = await this.latestEodCloseDay(instrument.id);
+    return toFundamentalAnalysisResponse(stockCode, row, latestEod);
+  }
+
+  /** Proxied TA artifact JSON with `cost` stripped (ADR-0014). */
+  async getTechnicalArtifact(
+    stockCode: string,
+  ): Promise<Record<string, unknown>> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.dataSource
+      .getRepository(TechnicalAnalysis)
+      .findOne({ where: { instrumentId: instrument.id } });
+    return this.loadArtifact(stockCode, row);
+  }
+
+  /** Proxied FA artifact JSON with `cost` stripped (ADR-0014). */
+  async getFundamentalArtifact(
+    stockCode: string,
+  ): Promise<Record<string, unknown>> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.dataSource
+      .getRepository(FundamentalAnalysis)
+      .findOne({ where: { instrumentId: instrument.id } });
+    return this.loadArtifact(stockCode, row);
   }
 
   /**
@@ -285,6 +372,113 @@ export class StocksService {
       throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
     }
     return instrument;
+  }
+
+  /** PoC series/analysis hard-gate: outside KLCI 30 or unknown → 404. */
+  private async requireKlciInstrument(stockCode: string): Promise<Instrument> {
+    if (!isKlci30(stockCode)) {
+      throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
+    }
+    return this.requireInstrument(stockCode);
+  }
+
+  private async loadSeries(stockCode: string): Promise<StockSeriesResponse> {
+    const instrument = await this.dataSource
+      .getRepository(Instrument)
+      .findOne({
+        where: { stockCode },
+        relations: { ingestionRun: true },
+      });
+    if (!instrument || !isKlci30(stockCode)) {
+      throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
+    }
+
+    const latest = await this.dataSource.getRepository(PriceBar).findOne({
+      where: { instrumentId: instrument.id },
+      order: { tradeDate: 'DESC' },
+      relations: { ingestionRun: true },
+    });
+
+    if (!latest) {
+      return {
+        code: stockCode,
+        interval: '1d',
+        range: '2y',
+        points: [],
+        provenance: instrument.ingestionRun.provenanceClass,
+        demoLabel: 'private-demo',
+      };
+    }
+
+    const since = seriesSinceDate(latest.tradeDate, STOCK_SERIES_RANGE_DAYS);
+    const bars = await this.dataSource.getRepository(PriceBar).find({
+      where: {
+        instrumentId: instrument.id,
+        ...(since ? { tradeDate: MoreThanOrEqual(since) } : {}),
+      },
+      order: { tradeDate: 'ASC' },
+      relations: { ingestionRun: true },
+    });
+
+    const points: StockSeriesPoint[] = bars.map((b) => ({
+      date: b.tradeDate,
+      open: b.open,
+      high: b.high,
+      low: b.low,
+      close: b.close,
+      volume: b.volume,
+    }));
+
+    return {
+      code: stockCode,
+      interval: '1d',
+      range: '2y',
+      points,
+      provenance: latest.ingestionRun.provenanceClass,
+      demoLabel: 'private-demo',
+    };
+  }
+
+  private async latestEodCloseDay(instrumentId: string): Promise<string | null> {
+    const latest = await this.dataSource.getRepository(PriceBar).findOne({
+      where: { instrumentId },
+      order: { tradeDate: 'DESC' },
+    });
+    return latest?.tradeDate ?? null;
+  }
+
+  private async loadArtifact(
+    stockCode: string,
+    row:
+      | Pick<
+          TechnicalAnalysis,
+          'artifactBucket' | 'artifactKey'
+        >
+      | Pick<
+          FundamentalAnalysis,
+          'artifactBucket' | 'artifactKey'
+        >
+      | null,
+  ): Promise<Record<string, unknown>> {
+    if (!row?.artifactBucket || !row.artifactKey) {
+      throw new NotFoundException(
+        `No analysis artifact for stockCode=${stockCode}`,
+      );
+    }
+    const out = await this.s3.send(
+      new GetObjectCommand({
+        Bucket: row.artifactBucket,
+        Key: row.artifactKey,
+      }),
+    );
+    const body = await out.Body?.transformToString('utf-8');
+    if (!body) {
+      throw new NotFoundException(
+        `Analysis artifact body is empty for stockCode=${stockCode}`,
+      );
+    }
+    const parsed = JSON.parse(body) as Record<string, unknown>;
+    return omitArtifactCost(parsed);
   }
 }
 

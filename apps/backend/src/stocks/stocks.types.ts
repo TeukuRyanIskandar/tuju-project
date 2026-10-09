@@ -15,5 +15,9 @@ export type {
   IdentityBlock,
   ShariahBlock,
   StockCorePayload,
+  StockFundamentalAnalysisResponse,
+  StockSeriesPoint,
+  StockSeriesResponse,
+  StockTechnicalAnalysisResponse,
   TechnicalsBlock,
 } from '@tuju/contracts';
