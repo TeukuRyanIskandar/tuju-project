@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "technical-analysis-1",
+  "symbol": "1155",
+  "jobName": "analyze-technical",
+  "asOf": "2026-10-08T18:00:00+00:00",
+  "timeframe": "1D",
+  "facts": {
+    "sma": { "p20": 9.7, "p50": 9.55, "p200": 9.3 },
+    "rsi": { "period": 14, "value": 57.4 },
+    "macd": { "line": 0.02123, "signal": 0.015, "histogram": 0.00623 },
+    "week52": { "high": 10.45, "low": 8.32 }
+  },
+  "events": [
+    {
+      "id": "ma_cross_20_50",
+      "label": "SMA-20 crossed above SMA-50",
+      "fired": true,
+      "values": { "sma20": 9.7, "sma50": 9.55 },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "ma_cross_50_200",
+      "label": "SMA-50 vs SMA-200",
+      "fired": false,
+      "values": { "sma50": 9.55, "sma200": 9.3 },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "price_vs_sma",
+      "label": "Close vs SMA-50",
+      "fired": true,
+      "values": { "close": 10.02, "sma50": 9.55 },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "rsi_band",
+      "label": "RSI-14 mid band",
+      "fired": true,
+      "values": { "rsi": 57.4, "band": "mid" },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "macd_cross",
+      "label": "MACD line vs signal",
+      "fired": true,
+      "values": { "line": 0.02123, "signal": 0.015 },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "week52_proximity",
+      "label": "Near 52-week high",
+      "fired": false,
+      "values": { "close": 10.02, "week52High": 10.45, "pctFromHigh": -4.11 },
+      "at": "2026-10-08"
+    },
+    {
+      "id": "broke_swing_high",
+      "label": "Broke prior swing high",
+      "fired": false,
+      "values": { "swingHigh": 10.2, "close": 10.02 },
+      "at": "2026-10-08"
+    }
+  ],
+  "narrative": {
+    "language": "en",
+    "text": "MAYBANK closed at 10.02 with RSI-14 at 57.4. The SMA-20 crossed above the SMA-50 on the latest bar, while MACD remains above its signal line."
+  },
+  "provenance": {
+    "source": "real",
+    "adapter": "yfinance",
+    "model": "google/gemini-2.5-flash",
+    "generatedAt": "2026-10-08T18:05:00+00:00"
+  },
+  "cost": {
+    "model": "google/gemini-2.5-flash",
+    "calls": 1,
+    "promptTokens": 420,
+    "completionTokens": 96,
+    "cachedTokens": 0,
+    "estimatedCostUsd": 0.0012,
+    "ceilingUsd": 0.05,
+    "perCall": [
+      {
+        "step": "narrate",
+        "promptTokens": 420,
+        "completionTokens": 96,
+        "cachedTokens": 0,
+        "costUsd": 0.0012
+      }
+    ]
+  }
+}

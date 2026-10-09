@@ -3,11 +3,30 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 from uuid import UUID
 
 from pydantic import (AwareDatetime, BaseModel, ConfigDict, Field,
                       confloat, conint, constr)
+
+
+class AnalysisNarrative(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    language: Literal['en', 'ms']
+    text: constr(min_length=1)
+
+
+class AnalysisProvenance(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    source: Literal['real']
+    adapter: Literal['yfinance']
+    model: constr(min_length=1)
+    generatedAt: AwareDatetime
 
 
 class AnnouncementSummaryPayload(BaseModel):
@@ -26,6 +45,17 @@ class ArtifactPointer(BaseModel):
     sha256: constr(min_length=1)
     bytes: conint(ge=0, le=9007199254740991)
     contentType: constr(min_length=1)
+
+
+class FundamentalMetric(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Literal['trailing_pe', 'dividend_yield', 'roe', 'revenue_growth_qoq', 'revenue_growth_yoy', 'profit_growth_qoq', 'profit_growth_yoy', 'debt_to_equity', 'operating_cash_flow']
+    label: constr(min_length=1)
+    value: float | None
+    unit: constr(min_length=1)
+    asOf: date
 
 
 class FundamentalPayload(BaseModel):
@@ -227,6 +257,26 @@ class SystemSummary(BaseModel):
     asOf: AwareDatetime
 
 
+class TechnicalEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    id: Literal['ma_cross_20_50', 'ma_cross_50_200', 'price_vs_sma', 'rsi_band', 'macd_cross', 'week52_proximity', 'broke_swing_high']
+    label: constr(min_length=1)
+    fired: bool
+    values: dict[str, float | str | bool | None]
+    at: date
+
+
+class TechnicalMacdFacts(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    line: float | None
+    signal: float | None
+    histogram: float | None
+
+
 class TechnicalPayload(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -234,6 +284,31 @@ class TechnicalPayload(BaseModel):
     symbol: constr(min_length=1)
     timeframe: Literal['1D', '1W', '1M']
     indicators: list[str] | None = None
+
+
+class TechnicalRsiFacts(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    period: Literal[14]
+    value: float | None
+
+
+class TechnicalSmaFacts(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    p20: float | None
+    p50: float | None
+    p200: float | None
+
+
+class TechnicalWeek52Facts(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    high: float | None
+    low: float | None
 
 
 class AnnouncementSummaryJobEnvelope(BaseModel):
@@ -245,6 +320,21 @@ class AnnouncementSummaryJobEnvelope(BaseModel):
     trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: AnnouncementSummaryPayload
+
+
+class FundamentalAnalysisArtifact(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    schemaVersion: Literal['fundamental-analysis-1']
+    symbol: constr(min_length=1)
+    jobName: Literal['analyze-fundamental']
+    asOf: AwareDatetime
+    period: Literal['quarterly']
+    metrics: list[FundamentalMetric] = Field(..., max_length=9, min_length=9)
+    narrative: AnalysisNarrative
+    provenance: AnalysisProvenance
+    cost: ProspectusCostReport
 
 
 class FundamentalJobEnvelope(BaseModel):
@@ -381,6 +471,16 @@ class ProspectusWatchSection(BaseModel):
     data: ProspectusWatchData
 
 
+class TechnicalFacts(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    sma: TechnicalSmaFacts
+    rsi: TechnicalRsiFacts
+    macd: TechnicalMacdFacts
+    week52: TechnicalWeek52Facts
+
+
 class TechnicalJobEnvelope(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -401,6 +501,22 @@ class ProspectusSections(BaseModel):
     financials: ProspectusFinancialsSection
     riskFactors: ProspectusRiskSection
     whatToWatch: ProspectusWatchSection
+
+
+class TechnicalAnalysisArtifact(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    schemaVersion: Literal['technical-analysis-1']
+    symbol: constr(min_length=1)
+    jobName: Literal['analyze-technical']
+    asOf: AwareDatetime
+    timeframe: Literal['1D']
+    facts: TechnicalFacts
+    events: list[TechnicalEvent]
+    narrative: AnalysisNarrative
+    provenance: AnalysisProvenance
+    cost: ProspectusCostReport
 
 
 class ProspectusArtifact(BaseModel):

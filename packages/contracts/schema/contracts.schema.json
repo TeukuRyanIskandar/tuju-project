@@ -1,6 +1,56 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$defs": {
+    "AnalysisNarrative": {
+      "type": "object",
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "ms"
+          ]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "language",
+        "text"
+      ],
+      "additionalProperties": false
+    },
+    "AnalysisProvenance": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "const": "real"
+        },
+        "adapter": {
+          "type": "string",
+          "const": "yfinance"
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        }
+      },
+      "required": [
+        "source",
+        "adapter",
+        "model",
+        "generatedAt"
+      ],
+      "additionalProperties": false
+    },
     "AnnouncementSummaryJobEnvelope": {
       "type": "object",
       "properties": {
@@ -87,6 +137,61 @@
       ],
       "additionalProperties": false
     },
+    "FundamentalAnalysisArtifact": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "fundamental-analysis-1"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jobName": {
+          "type": "string",
+          "const": "analyze-fundamental"
+        },
+        "asOf": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "period": {
+          "type": "string",
+          "const": "quarterly"
+        },
+        "metrics": {
+          "minItems": 9,
+          "maxItems": 9,
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/FundamentalMetric"
+          }
+        },
+        "narrative": {
+          "$ref": "#/$defs/AnalysisNarrative"
+        },
+        "provenance": {
+          "$ref": "#/$defs/AnalysisProvenance"
+        },
+        "cost": {
+          "$ref": "#/$defs/ProspectusCostReport"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "symbol",
+        "jobName",
+        "asOf",
+        "period",
+        "metrics",
+        "narrative",
+        "provenance",
+        "cost"
+      ],
+      "additionalProperties": false
+    },
     "FundamentalJobEnvelope": {
       "type": "object",
       "properties": {
@@ -122,6 +227,52 @@
         "trigger",
         "asOf",
         "payload"
+      ],
+      "additionalProperties": false
+    },
+    "FundamentalMetric": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "trailing_pe",
+            "dividend_yield",
+            "roe",
+            "revenue_growth_qoq",
+            "revenue_growth_yoy",
+            "profit_growth_qoq",
+            "profit_growth_yoy",
+            "debt_to_equity",
+            "operating_cash_flow"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "asOf": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "value",
+        "unit",
+        "asOf"
       ],
       "additionalProperties": false
     },
@@ -1205,6 +1356,138 @@
       ],
       "additionalProperties": false
     },
+    "TechnicalAnalysisArtifact": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": {
+          "type": "string",
+          "const": "technical-analysis-1"
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "jobName": {
+          "type": "string",
+          "const": "analyze-technical"
+        },
+        "asOf": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        "timeframe": {
+          "type": "string",
+          "const": "1D"
+        },
+        "facts": {
+          "$ref": "#/$defs/TechnicalFacts"
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TechnicalEvent"
+          }
+        },
+        "narrative": {
+          "$ref": "#/$defs/AnalysisNarrative"
+        },
+        "provenance": {
+          "$ref": "#/$defs/AnalysisProvenance"
+        },
+        "cost": {
+          "$ref": "#/$defs/ProspectusCostReport"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "symbol",
+        "jobName",
+        "asOf",
+        "timeframe",
+        "facts",
+        "events",
+        "narrative",
+        "provenance",
+        "cost"
+      ],
+      "additionalProperties": false
+    },
+    "TechnicalEvent": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": [
+            "ma_cross_20_50",
+            "ma_cross_50_200",
+            "price_vs_sma",
+            "rsi_band",
+            "macd_cross",
+            "week52_proximity",
+            "broke_swing_high"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fired": {
+          "type": "boolean"
+        },
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": [
+              "number",
+              "string",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "at": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "fired",
+        "values",
+        "at"
+      ],
+      "additionalProperties": false
+    },
+    "TechnicalFacts": {
+      "type": "object",
+      "properties": {
+        "sma": {
+          "$ref": "#/$defs/TechnicalSmaFacts"
+        },
+        "rsi": {
+          "$ref": "#/$defs/TechnicalRsiFacts"
+        },
+        "macd": {
+          "$ref": "#/$defs/TechnicalMacdFacts"
+        },
+        "week52": {
+          "$ref": "#/$defs/TechnicalWeek52Facts"
+        }
+      },
+      "required": [
+        "sma",
+        "rsi",
+        "macd",
+        "week52"
+      ],
+      "additionalProperties": false
+    },
     "TechnicalJobEnvelope": {
       "type": "object",
       "properties": {
@@ -1243,6 +1526,35 @@
       ],
       "additionalProperties": false
     },
+    "TechnicalMacdFacts": {
+      "type": "object",
+      "properties": {
+        "line": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "signal": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "histogram": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "line",
+        "signal",
+        "histogram"
+      ],
+      "additionalProperties": false
+    },
     "TechnicalPayload": {
       "type": "object",
       "properties": {
@@ -1268,6 +1580,77 @@
       "required": [
         "symbol",
         "timeframe"
+      ],
+      "additionalProperties": false
+    },
+    "TechnicalRsiFacts": {
+      "type": "object",
+      "properties": {
+        "period": {
+          "type": "number",
+          "const": 14
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "period",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "TechnicalSmaFacts": {
+      "type": "object",
+      "properties": {
+        "p20": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p50": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "p200": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "p20",
+        "p50",
+        "p200"
+      ],
+      "additionalProperties": false
+    },
+    "TechnicalWeek52Facts": {
+      "type": "object",
+      "properties": {
+        "high": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "low": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "high",
+        "low"
       ],
       "additionalProperties": false
     }

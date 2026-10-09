@@ -1,0 +1,16 @@
+{
+  "correlationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "jobId": "fundamental:1155:2026-10-08T18",
+  "pointer": {
+    "bucket": "tuju-artifacts",
+    "key": "analysis/fundamental/1155/2026-10-08T18.json",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 3072,
+    "contentType": "application/json"
+  },
+  "summary": {
+    "headline": "Trailing P/E 18.3; debt/equity unavailable for this name.",
+    "asOf": "2026-10-08T18:00:00Z"
+  },
+  "at": "2026-10-08T18:06:40Z"
+}

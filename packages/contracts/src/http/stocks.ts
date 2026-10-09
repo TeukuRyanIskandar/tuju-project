@@ -6,6 +6,7 @@ import {
   IsoDateTime,
   ListingBoard,
   Page,
+  ProvenanceClass,
   ShariahStatus,
   provenanceShape,
 } from './common.js';
@@ -106,3 +107,68 @@ export type AnnouncementsPage = z.infer<typeof AnnouncementsPage>;
 
 export const CorporateActionsPage = Page(CorporateActionItem);
 export type CorporateActionsPage = z.infer<typeof CorporateActionsPage>;
+
+/** One EOD OHLC+volume bar (`GET /stocks/:code/series`). Quantities are string NUMERIC. */
+export const StockSeriesPoint = z.strictObject({
+  date: IsoDate,
+  open: z.string(),
+  high: z.string(),
+  low: z.string(),
+  close: z.string(),
+  volume: z.string(),
+});
+export type StockSeriesPoint = z.infer<typeof StockSeriesPoint>;
+
+/** `GET /stocks/:code/series?interval=1d&range=2y` — PoC-fixed window. */
+export const StockSeriesResponse = z.strictObject({
+  code: z.string(),
+  interval: z.literal('1d'),
+  range: z.literal('2y'),
+  points: z.array(StockSeriesPoint),
+  provenance: ProvenanceClass,
+  demoLabel: z.literal('private-demo'),
+});
+export type StockSeriesResponse = z.infer<typeof StockSeriesResponse>;
+
+/** Latest TA/FA analysis read status (PoC Phase A). */
+export const StockAnalysisStatus = z.enum([
+  'pending',
+  'running',
+  'ready',
+  'facts_only',
+  'failed',
+  'stale',
+]);
+export type StockAnalysisStatus = z.infer<typeof StockAnalysisStatus>;
+
+const analysisArtifactPointer = z
+  .strictObject({ bucket: z.string(), key: z.string() })
+  .nullable();
+
+const stockAnalysisThinFields = {
+  code: z.string(),
+  status: StockAnalysisStatus,
+  headline: z.string().nullable(),
+  asOf: IsoDateTime.nullable(),
+  artifact: analysisArtifactPointer,
+  artifactPath: z.string().nullable(),
+  errorMessage: z.string().nullable(),
+} as const;
+
+/** `GET /stocks/:code/analysis/technical` — thin envelope; rich body via artifactPath. */
+export const StockTechnicalAnalysisResponse = z.strictObject({
+  ...stockAnalysisThinFields,
+  jobName: z.literal('analyze-technical'),
+});
+export type StockTechnicalAnalysisResponse = z.infer<
+  typeof StockTechnicalAnalysisResponse
+>;
+
+/** `GET /stocks/:code/analysis/fundamental` — thin envelope; rich body via artifactPath. */
+export const StockFundamentalAnalysisResponse = z.strictObject({
+  ...stockAnalysisThinFields,
+  jobName: z.literal('analyze-fundamental'),
+});
+export type StockFundamentalAnalysisResponse = z.infer<
+  typeof StockFundamentalAnalysisResponse
+>;

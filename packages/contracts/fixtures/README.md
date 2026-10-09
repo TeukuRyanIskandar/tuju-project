@@ -24,5 +24,9 @@ suites in lock-step.
 | `job-result.json`                | `JobResult` (verdict-bearing `Summary`) |
 | `job-result-system.json`         | `JobResult` (verdict-less `SystemSummary`) |
 | `job-result-prospectus.json`     | `JobResult` (prospectus, verdict-less `SystemSummary`) |
+| `job-result-technical-system.json` | `JobResult` (PoC TA, verdict-less `SystemSummary`) |
+| `job-result-fundamental-system.json` | `JobResult` (PoC FA, verdict-less `SystemSummary`) |
 | `job-failure.json`               | `JobFailure`             |
 | `prospectus-artifact.json`       | `ProspectusArtifact` (the S3 at-a-glance artifact, ADR-0014) |
+| `technical-analysis-artifact.json` | `TechnicalAnalysisArtifact` (PoC Phase A S3 artifact) |
+| `fundamental-analysis-artifact.json` | `FundamentalAnalysisArtifact` (PoC Phase A S3 artifact) |

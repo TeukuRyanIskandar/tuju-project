@@ -61,6 +61,18 @@ export const modelOrder = [
   'ProspectusCostReport',
   'ProspectusParseInfo',
   'ProspectusArtifact',
+  // PoC Phase A TA/FA analysis artifacts (leaf → composed).
+  'AnalysisNarrative',
+  'AnalysisProvenance',
+  'TechnicalSmaFacts',
+  'TechnicalRsiFacts',
+  'TechnicalMacdFacts',
+  'TechnicalWeek52Facts',
+  'TechnicalFacts',
+  'TechnicalEvent',
+  'TechnicalAnalysisArtifact',
+  'FundamentalMetric',
+  'FundamentalAnalysisArtifact',
 ] as const;
 
 /** Recursively rewrite bare `$ref: "Name"` into `$ref: "#/$defs/Name"`. */

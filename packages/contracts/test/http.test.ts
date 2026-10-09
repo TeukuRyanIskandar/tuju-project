@@ -19,6 +19,9 @@ import {
   SectorsResponse,
   SessionUser,
   StockCorePayload,
+  StockFundamentalAnalysisResponse,
+  StockSeriesResponse,
+  StockTechnicalAnalysisResponse,
   buildJsonSchema,
   modelOrder,
   parseOrThrow,
@@ -110,6 +113,55 @@ const samples = {
       total: 3,
       offset: 0,
       limit: 50,
+    },
+  ],
+  'GET /stocks/:code/series': [
+    StockSeriesResponse,
+    {
+      code: '1155',
+      interval: '1d',
+      range: '2y',
+      points: [
+        {
+          date: '2026-10-07',
+          open: '9.950000',
+          high: '10.100000',
+          low: '9.900000',
+          close: '10.020000',
+          volume: '12500000',
+        },
+      ],
+      provenance: 'real',
+      demoLabel: 'private-demo',
+    },
+  ],
+  'GET /stocks/:code/analysis/technical': [
+    StockTechnicalAnalysisResponse,
+    {
+      code: '1155',
+      jobName: 'analyze-technical',
+      status: 'ready',
+      headline: 'RSI-14 at 57.4; SMA-50 cross fired on the latest close.',
+      asOf: '2026-10-08T18:00:00.000Z',
+      artifact: {
+        bucket: 'tuju-artifacts',
+        key: 'analysis/technical/1155/2026-10-08T18.json',
+      },
+      artifactPath: '/stocks/1155/analysis/technical/artifact',
+      errorMessage: null,
+    },
+  ],
+  'GET /stocks/:code/analysis/fundamental': [
+    StockFundamentalAnalysisResponse,
+    {
+      code: '1155',
+      jobName: 'analyze-fundamental',
+      status: 'pending',
+      headline: null,
+      asOf: null,
+      artifact: null,
+      artifactPath: null,
+      errorMessage: null,
     },
   ],
   // search.int.spec.ts
@@ -468,6 +520,9 @@ describe('HTTP schemas stay out of the Python codegen (ADR-0014 §2)', () => {
     const emitted = JSON.stringify(buildJsonSchema());
     for (const name of [
       'StockCorePayload',
+      'StockSeriesResponse',
+      'StockTechnicalAnalysisResponse',
+      'StockFundamentalAnalysisResponse',
       'ScreenerResponse',
       'MoversResponse',
       'SessionUser',
@@ -480,5 +535,6 @@ describe('HTTP schemas stay out of the Python codegen (ADR-0014 §2)', () => {
   it('leaves modelOrder free of HTTP names', () => {
     expect(modelOrder).not.toContain('SessionUser');
     expect(modelOrder).not.toContain('StockCorePayload');
+    expect(modelOrder).not.toContain('StockSeriesResponse');
   });
 });

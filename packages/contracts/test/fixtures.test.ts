@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   AnnouncementSummaryJobEnvelope,
+  FundamentalAnalysisArtifact,
   FundamentalJobEnvelope,
   JobFailure,
   JobProgress,
@@ -11,6 +12,7 @@ import {
   MarketBriefJobEnvelope,
   ProspectusArtifact,
   ProspectusJobEnvelope,
+  TechnicalAnalysisArtifact,
   TechnicalJobEnvelope,
 } from '../src/index.js';
 
@@ -73,6 +75,18 @@ describe('golden fixtures conform to the Zod contract', () => {
 
   it('job-result-prospectus.json (verdict-less summary)', () => {
     expect(() => JobResult.parse(load('job-result-prospectus.json'))).not.toThrow();
+  });
+
+  it('job-result-technical-system.json (PoC TA SystemSummary)', () => {
+    expect(() =>
+      JobResult.parse(load('job-result-technical-system.json')),
+    ).not.toThrow();
+  });
+
+  it('job-result-fundamental-system.json (PoC FA SystemSummary)', () => {
+    expect(() =>
+      JobResult.parse(load('job-result-fundamental-system.json')),
+    ).not.toThrow();
   });
 });
 
@@ -162,5 +176,53 @@ describe('the prospectus artifact', () => {
     };
     a.sections.riskFactors.data.themes[0].severity = 'critical';
     expect(() => ProspectusArtifact.parse(a)).toThrow();
+  });
+});
+
+describe('the technical analysis artifact', () => {
+  it('technical-analysis-artifact.json', () => {
+    expect(() =>
+      TechnicalAnalysisArtifact.parse(load('technical-analysis-artifact.json')),
+    ).not.toThrow();
+  });
+
+  it('rejects a root headline', () => {
+    const a = load('technical-analysis-artifact.json') as Record<string, unknown>;
+    expect(() =>
+      TechnicalAnalysisArtifact.parse({ ...a, headline: 'should not exist' }),
+    ).toThrow();
+  });
+
+  it('rejects an out-of-enum event id', () => {
+    const a = load('technical-analysis-artifact.json') as {
+      events: Record<string, unknown>[];
+    };
+    a.events[0].id = 'buy_signal';
+    expect(() => TechnicalAnalysisArtifact.parse(a)).toThrow();
+  });
+});
+
+describe('the fundamental analysis artifact', () => {
+  it('fundamental-analysis-artifact.json', () => {
+    expect(() =>
+      FundamentalAnalysisArtifact.parse(load('fundamental-analysis-artifact.json')),
+    ).not.toThrow();
+  });
+
+  it('accepts a null metric value', () => {
+    const a = load('fundamental-analysis-artifact.json') as {
+      metrics: { id: string; value: number | null }[];
+    };
+    const debt = a.metrics.find((m) => m.id === 'debt_to_equity');
+    expect(debt?.value).toBeNull();
+    expect(() => FundamentalAnalysisArtifact.parse(a)).not.toThrow();
+  });
+
+  it('rejects a metrics array that omits a slot', () => {
+    const a = load('fundamental-analysis-artifact.json') as {
+      metrics: unknown[];
+    };
+    a.metrics = a.metrics.slice(0, 8);
+    expect(() => FundamentalAnalysisArtifact.parse(a)).toThrow();
   });
 });

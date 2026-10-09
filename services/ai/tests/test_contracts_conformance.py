@@ -14,6 +14,7 @@ import pytest
 
 from tuju_ai.contracts_generated import (
     AnnouncementSummaryJobEnvelope,
+    FundamentalAnalysisArtifact,
     FundamentalJobEnvelope,
     JobFailure,
     JobProgress,
@@ -21,6 +22,7 @@ from tuju_ai.contracts_generated import (
     MarketBriefJobEnvelope,
     ProspectusArtifact,
     ProspectusJobEnvelope,
+    TechnicalAnalysisArtifact,
     TechnicalJobEnvelope,
 )
 
@@ -48,8 +50,12 @@ def _load(name: str) -> dict:
         ("job-result.json", JobResult),
         ("job-result-system.json", JobResult),
         ("job-result-prospectus.json", JobResult),
+        ("job-result-technical-system.json", JobResult),
+        ("job-result-fundamental-system.json", JobResult),
         ("job-failure.json", JobFailure),
         ("prospectus-artifact.json", ProspectusArtifact),
+        ("technical-analysis-artifact.json", TechnicalAnalysisArtifact),
+        ("fundamental-analysis-artifact.json", FundamentalAnalysisArtifact),
     ],
 )
 def test_golden_fixture_conforms(fixture: str, model: type) -> None:

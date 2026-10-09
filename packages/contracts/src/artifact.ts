@@ -274,3 +274,159 @@ export const ProspectusArtifact = z
   })
   .meta({ id: 'ProspectusArtifact' });
 export type ProspectusArtifact = z.infer<typeof ProspectusArtifact>;
+
+// --- PoC Phase A TA/FA analysis artifacts ------------------------------------
+// Shared envelopes + registered rich S3 JSON for system-precomputed
+// analyze-technical / analyze-fundamental (`.scratch/poc-phase-a-contracts`).
+// Cost reuses ProspectusCostReport; Nest strips cost on HTTP proxy (ADR-0014).
+
+const NullableNumber = z.number().nullable();
+
+export const AnalysisNarrative = z
+  .strictObject({
+    language: z.enum(['en', 'ms']),
+    text: z.string().min(1),
+  })
+  .meta({ id: 'AnalysisNarrative' });
+export type AnalysisNarrative = z.infer<typeof AnalysisNarrative>;
+
+export const AnalysisProvenance = z
+  .strictObject({
+    source: z.literal('real'),
+    adapter: z.literal('yfinance'),
+    model: z.string().min(1),
+    generatedAt: z.iso.datetime({ offset: true }),
+  })
+  .meta({ id: 'AnalysisProvenance' });
+export type AnalysisProvenance = z.infer<typeof AnalysisProvenance>;
+
+export const TechnicalSmaFacts = z
+  .strictObject({
+    p20: NullableNumber,
+    p50: NullableNumber,
+    p200: NullableNumber,
+  })
+  .meta({ id: 'TechnicalSmaFacts' });
+export type TechnicalSmaFacts = z.infer<typeof TechnicalSmaFacts>;
+
+export const TechnicalRsiFacts = z
+  .strictObject({
+    period: z.literal(14),
+    value: NullableNumber,
+  })
+  .meta({ id: 'TechnicalRsiFacts' });
+export type TechnicalRsiFacts = z.infer<typeof TechnicalRsiFacts>;
+
+export const TechnicalMacdFacts = z
+  .strictObject({
+    line: NullableNumber,
+    signal: NullableNumber,
+    histogram: NullableNumber,
+  })
+  .meta({ id: 'TechnicalMacdFacts' });
+export type TechnicalMacdFacts = z.infer<typeof TechnicalMacdFacts>;
+
+export const TechnicalWeek52Facts = z
+  .strictObject({
+    high: NullableNumber,
+    low: NullableNumber,
+  })
+  .meta({ id: 'TechnicalWeek52Facts' });
+export type TechnicalWeek52Facts = z.infer<typeof TechnicalWeek52Facts>;
+
+export const TechnicalFacts = z
+  .strictObject({
+    sma: TechnicalSmaFacts,
+    rsi: TechnicalRsiFacts,
+    macd: TechnicalMacdFacts,
+    week52: TechnicalWeek52Facts,
+  })
+  .meta({ id: 'TechnicalFacts' });
+export type TechnicalFacts = z.infer<typeof TechnicalFacts>;
+
+export const TechnicalEventId = z.enum([
+  'ma_cross_20_50',
+  'ma_cross_50_200',
+  'price_vs_sma',
+  'rsi_band',
+  'macd_cross',
+  'week52_proximity',
+  'broke_swing_high',
+]);
+export type TechnicalEventId = z.infer<typeof TechnicalEventId>;
+
+export const TechnicalEventValue = z.union([
+  z.number(),
+  z.string(),
+  z.boolean(),
+  z.null(),
+]);
+export type TechnicalEventValue = z.infer<typeof TechnicalEventValue>;
+
+export const TechnicalEvent = z
+  .strictObject({
+    id: TechnicalEventId,
+    label: z.string().min(1),
+    fired: z.boolean(),
+    values: z.record(z.string(), TechnicalEventValue),
+    at: z.iso.date(),
+  })
+  .meta({ id: 'TechnicalEvent' });
+export type TechnicalEvent = z.infer<typeof TechnicalEvent>;
+
+export const TechnicalAnalysisArtifact = z
+  .strictObject({
+    schemaVersion: z.literal('technical-analysis-1'),
+    symbol: z.string().min(1),
+    jobName: z.literal('analyze-technical'),
+    asOf: z.iso.datetime({ offset: true }),
+    timeframe: z.literal('1D'),
+    facts: TechnicalFacts,
+    events: z.array(TechnicalEvent),
+    narrative: AnalysisNarrative,
+    provenance: AnalysisProvenance,
+    cost: ProspectusCostReport,
+  })
+  .meta({ id: 'TechnicalAnalysisArtifact' });
+export type TechnicalAnalysisArtifact = z.infer<typeof TechnicalAnalysisArtifact>;
+
+export const FundamentalMetricId = z.enum([
+  'trailing_pe',
+  'dividend_yield',
+  'roe',
+  'revenue_growth_qoq',
+  'revenue_growth_yoy',
+  'profit_growth_qoq',
+  'profit_growth_yoy',
+  'debt_to_equity',
+  'operating_cash_flow',
+]);
+export type FundamentalMetricId = z.infer<typeof FundamentalMetricId>;
+
+export const FundamentalMetric = z
+  .strictObject({
+    id: FundamentalMetricId,
+    label: z.string().min(1),
+    value: NullableNumber,
+    unit: z.string().min(1),
+    asOf: z.iso.date(),
+  })
+  .meta({ id: 'FundamentalMetric' });
+export type FundamentalMetric = z.infer<typeof FundamentalMetric>;
+
+export const FundamentalAnalysisArtifact = z
+  .strictObject({
+    schemaVersion: z.literal('fundamental-analysis-1'),
+    symbol: z.string().min(1),
+    jobName: z.literal('analyze-fundamental'),
+    asOf: z.iso.datetime({ offset: true }),
+    period: z.literal('quarterly'),
+    metrics: z.array(FundamentalMetric).min(9).max(9),
+    narrative: AnalysisNarrative,
+    provenance: AnalysisProvenance,
+    cost: ProspectusCostReport,
+  })
+  .meta({ id: 'FundamentalAnalysisArtifact' });
+export type FundamentalAnalysisArtifact = z.infer<
+  typeof FundamentalAnalysisArtifact
+>;

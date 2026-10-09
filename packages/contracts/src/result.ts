@@ -46,9 +46,9 @@ export const Summary = z
 export type Summary = z.infer<typeof Summary>;
 
 // Verdict-less summary variant for system-triggered artifacts with no
-// bullish/bearish/over/under-valued verdict (e.g. prospectus at-a-glance,
-// daily market brief, announcement summaries). Keeps `Summary` untouched for
-// the existing TA/FA verdict-bearing path.
+// bullish/bearish/over/under-valued verdict (prospectus at-a-glance, daily
+// market brief, announcement summaries, and PoC Phase A TA/FA). `Summary`
+// remains for a future paid verdict-bearing path.
 export const SystemSummary = z
   .strictObject({
     headline: z.string(),

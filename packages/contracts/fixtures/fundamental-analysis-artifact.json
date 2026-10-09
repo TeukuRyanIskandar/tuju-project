@@ -1,0 +1,100 @@
+{
+  "schemaVersion": "fundamental-analysis-1",
+  "symbol": "1155",
+  "jobName": "analyze-fundamental",
+  "asOf": "2026-10-08T18:00:00+00:00",
+  "period": "quarterly",
+  "metrics": [
+    {
+      "id": "trailing_pe",
+      "label": "Trailing P/E",
+      "value": 18.3,
+      "unit": "ratio",
+      "asOf": "2026-10-08"
+    },
+    {
+      "id": "dividend_yield",
+      "label": "Dividend yield",
+      "value": 0.0567,
+      "unit": "percent",
+      "asOf": "2026-10-08"
+    },
+    {
+      "id": "roe",
+      "label": "ROE",
+      "value": 0.1134,
+      "unit": "percent",
+      "asOf": "2026-10-08"
+    },
+    {
+      "id": "revenue_growth_qoq",
+      "label": "Revenue growth QoQ",
+      "value": 0.021,
+      "unit": "percent",
+      "asOf": "2026-06-30"
+    },
+    {
+      "id": "revenue_growth_yoy",
+      "label": "Revenue growth YoY",
+      "value": 0.084,
+      "unit": "percent",
+      "asOf": "2026-06-30"
+    },
+    {
+      "id": "profit_growth_qoq",
+      "label": "Profit growth QoQ",
+      "value": 0.015,
+      "unit": "percent",
+      "asOf": "2026-06-30"
+    },
+    {
+      "id": "profit_growth_yoy",
+      "label": "Profit growth YoY",
+      "value": 0.062,
+      "unit": "percent",
+      "asOf": "2026-06-30"
+    },
+    {
+      "id": "debt_to_equity",
+      "label": "Debt / equity",
+      "value": null,
+      "unit": "ratio",
+      "asOf": "2026-10-08"
+    },
+    {
+      "id": "operating_cash_flow",
+      "label": "Operating cash flow",
+      "value": 4200000000,
+      "unit": "myr",
+      "asOf": "2026-06-30"
+    }
+  ],
+  "narrative": {
+    "language": "en",
+    "text": "Trailing P/E sits near 18.3 with dividend yield about 5.7%. Debt/equity is unavailable for this name; quarterly revenue growth remains modestly positive."
+  },
+  "provenance": {
+    "source": "real",
+    "adapter": "yfinance",
+    "model": "google/gemini-2.5-flash",
+    "generatedAt": "2026-10-08T18:06:00+00:00"
+  },
+  "cost": {
+    "model": "google/gemini-2.5-flash",
+    "calls": 1,
+    "promptTokens": 380,
+    "completionTokens": 88,
+    "cachedTokens": 0,
+    "estimatedCostUsd": 0.0011,
+    "ceilingUsd": 0.05,
+    "perCall": [
+      {
+        "step": "narrate",
+        "promptTokens": 380,
+        "completionTokens": 88,
+        "cachedTokens": 0,
+        "costUsd": 0.0011
+      }
+    ]
+  }
+}
