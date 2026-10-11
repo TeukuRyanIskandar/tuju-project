@@ -44,4 +44,20 @@ Flagged as `wontfix` because:
 
 When the `pro`/`premium` tier feature is activated, this stub **must be replaced** with real credential verification (OAuth, SAML, session tokens, or similar). At that point, this issue should be reopened as `ready-for-human`.
 
+## Trigger Condition
+
+Reopen this issue as `ready-for-human` when **any of the following is true:**
+1. Product A begins accepting paying `pro`/`premium` tier users
+2. An external production deployment with real users is imminent (requires the users table and credential verification)
+3. A decision is made to support per-user authentication (currently the login endpoint accepts any claimed identity)
+
+**Activation checklist at that time:**
+- [ ] Create `User` Postgres entity with email + hashed password
+- [ ] Replace `LoginRequestDto` with real credential fields (email + password, or OAuth provider)
+- [ ] Add password hashing (bcrypt or argon2)
+- [ ] Implement `POST /auth/register` for account creation
+- [ ] Implement password reset flow (or use OAuth)
+- [ ] Add integration tests for credential verification
+- [ ] Retest tier gating with real user registration
+
 ---
