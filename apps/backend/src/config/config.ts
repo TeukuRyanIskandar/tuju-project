@@ -28,6 +28,10 @@ export interface AppConfig {
     /** Session TTL in seconds (mirrors the Redis session TTL). */
     readonly maxAgeSeconds: number;
   };
+  readonly cache: {
+    /** Read cache TTL in seconds (default one EOD-derived horizon). */
+    readonly readTtlSeconds: number;
+  };
 }
 
 export function parseDataSource(raw: string | undefined): DataSourceMode {
@@ -35,6 +39,16 @@ export function parseDataSource(raw: string | undefined): DataSourceMode {
     return 'yfinance';
   }
   return 'synthetic';
+}
+
+function parseCookieSameSite(raw: string | undefined): 'lax' | 'strict' | 'none' {
+  const value = raw ?? 'lax';
+  if (!['lax', 'strict', 'none'].includes(value)) {
+    throw new Error(
+      `Invalid COOKIE_SAMESITE: "${value}". Expected one of: lax, strict, none`,
+    );
+  }
+  return value as 'lax' | 'strict' | 'none';
 }
 
 function required(name: string): string {
@@ -53,6 +67,11 @@ export function loadConfig(): AppConfig {
     ? process.env.COOKIE_SECURE === 'true'
     : nodeEnv === 'production';
 
+  const readTtlSeconds = Number(process.env.READ_CACHE_TTL_SECONDS ?? (24 * 60 * 60));
+  if (!Number.isFinite(readTtlSeconds) || readTtlSeconds <= 0) {
+    throw new Error('READ_CACHE_TTL_SECONDS must be a positive number');
+  }
+
   return {
     nodeEnv,
     port: Number(process.env.PORT ?? 3000),
@@ -64,9 +83,11 @@ export function loadConfig(): AppConfig {
     cookie: {
       domain: process.env.COOKIE_DOMAIN || undefined,
       secure,
-      sameSite:
-        (process.env.COOKIE_SAMESITE as 'lax' | 'strict' | 'none') ?? 'lax',
+      sameSite: parseCookieSameSite(process.env.COOKIE_SAMESITE),
       maxAgeSeconds: Number(process.env.SESSION_TTL_SECONDS ?? 60 * 60 * 24 * 7),
+    },
+    cache: {
+      readTtlSeconds,
     },
   };
 }

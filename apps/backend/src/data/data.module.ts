@@ -1,32 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { APP_CONFIG, type AppConfig } from '../config/config';
-import { AnalysisResult } from './entities/analysis-result.entity';
-import {
-  Announcement,
-  Company,
-  CorporateAction,
-  FundamentalsSnapshot,
-  IndexLevel,
-  IndicatorSnapshot,
-  IngestionRun,
-  Instrument,
-  IpoListing,
-  MarketBrief,
-  MarketIndex,
-  NewsArticle,
-  NewsArticleTag,
-  PriceBar,
-  ProspectusAnalysis,
-  QuarterlyFinancials,
-  Sector,
-  ShariahStatus,
-  SyntheticRun,
-  TechnicalAnalysis,
-  FundamentalAnalysis,
-  Watchlist,
-  WatchlistItem,
-} from './entities';
 import { InitialSchema1727600000000 } from './migrations/1727600000000-InitialSchema';
 import { FreeTierDomainModel1727700000000 } from './migrations/1727700000000-FreeTierDomainModel';
 import { ReIngestNaturalKeys1727800000000 } from './migrations/1727800000000-ReIngestNaturalKeys';
@@ -37,43 +11,14 @@ import { ProspectusAnalysis1728200000000 } from './migrations/1728200000000-Pros
 import { StockAnalyses1728300000000 } from './migrations/1728300000000-StockAnalyses';
 
 /**
- * All domain entities managed by the data layer. Registered in both this module
- * (runtime) and `data-source.ts` (CLI), which must stay in sync.
- */
-const ENTITIES = [
-  AnalysisResult,
-  IngestionRun,
-  SyntheticRun,
-  Sector,
-  Company,
-  Instrument,
-  PriceBar,
-  QuarterlyFinancials,
-  FundamentalsSnapshot,
-  IndicatorSnapshot,
-  CorporateAction,
-  ShariahStatus,
-  Announcement,
-  NewsArticle,
-  NewsArticleTag,
-  IpoListing,
-  MarketIndex,
-  IndexLevel,
-  Watchlist,
-  WatchlistItem,
-  MarketBrief,
-  ProspectusAnalysis,
-  TechnicalAnalysis,
-  FundamentalAnalysis,
-];
-
-/**
  * Data layer (ADR-0004): Postgres + TypeORM via @nestjs/typeorm, reached by
  * DATABASE_URL (ADR-0006). NestJS is the sole Postgres writer.
  *
- * `synchronize` is OFF — schema is owned by explicit migrations. Entities are
- * registered here (not in packages/contracts): the DB schema and the
- * cross-language wire contract are distinct concerns (ADR-0004 §1).
+ * `synchronize` is OFF — schema is owned by explicit migrations. Database
+ * connection setup is managed here. Entity registration is now per-feature
+ * module via TypeOrmModule.forFeature() declarations — each feature owns
+ * and declares the entities it needs (Batch D: DataModule encapsulation).
+ * See `data-source.ts` (CLI migrations) for the consolidated ENTITIES array.
  */
 @Module({
   imports: [
@@ -84,7 +29,6 @@ const ENTITIES = [
         url: config.databaseUrl,
         synchronize: false,
         autoLoadEntities: true,
-        entities: ENTITIES,
         migrations: [
           InitialSchema1727600000000,
           FreeTierDomainModel1727700000000,
@@ -97,7 +41,6 @@ const ENTITIES = [
         ],
       }),
     }),
-    TypeOrmModule.forFeature(ENTITIES),
   ],
   exports: [TypeOrmModule],
 })

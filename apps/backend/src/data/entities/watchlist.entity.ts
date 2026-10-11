@@ -5,6 +5,7 @@ import {
   Index,
   OneToMany,
   PrimaryGeneratedColumn,
+  Unique,
 } from 'typeorm';
 import { WatchlistItem } from './watchlist-item.entity';
 
@@ -17,6 +18,7 @@ import { WatchlistItem } from './watchlist-item.entity';
  * downstream specs can reference it; it is **not** sourced data (no `ingestionRunId`).
  */
 @Entity({ name: 'watchlists' })
+@Unique('UQ_watchlist_user_id', ['userId'])
 export class Watchlist {
   @PrimaryGeneratedColumn('uuid')
   id!: string;

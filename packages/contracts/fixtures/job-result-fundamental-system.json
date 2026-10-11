@@ -1,6 +1,6 @@
 {
   "correlationId": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-  "jobId": "fundamental:1155:2026-10-08T18",
+  "jobId": "fundamental:1155:quarterly:2026-10-08T18",
   "pointer": {
     "bucket": "tuju-artifacts",
     "key": "analysis/fundamental/1155/2026-10-08T18.json",

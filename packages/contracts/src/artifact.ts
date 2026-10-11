@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SCHEMA_VERSIONS } from './schema-versions.js';
 
 /**
  * Prospectus at-a-glance artifact (ADR-0014 §3) — the document the worker writes
@@ -123,11 +124,11 @@ export const ProspectusRiskTheme = z
 export type ProspectusRiskTheme = z.infer<typeof ProspectusRiskTheme>;
 
 export const ProspectusRiskData = z
-  .strictObject({
-    summary: NullableText,
-    themes: z.array(ProspectusRiskTheme).min(1), // ordered by rank
-  })
-  .meta({ id: 'ProspectusRiskData' });
+   .strictObject({
+     summary: NullableText,
+     themes: z.array(ProspectusRiskTheme).min(0), // ordered by rank
+   })
+   .meta({ id: 'ProspectusRiskData' });
 export type ProspectusRiskData = z.infer<typeof ProspectusRiskData>;
 
 export const ProspectusWatchItem = z
@@ -261,9 +262,9 @@ export type ProspectusParseInfo = z.infer<typeof ProspectusParseInfo>;
 
 // --- the artifact -----------------------------------------------------------
 export const ProspectusArtifact = z
-  .strictObject({
-    schemaVersion: z.literal('prospectus-at-a-glance-1'),
-    prospectusId: z.string().min(1),
+   .strictObject({
+     schemaVersion: z.literal(SCHEMA_VERSIONS.prospectus),
+     prospectusId: z.string().min(1),
     provenance: ProspectusProvenance,
     company: ProspectusCompany,
     headline: z.string().min(1), // == sections.whatToWatch.data.headline
@@ -375,9 +376,9 @@ export const TechnicalEvent = z
 export type TechnicalEvent = z.infer<typeof TechnicalEvent>;
 
 export const TechnicalAnalysisArtifact = z
-  .strictObject({
-    schemaVersion: z.literal('technical-analysis-1'),
-    symbol: z.string().min(1),
+   .strictObject({
+     schemaVersion: z.literal(SCHEMA_VERSIONS.technical),
+     symbol: z.string().min(1),
     jobName: z.literal('analyze-technical'),
     asOf: z.iso.datetime({ offset: true }),
     timeframe: z.literal('1D'),
@@ -415,12 +416,12 @@ export const FundamentalMetric = z
 export type FundamentalMetric = z.infer<typeof FundamentalMetric>;
 
 export const FundamentalAnalysisArtifact = z
-  .strictObject({
-    schemaVersion: z.literal('fundamental-analysis-1'),
-    symbol: z.string().min(1),
+   .strictObject({
+     schemaVersion: z.literal(SCHEMA_VERSIONS.fundamental),
+     symbol: z.string().min(1),
     jobName: z.literal('analyze-fundamental'),
     asOf: z.iso.datetime({ offset: true }),
-    period: z.literal('quarterly'),
+    period: z.enum(['quarterly', 'annual']),
     metrics: z.array(FundamentalMetric).min(9).max(9),
     narrative: AnalysisNarrative,
     provenance: AnalysisProvenance,

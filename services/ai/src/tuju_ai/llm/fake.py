@@ -106,6 +106,7 @@ _CANNED: dict[str, dict] = {
         ],
         "summary": "Two cornerstone investors take up part of the offering.",
     },
+    "narrate": {"narrative": "Fake: price above all SMAs with RSI at mid-band."},
 }
 
 

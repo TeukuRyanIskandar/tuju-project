@@ -39,6 +39,7 @@ from typing import Any, Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
+from ..contracts_generated import SCHEMA_VERSIONS
 from ..llm import CostTracker, LLMClient, Message
 from .analysis_models import (
     BusinessOutput,
@@ -52,7 +53,6 @@ from .analysis_models import (
 from .budget import Fitted, cornerstone_context, fit_section
 from .models import ProspectusParse, ProspectusSection, RoutedSection
 
-SCHEMA_VERSION = "prospectus-at-a-glance-1"
 PROVENANCE_SOURCE = "real"  # the one showcase artifact on real, licence-safe data
 
 # Analysis step ids (the `[step:<id>]` marker every task prompt carries).
@@ -376,7 +376,7 @@ def analyze_prospectus(
     )
 
     return {
-        "schemaVersion": SCHEMA_VERSION,
+        "schemaVersion": SCHEMA_VERSIONS['prospectus'],
         "prospectusId": prospectus_id,
         "provenance": {
             "source": PROVENANCE_SOURCE,

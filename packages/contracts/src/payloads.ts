@@ -25,7 +25,7 @@ export type TechnicalPayload = z.infer<typeof TechnicalPayload>;
 export const FundamentalPayload = z
   .object({
     symbol: z.string().min(1),
-    period: Period,
+    period: z.enum(['quarterly', 'annual']),
   })
   .meta({ id: 'FundamentalPayload' });
 export type FundamentalPayload = z.infer<typeof FundamentalPayload>;

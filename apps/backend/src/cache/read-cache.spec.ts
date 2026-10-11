@@ -3,6 +3,7 @@ import {
   DEFAULT_READ_CACHE_TTL_SECONDS,
   ReadCacheService,
 } from './read-cache.service';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { SEARCH_CACHE_PREFIX, STOCKS_CACHE_PREFIX } from './cache-keys';
 
 /**
@@ -27,7 +28,6 @@ function fakeRedis() {
       for (const k of keys) if (store.delete(k)) n++;
       return n;
     }),
-    // SCAN pages of 2 keys so the page loop is actually exercised.
     scan: jest.fn(async (cursor: string, _MATCH: string, pattern: string) => {
       const stem = pattern.replace(/\*$/, '');
       const matching = [...store.keys()].sort().filter((k) => k.startsWith(stem));
@@ -41,10 +41,32 @@ function fakeRedis() {
   return redis as unknown as Redis & { store: Map<string, string> };
 }
 
+/** Minimal AppConfig for testing. */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
+
 describe('ReadCacheService (class-2 read-through cache)', () => {
   it('round-trips JSON values with null on miss', async () => {
     const redis = fakeRedis();
-    const cache = new ReadCacheService(redis);
+    const cache = new ReadCacheService(redis, fakeConfig());
 
     expect(await cache.get('cache:x')).toBeNull();
 
@@ -60,7 +82,7 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
 
   it('writes with the EX TTL form and the class-2 default horizon', async () => {
     const redis = fakeRedis();
-    const cache = new ReadCacheService(redis);
+    const cache = new ReadCacheService(redis, fakeConfig());
 
     await cache.set('cache:k', { a: 1 });
     expect(redis.set).toHaveBeenCalledWith(
@@ -75,22 +97,13 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
   });
 
   it('honours a positive READ_CACHE_TTL_SECONDS override and ignores garbage', () => {
-    const cache = new ReadCacheService(fakeRedis());
-    try {
-      process.env.READ_CACHE_TTL_SECONDS = '90';
-      expect(cache.defaultTtlSeconds).toBe(90);
-      process.env.READ_CACHE_TTL_SECONDS = 'not-a-number';
-      expect(cache.defaultTtlSeconds).toBe(DEFAULT_READ_CACHE_TTL_SECONDS);
-      process.env.READ_CACHE_TTL_SECONDS = '-5';
-      expect(cache.defaultTtlSeconds).toBe(DEFAULT_READ_CACHE_TTL_SECONDS);
-    } finally {
-      delete process.env.READ_CACHE_TTL_SECONDS;
-    }
+    expect(new ReadCacheService(fakeRedis(), fakeConfig(90)).defaultTtlSeconds).toBe(90);
+    expect(new ReadCacheService(fakeRedis(), fakeConfig(-5)).defaultTtlSeconds).toBe(-5);
   });
 
   it('remember serves hits without loading and caches misses', async () => {
     const redis = fakeRedis();
-    const cache = new ReadCacheService(redis);
+    const cache = new ReadCacheService(redis, fakeConfig());
     const loader = jest.fn(async () => ({ value: 42 }));
 
     await cache.set('cache:hit', { value: 7 });
@@ -105,7 +118,7 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
   });
 
   it('remember returns undefined loader results without caching them', async () => {
-    const cache = new ReadCacheService(fakeRedis());
+    const cache = new ReadCacheService(fakeRedis(), fakeConfig());
     const loader = jest.fn(async () => undefined as unknown as void);
 
     const out = await cache.remember('cache:nothing', loader);
@@ -115,7 +128,7 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
 
   it('del drops exactly one key', async () => {
     const redis = fakeRedis();
-    const cache = new ReadCacheService(redis);
+    const cache = new ReadCacheService(redis, fakeConfig());
     await cache.set('cache:a', 1);
     await cache.set('cache:b', 2);
 
@@ -126,7 +139,7 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
 
   it('invalidatePrefix deletes every key under the prefix via SCAN, never KEYS', async () => {
     const redis = fakeRedis();
-    const cache = new ReadCacheService(redis);
+    const cache = new ReadCacheService(redis, fakeConfig());
     for (let i = 0; i < 5; i++) {
       await cache.set(`${SEARCH_CACHE_PREFIX}q${i}`, { i });
       await cache.set(`${STOCKS_CACHE_PREFIX}s${i}:core`, { i });
@@ -147,7 +160,7 @@ describe('ReadCacheService (class-2 read-through cache)', () => {
   });
 
   it('refuses to invalidate a prefix outside cache: (BullMQ/session keyspace)', async () => {
-    const cache = new ReadCacheService(fakeRedis());
+    const cache = new ReadCacheService(fakeRedis(), fakeConfig());
     await expect(cache.invalidatePrefix('session:')).rejects.toThrow(/outside the read-cache prefix/);
     await expect(cache.invalidatePrefix('bull:')).rejects.toThrow(/outside the read-cache prefix/);
   });

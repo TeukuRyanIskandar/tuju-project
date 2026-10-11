@@ -12,9 +12,12 @@ name: tuju
 services:
   # --- Redis: BullMQ broker + session store + cache (ADR-0001/0004/0005) ------
   # AOF persistence ON so a restart doesn't drop the queue/sessions (ADR-0006).
+  # Memory limit 512MB with allkeys-lru eviction (see docs/ops/redis-configuration.md).
   redis:
     image: redis:7.4-alpine
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    environment:
+      TZ: Asia/Kuala_Lumpur
     ports:
       - "6379:6379"
     volumes:
@@ -74,6 +77,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      TZ: Asia/Kuala_Lumpur
       # Connection-URL-by-env (ADR-0006) — targets are service names on the
       # compose network; the interface is identical to prod (only targets differ).
       DATABASE_URL: postgres://tuju:local-dev-password@postgres:5432/tuju
@@ -125,6 +129,7 @@ services:
     entrypoint: ["node", "dist/worker-main.js"]
     environment:
       NODE_ENV: production
+      TZ: Asia/Kuala_Lumpur
       DATABASE_URL: postgres://tuju:local-dev-password@postgres:5432/tuju
       REDIS_URL: redis://redis:6379
       SESSION_SECRET: change-me-fake-local-session-secret

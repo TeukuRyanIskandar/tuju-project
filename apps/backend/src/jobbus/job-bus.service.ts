@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Queue, QueueEvents } from 'bullmq';
 import type { Redis } from 'ioredis';
+import { randomUUID } from 'crypto';
 import type {
   JobEnvelope,
   JobFailure,
@@ -78,12 +79,16 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
     });
 
     // Final failure (retries exhausted or terminal) → UI-facing event (§6).
-    this.events.on('failed', ({ jobId, failedReason }) => {
+    this.events.on('failed', async ({ jobId, failedReason }) => {
+      const job = await this.queue.getJob(jobId);
+      const correlationId =
+        ((job?.data as JobEnvelope<unknown>)?.correlationId ?? randomUUID());
+      const isTerminal = failedReason?.startsWith('UnrecoverableError') ?? false;
       const failure: JobFailure = {
-        correlationId: '',
+        correlationId,
         jobId: jobId ?? '',
-        failureClass: 'transient_exhausted',
-        retryable: true,
+        failureClass: isTerminal ? 'terminal' : 'transient_exhausted',
+        retryable: !isTerminal,
         userMessage: failedReason ?? 'Job failed.',
         at: new Date().toISOString(),
       };
@@ -141,17 +146,16 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Content-derived, idempotent job id (ADR-0007 §2).
-   * e.g. `ta-{symbol}-{...}-{asOfBucket}`. The scaffold derives a stable id from
-   * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
-   * Each job family picks its own discriminating fields (TA/FA: symbol +
-   * timeframe/period, hour-bucketed; the spec-06 showcase jobs: date-bucketed
-   * for the market brief, the announcement id alone for the summary, the
-   * prospectus id alone for the at-a-glance — see each branch below).
-   *
-   * NB: BullMQ forbids `:` in a custom job id (it namespaces Redis keys with
-   * `:`), so every segment is joined with `-` and any stray separator chars in
-   * the derived parts (e.g. the ISO `asOf`) are normalised to `-`.
-   */
+    * e.g. `ta:${symbol}:${...}:${asOfBucket}`. The scaffold derives a stable id from
+    * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
+    * Each job family picks its own discriminating fields (TA/FA: symbol +
+    * timeframe/period, hour-bucketed; the spec-06 showcase jobs: date-bucketed
+    * for the market brief, the announcement id alone for the summary, the
+    * prospectus id alone for the at-a-glance — see each branch below).
+    *
+    * NB: All job ids now use colon-delimited format for consistency with Python side.
+    * This aligns with JobResult ids output by the worker (technical:..., fundamental:...).
+    */
   private deriveJobId<P>(jobName: JobName, env: JobEnvelope<P>): string {
     const payload = env.payload as Record<string, unknown>;
     const asOfBucket = env.asOf.slice(0, 13); // hour bucket, e.g. 2026-09-29T05
@@ -183,9 +187,7 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
           payload.timeframe ?? payload.period ?? 'default',
         );
         const prefix = jobName === 'analyze-technical' ? 'ta' : 'fa';
-        return [prefix, symbol, discriminator, asOfBucket]
-          .join('-')
-          .replace(/:/g, '-');
+        return [prefix, symbol, discriminator, asOfBucket].join(':');
       }
     }
   }

@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
+import { ValidationPipe } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { APP_CONFIG, type AppConfig } from './config/config';
@@ -16,6 +17,15 @@ async function bootstrap(): Promise<void> {
 
   // Parse cookies so AuthGuard can read the opaque session cookie (ADR-0005).
   app.use(cookieParser());
+
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: { enableImplicitConversion: true },
+    }),
+  );
 
   const config = app.get<AppConfig>(APP_CONFIG);
 

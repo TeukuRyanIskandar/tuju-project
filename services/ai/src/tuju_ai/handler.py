@@ -504,6 +504,12 @@ def _handle_prospectus(
         raise TerminalJobError(f"LLM analysis failed permanently: {exc}") from exc
     artifact["parse"] = {"parsedNow": parsed_now, "reusedParse": not parsed_now}
 
+    if len(artifact.get("riskFactors", {}).get("data", {}).get("themes", [])) == 0:
+        log.warning(
+            "prospectus.no_risks_identified",
+            extra={"prospectusId": prospectus_id},
+        )
+
     # ADR-0014 §3: strict pre-write validation against the generated contract
     # model. A malformed artifact is caught here, not in the browser; the
     # assembly above is untouched and nothing is written to S3 on failure.

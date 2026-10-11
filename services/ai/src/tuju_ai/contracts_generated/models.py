@@ -63,7 +63,7 @@ class FundamentalPayload(BaseModel):
         extra='forbid',
     )
     symbol: constr(min_length=1)
-    period: Literal['annual', 'quarterly']
+    period: Literal['quarterly', 'annual']
 
 
 class JobFailure(BaseModel):
@@ -330,7 +330,7 @@ class FundamentalAnalysisArtifact(BaseModel):
     symbol: constr(min_length=1)
     jobName: Literal['analyze-fundamental']
     asOf: AwareDatetime
-    period: Literal['quarterly']
+    period: Literal['quarterly', 'annual']
     metrics: list[FundamentalMetric] = Field(..., max_length=9, min_length=9)
     narrative: AnalysisNarrative
     provenance: AnalysisProvenance
@@ -444,7 +444,7 @@ class ProspectusRiskData(BaseModel):
         extra='forbid',
     )
     summary: str | None
-    themes: list[ProspectusRiskTheme] = Field(..., min_length=1)
+    themes: list[ProspectusRiskTheme] = Field(..., min_length=0)
 
 
 class ProspectusRiskSection(BaseModel):

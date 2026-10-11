@@ -159,7 +159,10 @@
         },
         "period": {
           "type": "string",
-          "const": "quarterly"
+          "enum": [
+            "quarterly",
+            "annual"
+          ]
         },
         "metrics": {
           "minItems": 9,
@@ -286,8 +289,8 @@
         "period": {
           "type": "string",
           "enum": [
-            "annual",
-            "quarterly"
+            "quarterly",
+            "annual"
           ]
         }
       },
@@ -1032,7 +1035,7 @@
           ]
         },
         "themes": {
-          "minItems": 1,
+          "minItems": 0,
           "type": "array",
           "items": {
             "$ref": "#/$defs/ProspectusRiskTheme"

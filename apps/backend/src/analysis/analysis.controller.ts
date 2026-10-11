@@ -14,6 +14,7 @@ import { JobBus } from '../jobbus/job-bus.service';
 import { RequiresJob } from '../auth/requires-job.decorator';
 import { CORRELATION_ID_FIELD } from '../observability/correlation-id';
 import { AnalysisResultStore } from './analysis-result.store';
+import { AnalysisRequestDto } from './dto/analysis.dto';
 
 /**
  * SCAFFOLD analysis surface (ticket 06 round-trip proof, ADR-0001/0004/0007).
@@ -43,7 +44,7 @@ export class AnalysisController {
   @RequiresJob('analyze-technical')
   async enqueue(
     @Req() req: Request & { id?: string },
-    @Body() body: { symbol?: string; timeframe?: string },
+    @Body() body: AnalysisRequestDto,
   ): Promise<{ correlationId: string; jobId: string }> {
     // The correlationId is the request id minted by pino-http (ADR-0010 §3),
     // reused as the cross-service stitch key passed into the envelope.

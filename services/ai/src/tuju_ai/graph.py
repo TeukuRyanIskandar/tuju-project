@@ -15,6 +15,8 @@ from typing import Any, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from .contracts_generated import SCHEMA_VERSIONS
+
 JobKind = Literal["technical", "fundamental"]
 
 # Placeholder verdicts, one per job family, valid against the contract Verdict enum.
@@ -45,19 +47,19 @@ def _synthesize_verdict(state: AnalysisState) -> AnalysisState:
 
 
 def _draft_artifact(state: AnalysisState) -> AnalysisState:
-    """Node 3 — assemble the (opaque) placeholder artifact + thin headline."""
-    kind = state["kind"]
-    symbol = state["symbol"]
-    return {
-        "headline": f"Placeholder {kind} analysis for {symbol} (scaffold — no real logic)",
-        "artifact": {
-            "schemaVersion": "stub-1",
-            "kind": kind,
-            "symbol": symbol,
-            "verdict": state["verdict"],
-            "note": "Scaffold artifact. Real TA/FA content is a later feature effort.",
-        },
-    }
+     """Node 3 — assemble the (opaque) placeholder artifact + thin headline."""
+     kind = state["kind"]
+     symbol = state["symbol"]
+     return {
+         "headline": f"Placeholder {kind} analysis for {symbol} (scaffold — no real logic)",
+         "artifact": {
+             "schemaVersion": SCHEMA_VERSIONS['stub'],
+             "kind": kind,
+             "symbol": symbol,
+             "verdict": state["verdict"],
+             "note": "Scaffold artifact. Real TA/FA content is a later feature effort.",
+         },
+     }
 
 
 def build_analysis_graph():

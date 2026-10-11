@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { READ_CACHE_KEY_PREFIX, READ_CACHE_PREFIXES } from './cache-keys';
 
 /**
@@ -25,15 +26,17 @@ const SCAN_COUNT = 100;
 @Injectable()
 export class ReadCacheService {
   private readonly logger = new Logger(ReadCacheService.name);
+  private readonly readTtlSeconds: number;
 
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {
+    this.readTtlSeconds = config.cache.readTtlSeconds;
+  }
 
-  /** Resolved default TTL (env override when set to a positive integer). */
   get defaultTtlSeconds(): number {
-    const parsed = Number(process.env.READ_CACHE_TTL_SECONDS);
-    return Number.isFinite(parsed) && parsed > 0
-      ? Math.floor(parsed)
-      : DEFAULT_READ_CACHE_TTL_SECONDS;
+    return this.readTtlSeconds;
   }
 
   /** Read a cached value; `null` on miss (or expiry). */

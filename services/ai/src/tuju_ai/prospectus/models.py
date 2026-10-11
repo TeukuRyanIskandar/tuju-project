@@ -19,7 +19,7 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-PARSE_SCHEMA_VERSION = "prospectus-parse-1"
+from ..contracts_generated import SCHEMA_VERSIONS
 
 
 class ProspectusSection(StrEnum):
@@ -57,16 +57,16 @@ class Block(BaseModel):
 
 
 class ProspectusParse(BaseModel):
-    """The normalized, persistable Docling parse of one prospectus PDF.
+     """The normalized, persistable Docling parse of one prospectus PDF.
 
-    Keyed by ``pdfSha256`` so a re-run against a CHANGED PDF re-parses even
-    under the same prospectus id (idempotent re-run, ticket 04 AC 2).
-    """
+     Keyed by ``pdfSha256`` so a re-run against a CHANGED PDF re-parses even
+     under the same prospectus id (idempotent re-run, ticket 04 AC 2).
+     """
 
-    schemaVersion: str = PARSE_SCHEMA_VERSION
-    pdfSha256: str
-    headings: list[Heading] = Field(default_factory=list)
-    blocks: list[Block] = Field(default_factory=list)
+     schemaVersion: str = SCHEMA_VERSIONS['prospectusparse']
+     pdfSha256: str
+     headings: list[Heading] = Field(default_factory=list)
+     blocks: list[Block] = Field(default_factory=list)
 
 
 class RoutedSection(BaseModel):

@@ -20,11 +20,11 @@ JOB_SUMMARIZE_ANNOUNCEMENT = "summarize-announcement"
 # Flagship prospectus at-a-glance (ticket 05).
 JOB_ANALYZE_PROSPECTUS = "analyze-prospectus"
 
-# `JobResult.jobId` prefixes the worker mints for the two showcase jobs
-# (ADR-0007 §2) — NOT the BullMQ dedup job id (`JobBus.deriveJobId`, TS side);
-# a distinct, independently-computed identity embedded in the wire `JobResult`
-# itself, which `MarketBriefStore`/`AnnouncementSummaryStore` parse back out
-# to recover their domain key (mirror these exactly if they ever change).
+# `JobResult.jobId` prefixes the worker mints (ADR-0007 §2).
+# Mirrors stock-analysis.upsert.ts for PoC TA/FA analysis jobs.
+TECHNICAL_JOB_RESULT_PREFIX = "technical:"
+FUNDAMENTAL_JOB_RESULT_PREFIX = "fundamental:"
+# Spec-06 showcase jobs (tickets 02/03).
 MARKET_BRIEF_JOB_ID_PREFIX = "brief:"
 ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = "ann:"
 # Prospectus at-a-glance (ticket 05): `prospectus:{IpoListing.id}`. The BullMQ

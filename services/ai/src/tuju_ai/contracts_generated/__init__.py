@@ -2,3 +2,4 @@
 # Source of truth: packages/contracts (Zod v4).
 # Regenerate: pnpm --filter @tuju/contracts generate
 from .models import *  # noqa: F401,F403
+from .schema_versions import SCHEMA_VERSIONS  # noqa: F401

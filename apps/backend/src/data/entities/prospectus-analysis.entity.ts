@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
+  UpdateDateColumn,
 } from 'typeorm';
 import { IpoListing } from './ipo-listing.entity';
 
@@ -65,10 +66,9 @@ export class ProspectusAnalysis {
   @Column({ type: 'varchar', name: 'artifact_key', length: 512 })
   artifactKey!: string;
 
-  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
-  createdAt!: Date;
+   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+   createdAt!: Date;
 
-  /** Bumped on every re-run upsert (set explicitly by the store). */
-  @Column({ type: 'timestamptz', name: 'updated_at', default: () => 'now()' })
-  updatedAt!: Date;
+   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+   updatedAt!: Date;
 }

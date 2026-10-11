@@ -32,3 +32,57 @@ export * from './fundamental-analysis.entity';
 
 // Scaffold entity (pre-existing) — re-exported for a single import surface.
 export * from './analysis-result.entity';
+
+// Import all entities for the consolidated array
+import { AnalysisResult } from './analysis-result.entity';
+import { IngestionRun } from './ingestion-run.entity';
+import { SyntheticRun } from './synthetic-run.entity';
+import { Sector } from './sector.entity';
+import { Company } from './company.entity';
+import { Instrument } from './instrument.entity';
+import { PriceBar } from './price-bar.entity';
+import { QuarterlyFinancials } from './quarterly-financials.entity';
+import { FundamentalsSnapshot } from './fundamentals-snapshot.entity';
+import { IndicatorSnapshot } from './indicator-snapshot.entity';
+import { CorporateAction } from './corporate-action.entity';
+import { ShariahStatus } from './shariah-status.entity';
+import { Announcement } from './announcement.entity';
+import { NewsArticle } from './news-article.entity';
+import { NewsArticleTag } from './news-article-tag.entity';
+import { IpoListing } from './ipo-listing.entity';
+import { MarketIndex } from './market-index.entity';
+import { IndexLevel } from './index-level.entity';
+import { Watchlist } from './watchlist.entity';
+import { WatchlistItem } from './watchlist-item.entity';
+import { MarketBrief } from './market-brief.entity';
+import { ProspectusAnalysis } from './prospectus-analysis.entity';
+import { TechnicalAnalysis } from './technical-analysis.entity';
+import { FundamentalAnalysis } from './fundamental-analysis.entity';
+
+// Consolidated for single-source-of-truth (M-01)
+export const ENTITIES = [
+  AnalysisResult,
+  IngestionRun,
+  SyntheticRun,
+  Sector,
+  Company,
+  Instrument,
+  PriceBar,
+  QuarterlyFinancials,
+  FundamentalsSnapshot,
+  IndicatorSnapshot,
+  CorporateAction,
+  ShariahStatus,
+  Announcement,
+  NewsArticle,
+  NewsArticleTag,
+  IpoListing,
+  MarketIndex,
+  IndexLevel,
+  Watchlist,
+  WatchlistItem,
+  MarketBrief,
+  ProspectusAnalysis,
+  TechnicalAnalysis,
+  FundamentalAnalysis,
+];

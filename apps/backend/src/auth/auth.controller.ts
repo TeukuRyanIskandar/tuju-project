@@ -13,7 +13,7 @@ import { APP_CONFIG, type AppConfig } from '../config/config';
 import { SESSION_COOKIE_NAME } from './auth.guard';
 import { SessionStore } from './session.store';
 import type { AuthedUser, SessionUser } from './session.types';
-import type { Tier } from './tier-policy';
+import { LoginRequestDto } from './dto/login.dto';
 
 /**
  * STUB auth endpoints (ADR-0005: "Login/session endpoints can be stubs").
@@ -32,7 +32,7 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { userId?: string; tier?: Tier },
+    @Body() body: LoginRequestDto,
     @Res({ passthrough: true }) res: Response,
   ): Promise<SessionUser> {
     // STUB: accept the claimed identity; a feature effort adds real verification.

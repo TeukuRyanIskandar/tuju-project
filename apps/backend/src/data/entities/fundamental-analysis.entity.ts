@@ -7,6 +7,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   Unique,
+  UpdateDateColumn,
 } from 'typeorm';
 import { StockAnalysisStatus } from './enums';
 import { Instrument } from './instrument.entity';
@@ -21,8 +22,9 @@ export class FundamentalAnalysis {
   @JoinColumn({ name: 'instrument_id' })
   instrument!: Instrument;
 
-  @Column({ type: 'uuid', name: 'instrument_id' })
-  instrumentId!: string;
+   @Index()
+   @Column({ type: 'uuid', name: 'instrument_id' })
+   instrumentId!: string;
 
   @Column({
     type: 'enum',
@@ -54,9 +56,9 @@ export class FundamentalAnalysis {
   @Column({ type: 'varchar', name: 'job_id', length: 255 })
   jobId!: string;
 
-  @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
-  createdAt!: Date;
+   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
+   createdAt!: Date;
 
-  @Column({ type: 'timestamptz', name: 'updated_at', default: () => 'now()' })
-  updatedAt!: Date;
+   @UpdateDateColumn({ type: 'timestamptz', name: 'updated_at' })
+   updatedAt!: Date;
 }

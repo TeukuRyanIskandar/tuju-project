@@ -17,6 +17,7 @@ import { ScreenerModule } from './screener/screener.module';
 import { MarketModule } from './market/market.module';
 import { MarketBriefModule } from './brief/market-brief.module';
 import { IpoModule } from './ipo/ipo.module';
+import { WatchlistModule } from './watchlist/watchlist.module';
 
 /**
  * Root module (ADR-0001/0003/0004/0005/0006/0010).
@@ -55,6 +56,8 @@ import { IpoModule } from './ipo/ipo.module';
     // Spec-06 prospectus at-a-glance (GET /ipo/:prospectusId/reference |
     // /at-a-glance | /at-a-glance/artifact) — same anonymous posture.
     IpoModule,
+    // Watchlist module (reserves Watchlist and WatchlistItem entity ownership).
+    WatchlistModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
