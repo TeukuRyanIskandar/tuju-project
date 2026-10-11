@@ -608,15 +608,15 @@ export class EodIngestService {
     await repo.upsert(rows, ['companyId', 'filedAt', 'title']);
 
     const ids: string[] = [];
-    for (const row of rows) {
-      const found = await repo.findOneOrFail({
-        where: {
-          companyId: row.companyId,
-          filedAt: row.filedAt,
-          title: row.title,
-        },
-      });
-      if (found.aiSummary === null) ids.push(found.id);
+    if (rows.length > 0) {
+      const companyIds = rows.map((r) => r.companyId);
+      const filedAts = rows.map((r) => r.filedAt);
+      const titles = rows.map((r) => r.title);
+      const upsertedRows = await repo.query(
+        `SELECT id FROM announcements WHERE (company_id, filed_at, title) = ANY(SELECT * FROM unnest($1::uuid[], $2::timestamptz[], $3::text[])) AND ai_summary IS NULL`,
+        [companyIds, filedAts, titles],
+      );
+      ids.push(...upsertedRows.map((r: { id: string }) => r.id));
     }
     return { count: rows.length, ids };
   }

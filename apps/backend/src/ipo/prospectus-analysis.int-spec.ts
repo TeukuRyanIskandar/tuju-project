@@ -60,7 +60,8 @@ import { ShowcaseJobsModel1728100000000 } from '../data/migrations/1728100000000
 import { ProspectusAnalysis1728200000000 } from '../data/migrations/1728200000000-ProspectusAnalysis';
 import { JobBus } from '../jobbus/job-bus.service';
 import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadCacheService, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-cache.service';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import {
   PROSPECTUS_CACHE_PREFIX,
   READ_CACHE_PREFIXES,
@@ -70,6 +71,28 @@ import { IpoService } from './ipo.service';
 import { ProspectusAnalysisStore } from './prospectus-analysis.store';
 
 jest.setTimeout(240_000);
+
+/** Minimal AppConfig for testing. */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = Object.values(entities).filter((v) => typeof v === 'function');
 
@@ -147,14 +170,23 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
     redis = new IORedis(redisC.getConnectionUrl(), { maxRetriesPerRequest: null });
     jobBus = new JobBus(redis);
     await jobBus.onModuleInit();
-    readCache = new ReadCacheService(redis);
+    readCache = new ReadCacheService(redis, fakeConfig());
     store = new ProspectusAnalysisStore(
       jobBus,
       readCache,
       dataSource.getRepository(entities.ProspectusAnalysis),
     );
     store.onModuleInit();
-    controller = new IpoController(new IpoService(dataSource, s3), readCache);
+    controller = new IpoController(
+      new IpoService(
+        dataSource.getRepository(entities.ShariahStatus),
+        dataSource.getRepository(entities.Company),
+        dataSource.getRepository(entities.IpoListing),
+        dataSource.getRepository(entities.ProspectusAnalysis),
+        s3,
+      ),
+      readCache,
+    );
 
     const run = await dataSource.query(
       `INSERT INTO ingestion_runs (kind, adapter, provenance_class, ran_at)

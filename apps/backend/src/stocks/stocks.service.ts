@@ -30,8 +30,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
-import { DataSource, In, MoreThanOrEqual } from 'typeorm';
+import { In, MoreThanOrEqual, Repository } from 'typeorm';
 import { ReadCacheService, STOCKS_CACHE_PREFIX } from '../cache';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
@@ -40,6 +41,7 @@ import { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entit
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
+import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
 import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import {
@@ -60,6 +62,8 @@ import {
   toFundamentalAnalysisResponse,
   toTechnicalAnalysisResponse,
 } from './stock-analysis-read';
+import { computeTechnicalEvents } from './technical-events';
+import { toAnalysisReference } from './analysis-reference';
 import type {
   AnnouncementsPage,
   AnnouncementItem,
@@ -75,11 +79,31 @@ import type {
   StockTechnicalAnalysisResponse,
   TechnicalsBlock,
 } from './stocks.types';
+import type { AnalysisReferenceResponse } from './analysis-reference';
 
 @Injectable()
 export class StocksService {
   constructor(
-    private readonly dataSource: DataSource,
+    @InjectRepository(TechnicalAnalysis)
+    private readonly technicalAnalysisRepo: Repository<TechnicalAnalysis>,
+    @InjectRepository(FundamentalAnalysis)
+    private readonly fundamentalAnalysisRepo: Repository<FundamentalAnalysis>,
+    @InjectRepository(IndicatorSnapshot)
+    private readonly indicatorSnapshotRepo: Repository<IndicatorSnapshot>,
+    @InjectRepository(FundamentalsSnapshot)
+    private readonly fundamentalsSnapshotRepo: Repository<FundamentalsSnapshot>,
+    @InjectRepository(QuarterlyFinancials)
+    private readonly quarterlyFinancialsRepo: Repository<QuarterlyFinancials>,
+    @InjectRepository(PriceBar)
+    private readonly priceBarRepo: Repository<PriceBar>,
+    @InjectRepository(Announcement)
+    private readonly announcementRepo: Repository<Announcement>,
+    @InjectRepository(CorporateAction)
+    private readonly corporateActionRepo: Repository<CorporateAction>,
+    @InjectRepository(ShariahStatus)
+    private readonly shariahStatusRepo: Repository<ShariahStatus>,
+    @InjectRepository(Instrument)
+    private readonly instrumentRepo: Repository<Instrument>,
     private readonly readCache: ReadCacheService,
     @Inject(S3_CLIENT) private readonly s3: S3Client,
   ) {}
@@ -136,26 +160,22 @@ export class StocksService {
   async getTechnicalAnalysis(
     stockCode: string,
   ): Promise<StockTechnicalAnalysisResponse> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.dataSource
-      .getRepository(TechnicalAnalysis)
-      .findOne({ where: { instrumentId: instrument.id } });
-    if (!row) return pendingTechnicalAnalysis(stockCode);
-    const latestEod = await this.latestEodCloseDay(instrument.id);
-    return toTechnicalAnalysisResponse(stockCode, row, latestEod);
+    return this.readCache.remember(
+      `${STOCKS_CACHE_PREFIX}${stockCode}:technical-analysis`,
+      () => this.loadTechnicalAnalysis(stockCode),
+      3600,
+    );
   }
 
   /** `GET /stocks/:code/analysis/fundamental` — thin envelope; pending when no row. */
   async getFundamentalAnalysis(
     stockCode: string,
   ): Promise<StockFundamentalAnalysisResponse> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.dataSource
-      .getRepository(FundamentalAnalysis)
-      .findOne({ where: { instrumentId: instrument.id } });
-    if (!row) return pendingFundamentalAnalysis(stockCode);
-    const latestEod = await this.latestEodCloseDay(instrument.id);
-    return toFundamentalAnalysisResponse(stockCode, row, latestEod);
+    return this.readCache.remember(
+      `${STOCKS_CACHE_PREFIX}${stockCode}:fundamental-analysis`,
+      () => this.loadFundamentalAnalysis(stockCode),
+      3600,
+    );
   }
 
   /** Proxied TA artifact JSON with `cost` stripped (ADR-0014). */
@@ -163,9 +183,9 @@ export class StocksService {
     stockCode: string,
   ): Promise<Record<string, unknown>> {
     const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.dataSource
-      .getRepository(TechnicalAnalysis)
-      .findOne({ where: { instrumentId: instrument.id } });
+    const row = await this.technicalAnalysisRepo.findOne({
+      where: { instrumentId: instrument.id },
+    });
     return this.loadArtifact(stockCode, row);
   }
 
@@ -174,11 +194,72 @@ export class StocksService {
     stockCode: string,
   ): Promise<Record<string, unknown>> {
     const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.dataSource
-      .getRepository(FundamentalAnalysis)
-      .findOne({ where: { instrumentId: instrument.id } });
+    const row = await this.fundamentalAnalysisRepo.findOne({
+      where: { instrumentId: instrument.id },
+    });
     return this.loadArtifact(stockCode, row);
   }
+
+  /**
+   * Worker-facing reference endpoint: all facts (TA indicators + events, FA metrics)
+   * without the AI narrative. No caching — worker needs live data.
+   */
+  async getAnalysisReference(
+    stockCode: string,
+  ): Promise<AnalysisReferenceResponse> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+
+    const snap = await this.indicatorSnapshotRepo.findOne({
+      where: { instrumentId: instrument.id },
+    });
+    if (!snap) {
+      throw new NotFoundException(
+        `No indicator snapshot for stockCode=${stockCode}`,
+      );
+    }
+
+    const [fundSnap, quarters, bars] = await Promise.all([
+      this.fundamentalsSnapshotRepo.findOne({
+        where: { companyId: instrument.companyId },
+        relations: { ingestionRun: true },
+      }),
+      this.quarterlyFinancialsRepo.find({
+        where: { companyId: instrument.companyId },
+        order: { periodEnd: 'DESC' },
+        take: 2,
+      }),
+      this.priceBarRepo.find({
+        where: { instrumentId: instrument.id },
+        order: { tradeDate: 'DESC' },
+        take: 2,
+      }),
+    ]);
+
+    const latestCloseDay = bars.length > 0 ? bars[0].tradeDate : null;
+    const prevBar = bars.length > 1 ? bars[1] : null;
+
+    if (!latestCloseDay) {
+      throw new NotFoundException(
+        `No price bars for stockCode=${stockCode}`,
+      );
+    }
+
+    const technicalEvents = computeTechnicalEvents(snap, latestCloseDay, prevBar);
+
+    const now = new Date();
+    const asOfDatetime = now.toISOString();
+
+    return toAnalysisReference(
+      instrument,
+      snap,
+      fundSnap ?? null,
+      quarters,
+      technicalEvents,
+      latestCloseDay,
+      asOfDatetime,
+    );
+  }
+
 
   /**
    * Compose the core snapshot from Postgres. Only an unknown `stockCode`
@@ -186,33 +267,29 @@ export class StocksService {
    * fundamentals/technicals blocks null.
    */
   private async loadCore(stockCode: string): Promise<StockCorePayload> {
-    const instrument = await this.dataSource
-      .getRepository(Instrument)
-      .findOne({
-        where: { stockCode },
-        relations: { company: { sector: true }, ingestionRun: true },
-      });
+    const instrument = await this.instrumentRepo.findOne({
+      where: { stockCode },
+      relations: { company: { sector: true }, ingestionRun: true },
+    });
     if (!instrument) {
       throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
     }
 
     const [fundamentals, indicator, shariah, bars] = await Promise.all([
-      // One snapshot per company/instrument (unique FK) — findOne is the latest.
-      this.dataSource.getRepository(FundamentalsSnapshot).findOne({
+      this.fundamentalsSnapshotRepo.findOne({
         where: { companyId: instrument.companyId },
         relations: { ingestionRun: true },
       }),
-      this.dataSource.getRepository(IndicatorSnapshot).findOne({
+      this.indicatorSnapshotRepo.findOne({
         where: { instrumentId: instrument.id },
         relations: { ingestionRun: true },
       }),
-      this.dataSource.getRepository(ShariahStatus).findOne({
+      this.shariahStatusRepo.findOne({
         where: { companyId: instrument.companyId },
         order: { effectiveDate: 'DESC' },
         relations: { ingestionRun: true },
       }),
-      // The two latest EOD bars for the read-time %change.
-      this.dataSource.getRepository(PriceBar).find({
+      this.priceBarRepo.find({
         where: { instrumentId: instrument.id },
         order: { tradeDate: 'DESC' },
         take: 2,
@@ -304,22 +381,16 @@ export class StocksService {
     categories: readonly AnnouncementCategory[],
   ): Promise<AnnouncementsPage> {
     const instrument = await this.requireInstrument(stockCode);
-    const [rows, total] = await this.dataSource
-      .getRepository(Announcement)
-      .findAndCount({
-        where: {
-          companyId: instrument.companyId,
-          // One-or-more category filter (spec 04 §1); flat rows carry the
-          // category field — no server-side grouped payload.
-          ...(categories.length > 0 ? { category: In(categories) } : {}),
-        },
-        relations: { ingestionRun: true },
-        // id as the deterministic tiebreaker — equal filedAt rows must not
-        // shuffle across pages.
-        order: { filedAt: 'DESC', id: 'DESC' },
-        skip: offset,
-        take: limit,
-      });
+    const [rows, total] = await this.announcementRepo.findAndCount({
+      where: {
+        companyId: instrument.companyId,
+        ...(categories.length > 0 ? { category: In(categories) } : {}),
+      },
+      relations: { ingestionRun: true },
+      order: { filedAt: 'DESC', id: 'DESC' },
+      skip: offset,
+      take: limit,
+    });
 
     const items: AnnouncementItem[] = rows.map((a) => ({
       provenance: a.ingestionRun.provenanceClass,
@@ -341,18 +412,16 @@ export class StocksService {
     types: readonly CorporateActionType[],
   ): Promise<CorporateActionsPage> {
     const instrument = await this.requireInstrument(stockCode);
-    const [rows, total] = await this.dataSource
-      .getRepository(CorporateAction)
-      .findAndCount({
-        where: {
-          companyId: instrument.companyId,
-          ...(types.length > 0 ? { type: In(types) } : {}),
-        },
-        relations: { ingestionRun: true },
-        order: { exDate: 'ASC', id: 'ASC' },
-        skip: offset,
-        take: limit,
-      });
+    const [rows, total] = await this.corporateActionRepo.findAndCount({
+      where: {
+        companyId: instrument.companyId,
+        ...(types.length > 0 ? { type: In(types) } : {}),
+      },
+      relations: { ingestionRun: true },
+      order: { exDate: 'ASC', id: 'ASC' },
+      skip: offset,
+      take: limit,
+    });
 
     const items: CorporateActionItem[] = rows.map((c) => ({
       provenance: c.ingestionRun.provenanceClass,
@@ -365,9 +434,9 @@ export class StocksService {
 
   /** Resolve the instrument by its unique natural key or 404 (uncached — thrown through the loader). */
   private async requireInstrument(stockCode: string): Promise<Instrument> {
-    const instrument = await this.dataSource
-      .getRepository(Instrument)
-      .findOne({ where: { stockCode } });
+    const instrument = await this.instrumentRepo.findOne({
+      where: { stockCode },
+    });
     if (!instrument) {
       throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
     }
@@ -382,18 +451,42 @@ export class StocksService {
     return this.requireInstrument(stockCode);
   }
 
+  /** Private loader: fetch technical analysis data (3 sequential queries). */
+  private async loadTechnicalAnalysis(
+    stockCode: string,
+  ): Promise<StockTechnicalAnalysisResponse> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.technicalAnalysisRepo.findOne({
+      where: { instrumentId: instrument.id },
+    });
+    if (!row) return pendingTechnicalAnalysis(stockCode);
+    const latestEod = await this.latestEodCloseDay(instrument.id);
+    return toTechnicalAnalysisResponse(stockCode, row, latestEod);
+  }
+
+  /** Private loader: fetch fundamental analysis data (3 sequential queries). */
+  private async loadFundamentalAnalysis(
+    stockCode: string,
+  ): Promise<StockFundamentalAnalysisResponse> {
+    const instrument = await this.requireKlciInstrument(stockCode);
+    const row = await this.fundamentalAnalysisRepo.findOne({
+      where: { instrumentId: instrument.id },
+    });
+    if (!row) return pendingFundamentalAnalysis(stockCode);
+    const latestEod = await this.latestEodCloseDay(instrument.id);
+    return toFundamentalAnalysisResponse(stockCode, row, latestEod);
+  }
+
   private async loadSeries(stockCode: string): Promise<StockSeriesResponse> {
-    const instrument = await this.dataSource
-      .getRepository(Instrument)
-      .findOne({
-        where: { stockCode },
-        relations: { ingestionRun: true },
-      });
+    const instrument = await this.instrumentRepo.findOne({
+      where: { stockCode },
+      relations: { ingestionRun: true },
+    });
     if (!instrument || !isKlci30(stockCode)) {
       throw new NotFoundException(`No stock found for stockCode=${stockCode}`);
     }
 
-    const latest = await this.dataSource.getRepository(PriceBar).findOne({
+    const latest = await this.priceBarRepo.findOne({
       where: { instrumentId: instrument.id },
       order: { tradeDate: 'DESC' },
       relations: { ingestionRun: true },
@@ -411,7 +504,7 @@ export class StocksService {
     }
 
     const since = seriesSinceDate(latest.tradeDate, STOCK_SERIES_RANGE_DAYS);
-    const bars = await this.dataSource.getRepository(PriceBar).find({
+    const bars = await this.priceBarRepo.find({
       where: {
         instrumentId: instrument.id,
         ...(since ? { tradeDate: MoreThanOrEqual(since) } : {}),
@@ -440,7 +533,7 @@ export class StocksService {
   }
 
   private async latestEodCloseDay(instrumentId: string): Promise<string | null> {
-    const latest = await this.dataSource.getRepository(PriceBar).findOne({
+    const latest = await this.priceBarRepo.findOne({
       where: { instrumentId },
       order: { tradeDate: 'DESC' },
     });

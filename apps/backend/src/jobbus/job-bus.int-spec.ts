@@ -42,7 +42,7 @@ jest.setTimeout(120_000);
 function stubResult(correlationId: string, symbol = 'MAYBANK'): JobResult {
   return {
     correlationId,
-    jobId: `ta-${symbol}-1D-2026-09-29T05`,
+    jobId: `technical:${symbol}:1D:2026-09-29T05`,
     pointer: {
       bucket: 'tuju-artifacts',
       key: `analysis/ta/${symbol}/2026-09-29T05.json`,
@@ -118,7 +118,7 @@ describe('JobBus (integration — testcontainers)', () => {
       } as JobEnvelope<{ symbol: string; timeframe: string }>;
 
       const { jobId } = await jobBus.enqueue(STUB_JOB_NAME, envelope);
-      expect(jobId).toMatch(/^ta-MAYBANK-1D-/);
+      expect(jobId).toMatch(/^ta:MAYBANK:1D:/);
 
       const result = await received;
       expect(result.correlationId).toBe(correlationId);

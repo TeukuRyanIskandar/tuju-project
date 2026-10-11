@@ -35,7 +35,8 @@ import type { JobEnvelope, JobResult, MarketBriefPayload } from '@tuju/contracts
 
 import { JobBus } from '../jobbus/job-bus.service';
 import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadCacheService, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-cache.service';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { BRIEF_CACHE_PREFIX } from '../cache/cache-keys';
 import { MarketBrief } from '../data/entities/market-brief.entity';
 import { InitialSchema1727600000000 } from '../data/migrations/1727600000000-InitialSchema';
@@ -49,6 +50,28 @@ import { MarketBriefController } from './market-brief.controller';
 import { MarketBriefStore } from './market-brief.store';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing. */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 /** A contract-shaped verdict-less `JobResult` — the Python worker's own shape. */
 function stubBriefResult(briefDate: string, headline: string): JobResult {
@@ -106,7 +129,7 @@ describe('Daily market brief (integration — testcontainers)', () => {
 
     jobBus = new JobBus(redis);
     await jobBus.onModuleInit();
-    const readCache = new ReadCacheService(redis);
+    const readCache = new ReadCacheService(redis, fakeConfig());
     store = new MarketBriefStore(jobBus, readCache, repo);
     store.onModuleInit();
     controller = new MarketBriefController(store, readCache);

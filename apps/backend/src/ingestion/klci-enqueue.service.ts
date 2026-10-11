@@ -83,7 +83,7 @@ export function taFaBullJobId(
   asOfIso: string,
 ): string {
   const asOfBucket = asOfIso.slice(0, 13);
-  return [prefix, symbol, discriminator, asOfBucket].join('-').replace(/:/g, '-');
+  return [prefix, symbol, discriminator, asOfBucket].join(':');
 }
 
 export function buildTechnicalEnvelope(

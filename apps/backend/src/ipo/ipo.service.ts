@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
-import { DataSource } from 'typeorm';
+import { Repository } from 'typeorm';
 import type { ProspectusArtifact } from '@tuju/contracts';
 import { Company } from '../data/entities/company.entity';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
@@ -23,7 +24,14 @@ import {
 @Injectable()
 export class IpoService {
   constructor(
-    private readonly dataSource: DataSource,
+    @InjectRepository(ShariahStatus)
+    private readonly shariahStatusRepo: Repository<ShariahStatus>,
+    @InjectRepository(Company)
+    private readonly companyRepo: Repository<Company>,
+    @InjectRepository(IpoListing)
+    private readonly ipoListingRepo: Repository<IpoListing>,
+    @InjectRepository(ProspectusAnalysis)
+    private readonly prospectusAnalysisRepo: Repository<ProspectusAnalysis>,
     @Inject(S3_CLIENT) private readonly s3: S3Client,
   ) {}
 
@@ -43,8 +51,7 @@ export class IpoService {
         `No IPO with a stored prospectus found for id=${prospectusId}`,
       );
     }
-    const shariah = await this.dataSource
-      .getRepository(ShariahStatus)
+    const shariah = await this.shariahStatusRepo
       .createQueryBuilder('s')
       .innerJoin(Company, 'c', 'c.id = s.company_id')
       .where('lower(trim(c.full_name)) = lower(trim(:name))', {
@@ -90,9 +97,7 @@ export class IpoService {
 
   private findListing(prospectusId: string): Promise<IpoListing | null> {
     if (!isUuid(prospectusId)) return Promise.resolve(null);
-    return this.dataSource
-      .getRepository(IpoListing)
-      .findOne({ where: { id: prospectusId } });
+    return this.ipoListingRepo.findOne({ where: { id: prospectusId } });
   }
 
   private async findAnalysed(
@@ -100,9 +105,9 @@ export class IpoService {
   ): Promise<{ listing: IpoListing; analysis: ProspectusAnalysis }> {
     const listing = await this.findListing(prospectusId);
     const analysis = listing
-      ? await this.dataSource
-          .getRepository(ProspectusAnalysis)
-          .findOne({ where: { prospectusId } })
+      ? await this.prospectusAnalysisRepo.findOne({
+          where: { prospectusId },
+        })
       : null;
     if (!listing || !analysis) {
       throw new NotFoundException(

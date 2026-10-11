@@ -42,11 +42,11 @@ describe('klci enqueue helpers', () => {
 
   it('derives ta/fa BullMQ ids matching hour-bucket form', () => {
     expect(taFaBullJobId('ta', '1155', '1D', '2026-10-09T15:00:00.000Z')).toBe(
-      'ta-1155-1D-2026-10-09T15',
+      'ta:1155:1D:2026-10-09T15',
     );
     expect(
       taFaBullJobId('fa', '1155', 'quarterly', '2026-10-09T15:00:00.000Z'),
-    ).toBe('fa-1155-quarterly-2026-10-09T15');
+    ).toBe('fa:1155:quarterly:2026-10-09T15');
   });
 
   it('skips ready/facts_only same UTC day unless force', () => {

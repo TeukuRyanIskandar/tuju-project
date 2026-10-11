@@ -38,11 +38,11 @@ export class IngestionScheduler {
 
   /**
    * Nightly EOD + fundamentals + (ordered-after) indicators, landing in Postgres.
-   * 20:00 UTC ≈ post nominal Bursa close.
+   * 20:00 MYT (Bursa Malaysia closing time) = 12:00 UTC (MYT is UTC+8).
+   * Using explicit UTC cron to avoid timezone conversion ambiguity.
    */
-  @Cron(CronExpression.EVERY_DAY_AT_8PM, {
+  @Cron('0 12 * * *', {
     name: 'nightly-eod-ingest',
-    timeZone: 'Asia/Kuala_Lumpur',
   })
   async nightlyIngest(): Promise<void> {
     this.logger.log('cron: nightly-eod-ingest firing');
@@ -55,10 +55,10 @@ export class IngestionScheduler {
    * the nightly EOD ingest so the brief narrates freshly-ingested index
    * levels; a content-derived `jobId` keyed by date (ADR-0007 §2, derived in
    * `JobBus.deriveJobId`) collapses a same-day re-enqueue to one job.
+   * 21:00 MYT = 13:00 UTC (MYT is UTC+8).
    */
-  @Cron(CronExpression.EVERY_DAY_AT_9PM, {
+  @Cron('0 13 * * *', {
     name: 'nightly-market-brief',
-    timeZone: 'Asia/Kuala_Lumpur',
   })
   async nightlyMarketBrief(): Promise<void> {
     this.logger.log('cron: nightly-market-brief firing');
@@ -79,7 +79,6 @@ export class IngestionScheduler {
    */
   @Cron(CronExpression.EVERY_5_MINUTES, {
     name: 'intraday-replay',
-    timeZone: 'Asia/Kuala_Lumpur',
   })
   async intradayReplay(): Promise<void> {
     if (!IngestionScheduler.isMarketHours(new Date())) return;

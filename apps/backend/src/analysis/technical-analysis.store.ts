@@ -1,14 +1,12 @@
 import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { randomUUID } from 'node:crypto';
 import type { JobFailure, JobResult } from '@tuju/contracts';
 import { JobBus } from '../jobbus/job-bus.service';
 import { isVerdictSummary } from '../jobbus/job-result-helpers';
 import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { StockAnalysisStatus } from '../data/entities/enums';
-import { isUuid } from '../stocks/filters';
 import {
   stockCodeFromTechnicalBullJobId,
   stockCodeFromTechnicalJobResultId,
@@ -79,7 +77,9 @@ export class TechnicalAnalysisStore implements OnModuleInit {
     try {
       await this.upsert({
         instrumentId: instrument.id,
-        status: StockAnalysisStatus.Ready,
+        status: result.summary.headline.startsWith('facts-only: ')
+          ? StockAnalysisStatus.FactsOnly
+          : StockAnalysisStatus.Ready,
         correlationId: result.correlationId,
         jobId: result.jobId,
         headline: result.summary.headline,
@@ -124,9 +124,7 @@ export class TechnicalAnalysisStore implements OnModuleInit {
     }
 
     const existing = await this.findByInstrumentId(instrument.id);
-    const correlationId =
-      existing?.correlationId ??
-      (isUuid(failure.correlationId) ? failure.correlationId : randomUUID());
+    const correlationId = existing?.correlationId ?? failure.correlationId;
 
     try {
       await this.upsert({

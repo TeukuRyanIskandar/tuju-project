@@ -58,13 +58,19 @@ def _load(name: str) -> dict:
 
 
 class _UnusedBackendClient:
-    """Stand-in `BackendClient` for TA/FA tests, which never call it."""
+    """Stand-in `BackendClient` for tests that don't use it."""
 
     def get_market_indices(self) -> dict:
-        raise AssertionError("TA/FA jobs must not call the backend client")
+        raise AssertionError("This test should not call the backend client")
 
     def get_announcement(self, announcement_id: str) -> dict:
-        raise AssertionError("TA/FA jobs must not call the backend client")
+        raise AssertionError("This test should not call the backend client")
+
+    def get_ipo_reference(self, prospectus_id: str) -> dict:
+        raise AssertionError("This test should not call the backend client")
+
+    def get_analysis_reference(self, symbol: str) -> dict:
+        raise AssertionError("This test should not call the backend client")
 
 
 def _run(job_name: str, envelope: dict) -> tuple[JobResult, list[JobProgress], FakeS3]:
@@ -82,40 +88,150 @@ def _run(job_name: str, envelope: dict) -> tuple[JobResult, list[JobProgress], F
 
 
 def test_technical_job_returns_valid_result() -> None:
-    result, progress, fake = _run(
-        JOB_ANALYZE_TECHNICAL, _load("technical-job-envelope.json")
+    canned_reference = {
+        "code": "1155",
+        "shortName": "MAYBANK",
+        "latestCloseDay": "2026-10-08",
+        "asOfDatetime": "2026-10-08T18:00:00Z",
+        "technical": {
+            "sma": {"p20": 9.7, "p50": 9.55, "p200": 9.3},
+            "rsi": {"period": 14, "value": 57.4},
+            "macd": {"line": 0.02123, "signal": 0.015, "histogram": 0.00623},
+            "week52": {"high": 10.45, "low": 8.32},
+        },
+        "technicalEvents": [
+            {
+                "id": "ma_cross_20_50",
+                "label": "SMA-20 crossed above SMA-50",
+                "fired": True,
+                "values": {"sma20": 9.7, "sma50": 9.55},
+                "at": "2026-10-08",
+            }
+        ],
+    }
+    backend = FakeBackendClient(analysis_reference_response=canned_reference)
+    result, progress, fake = _run_system_job(
+        JOB_ANALYZE_TECHNICAL, _load("technical-job-envelope.json"), backend
     )
 
-    # Result is contract-valid (re-validate the round trip).
     JobResult.model_validate(result.model_dump(mode="json"))
-    assert result.jobId.startswith("ta:MAYBANK:1D:")
-    assert result.summary.verdict in ("bullish", "bearish", "neutral")
+    assert result.jobId.startswith("technical:MAYBANK:1D:")
+    assert not hasattr(result.summary, "verdict")
+    assert len(result.summary.headline) > 0
 
-    # Claim-check wrote exactly one artifact under the scoped prefix.
     assert len(fake.calls) == 1
     assert fake.calls[0]["Bucket"] == "tuju-artifacts"
-    assert fake.calls[0]["Key"].startswith("analysis/ta/MAYBANK/")
+    assert fake.calls[0]["Key"].startswith("analysis/technical/MAYBANK/")
     assert result.pointer.bytes > 0
     assert len(result.pointer.sha256) == 64
+    assert backend.analysis_reference_calls == ["MAYBANK"]
 
 
 def test_fundamental_job_returns_valid_result() -> None:
-    result, _progress, fake = _run(
-        JOB_ANALYZE_FUNDAMENTAL, _load("fundamental-job-envelope.json")
+    canned_reference = {
+        "code": "1155",
+        "shortName": "MAYBANK",
+        "latestCloseDay": "2026-10-08",
+        "asOfDatetime": "2026-10-08T18:00:00Z",
+        "fundamental": {
+            "metrics": [
+                {
+                    "id": "trailing_pe",
+                    "label": "P/E ratio (trailing)",
+                    "value": 12.5,
+                    "unit": "x",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "dividend_yield",
+                    "label": "Dividend yield",
+                    "value": 3.2,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "roe",
+                    "label": "Return on Equity",
+                    "value": 15.0,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "revenue_growth_qoq",
+                    "label": "Revenue growth (QoQ)",
+                    "value": 5.0,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "revenue_growth_yoy",
+                    "label": "Revenue growth (YoY)",
+                    "value": 20.0,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "profit_growth_qoq",
+                    "label": "Profit growth (QoQ)",
+                    "value": 8.0,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "profit_growth_yoy",
+                    "label": "Profit growth (YoY)",
+                    "value": 25.0,
+                    "unit": "%",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "debt_to_equity",
+                    "label": "Debt-to-Equity",
+                    "value": 0.5,
+                    "unit": "x",
+                    "asOf": "2026-10-08",
+                },
+                {
+                    "id": "operating_cash_flow",
+                    "label": "Operating cash flow",
+                    "value": 150.0,
+                    "unit": "RM m",
+                    "asOf": "2026-10-08",
+                },
+            ]
+        },
+    }
+    backend = FakeBackendClient(analysis_reference_response=canned_reference)
+    result, _progress, fake = _run_system_job(
+        JOB_ANALYZE_FUNDAMENTAL, _load("fundamental-job-envelope.json"), backend
     )
-    assert result.jobId.startswith("fa:MAYBANK:quarterly:")
-    assert result.summary.verdict in ("undervalued", "fairly-valued", "overvalued")
-    assert fake.calls[0]["Key"].startswith("analysis/fa/MAYBANK/")
+    assert result.jobId.startswith("fundamental:MAYBANK:quarterly:")
+    assert not hasattr(result.summary, "verdict")
+    assert fake.calls[0]["Key"].startswith("analysis/fundamental/MAYBANK/")
+    assert backend.analysis_reference_calls == ["MAYBANK"]
 
 
 def test_progress_is_step_based_and_monotonic() -> None:
-    _result, progress, _fake = _run(
-        JOB_ANALYZE_TECHNICAL, _load("technical-job-envelope.json")
+    canned_reference = {
+        "code": "1155",
+        "shortName": "MAYBANK",
+        "latestCloseDay": "2026-10-08",
+        "asOfDatetime": "2026-10-08T18:00:00Z",
+        "technical": {
+            "sma": {"p20": 9.7, "p50": 9.55, "p200": 9.3},
+            "rsi": {"period": 14, "value": 57.4},
+            "macd": {"line": 0.02123, "signal": 0.015, "histogram": 0.00623},
+            "week52": {"high": 10.45, "low": 8.32},
+        },
+        "technicalEvents": [],
+    }
+    backend = FakeBackendClient(analysis_reference_response=canned_reference)
+    _result, progress, _fake = _run_system_job(
+        JOB_ANALYZE_TECHNICAL, _load("technical-job-envelope.json"), backend
     )
     assert [p.stepIndex for p in progress] == [0, 1, 2, 3, 4, 5]
     assert progress[0].phase == "queued"
     assert progress[-1].phase == "done"
-    # Every progress event validates against the generated contract model.
     for p in progress:
         JobProgress.model_validate(p.model_dump(mode="json"))
 
@@ -123,13 +239,15 @@ def test_progress_is_step_based_and_monotonic() -> None:
 def test_bad_envelope_is_terminal() -> None:
     bad = _load("technical-job-envelope.json")
     bad["trigger"] = "not-a-trigger"
+    backend = FakeBackendClient()
     with pytest.raises(TerminalJobError):
-        _run(JOB_ANALYZE_TECHNICAL, bad)
+        _run_system_job(JOB_ANALYZE_TECHNICAL, bad, backend)
 
 
 def test_unknown_job_name_is_terminal() -> None:
+    backend = FakeBackendClient()
     with pytest.raises(TerminalJobError):
-        _run("analyze-nonsense", _load("technical-job-envelope.json"))
+        _run_system_job("analyze-nonsense", _load("technical-job-envelope.json"), backend)
 
 
 # --- Spec-06 showcase jobs (free-tier-ai-showcase, tickets 02/03) -----------
@@ -143,11 +261,14 @@ class FakeBackendClient:
         *,
         indices_response: dict | None = None,
         announcement_response: dict | None = None,
+        analysis_reference_response: dict | None = None,
     ) -> None:
         self.indices_response = indices_response or {"indices": []}
         self.announcement_response = announcement_response or {}
+        self.analysis_reference_response = analysis_reference_response or {}
         self.market_indices_calls = 0
         self.announcement_calls: list[str] = []
+        self.analysis_reference_calls: list[str] = []
 
     def get_market_indices(self) -> dict:
         self.market_indices_calls += 1
@@ -156,6 +277,10 @@ class FakeBackendClient:
     def get_announcement(self, announcement_id: str) -> dict:
         self.announcement_calls.append(announcement_id)
         return self.announcement_response
+
+    def get_analysis_reference(self, symbol: str) -> dict:
+        self.analysis_reference_calls.append(symbol)
+        return self.analysis_reference_response
 
 
 def _run_system_job(

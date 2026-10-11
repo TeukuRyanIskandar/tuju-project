@@ -1,4 +1,8 @@
 import type { StockAnalysisStatus } from '../data/entities/enums';
+import {
+  stockCodeFromJobId,
+  stockCodeFromFundamentalJobId,
+} from '../jobbus/job-id-formats';
 
 export type StockAnalysisUpsertInput = {
   instrumentId: string;
@@ -12,42 +16,38 @@ export type StockAnalysisUpsertInput = {
   errorMessage?: string | null;
 };
 
-/** `JobResult.jobId` prefix for PoC `analyze-technical` (colon form). */
-export const TECHNICAL_JOB_RESULT_PREFIX = 'technical:';
+/** BullMQ dedup id prefix for `analyze-technical` (colon form). */
+export const TECHNICAL_BULL_JOB_PREFIX = 'ta:';
 
-/** `JobResult.jobId` prefix for PoC `analyze-fundamental` (colon form). */
-export const FUNDAMENTAL_JOB_RESULT_PREFIX = 'fundamental:';
+/** BullMQ dedup id prefix for `analyze-fundamental` (colon form). */
+export const FUNDAMENTAL_BULL_JOB_PREFIX = 'fa:';
 
-/** BullMQ dedup id prefix for `analyze-technical` (hyphen form). */
-export const TECHNICAL_BULL_JOB_PREFIX = 'ta-';
-
-/** BullMQ dedup id prefix for `analyze-fundamental` (hyphen form). */
-export const FUNDAMENTAL_BULL_JOB_PREFIX = 'fa-';
-
-export function stockCodeFromTechnicalJobResultId(jobId: string): string | null {
-  if (!jobId.startsWith(TECHNICAL_JOB_RESULT_PREFIX)) return null;
-  const rest = jobId.slice(TECHNICAL_JOB_RESULT_PREFIX.length);
-  const stockCode = rest.split(':')[0];
-  return stockCode || null;
-}
-
-export function stockCodeFromFundamentalJobResultId(jobId: string): string | null {
-  if (!jobId.startsWith(FUNDAMENTAL_JOB_RESULT_PREFIX)) return null;
-  const rest = jobId.slice(FUNDAMENTAL_JOB_RESULT_PREFIX.length);
-  const stockCode = rest.split(':')[0];
-  return stockCode || null;
-}
-
+/**
+ * Extract stock code from technical analysis job ID (BullMQ or JobResult format).
+ * Replaces both `stockCodeFromTechnicalBullJobId` and `stockCodeFromTechnicalJobResultId`.
+ */
 export function stockCodeFromTechnicalBullJobId(jobId: string): string | null {
-  if (!jobId.startsWith(TECHNICAL_BULL_JOB_PREFIX)) return null;
-  const rest = jobId.slice(TECHNICAL_BULL_JOB_PREFIX.length);
-  const stockCode = rest.split('-')[0];
-  return stockCode || null;
+  return stockCodeFromJobId(jobId);
 }
 
+/**
+ * Extract stock code from technical analysis job ID (JobResult form).
+ * Replaces the historical `stockCodeFromTechnicalJobResultId`.
+ */
+export function stockCodeFromTechnicalJobResultId(jobId: string): string | null {
+  return stockCodeFromJobId(jobId);
+}
+
+/**
+ * Extract stock code from fundamental analysis job ID (BullMQ or JobResult format).
+ */
 export function stockCodeFromFundamentalBullJobId(jobId: string): string | null {
-  if (!jobId.startsWith(FUNDAMENTAL_BULL_JOB_PREFIX)) return null;
-  const rest = jobId.slice(FUNDAMENTAL_BULL_JOB_PREFIX.length);
-  const stockCode = rest.split('-')[0];
-  return stockCode || null;
+  return stockCodeFromFundamentalJobId(jobId);
+}
+
+/**
+ * Extract stock code from fundamental analysis job ID (JobResult form).
+ */
+export function stockCodeFromFundamentalJobResultId(jobId: string): string | null {
+  return stockCodeFromFundamentalJobId(jobId);
 }

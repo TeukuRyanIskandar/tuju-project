@@ -138,7 +138,6 @@ def test_round_trip_over_redis_and_localstack(
     async def scenario() -> JobResult:
         queue = Queue(QUEUE_ANALYSIS, {"connection": settings.redis_url})
 
-        # Artifact store bound to the container LocalStack (real S3 PUTs).
         artifact_store = ArtifactStore(settings, s3_client=s3_client)
 
         done: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -146,7 +145,7 @@ def test_round_trip_over_redis_and_localstack(
         async def process(job, token):
             loop = asyncio.get_running_loop()
 
-            def report(progress):  # progress reporter is fire-and-forget here
+            def report(progress):
                 asyncio.run_coroutine_threadsafe(
                     job.updateProgress(progress.model_dump(mode="json")), loop
                 )
@@ -176,12 +175,10 @@ def test_round_trip_over_redis_and_localstack(
 
     result = asyncio.run(scenario())
 
-    # 1. Contract-valid JobResult (re-validate the round trip end to end).
     JobResult.model_validate(result.model_dump(mode="json"))
     assert result.jobId.startswith("ta:MAYBANK:1D:")
     assert result.summary.verdict in ("bullish", "bearish", "neutral")
 
-    # 2. The claim-checked artifact really landed in S3 at the pointer.
     head = s3_client.head_object(
         Bucket=result.pointer.bucket, Key=result.pointer.key
     )

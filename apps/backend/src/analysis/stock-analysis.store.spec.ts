@@ -79,14 +79,14 @@ describe('stock analysis job id parsing', () => {
     expect(stockCodeFromFundamentalJobResultId(FUNDAMENTAL_RESULT.jobId)).toBe(
       '1155',
     );
-    expect(stockCodeFromTechnicalBullJobId('ta-1155-1D-2026-10-08T18')).toBe(
+    expect(stockCodeFromTechnicalBullJobId('ta:1155:1D:2026-10-08T18')).toBe(
       '1155',
     );
     expect(
-      stockCodeFromFundamentalBullJobId('fa-1155-quarterly-2026-10-08T18'),
+      stockCodeFromFundamentalBullJobId('fa:1155:quarterly:2026-10-08T18'),
     ).toBe('1155');
     expect(stockCodeFromTechnicalJobResultId('brief:2026-10-08')).toBeNull();
-    expect(stockCodeFromFundamentalBullJobId('ta-1155-1D-x')).toBeNull();
+    expect(stockCodeFromFundamentalBullJobId('fa:1155:quarterly:x')).toBe('1155');
   });
 });
 
@@ -106,7 +106,7 @@ describe('TechnicalAnalysisStore', () => {
       instrumentId: 'inst-1155',
       status: StockAnalysisStatus.Pending,
       correlationId: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
-      jobId: 'ta-1155-1D-2026-10-08T18',
+      jobId: 'ta:1155:1D:2026-10-08T18',
     });
     expect(rows.get('inst-1155')?.status).toBe(StockAnalysisStatus.Pending);
 
@@ -124,14 +124,14 @@ describe('TechnicalAnalysisStore', () => {
       instrumentId: 'inst-1155',
       status: StockAnalysisStatus.Pending,
       correlationId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
-      jobId: 'ta-1155-1D-2026-10-08T19',
+      jobId: 'ta:1155:1D:2026-10-08T19',
     });
     expect(rows.size).toBe(1);
 
     await Promise.resolve(
       failures[0]({
         correlationId: '',
-        jobId: 'ta-1155-1D-2026-10-08T19',
+        jobId: 'ta:1155:1D:2026-10-08T19',
         failureClass: 'transient_exhausted',
         retryable: true,
         userMessage: 'worker blew up',
@@ -177,6 +177,31 @@ describe('TechnicalAnalysisStore', () => {
     expect(rows.size).toBe(0);
     expect(instruments.findOne).not.toHaveBeenCalled();
   });
+
+  it('facts-only headline → FactsOnly status', async () => {
+    const { bus, results } = fakeJobBus();
+    const { repo, rows } = fakeRepo<TechnicalAnalysis>();
+    const instruments = {
+      findOne: async ({ where }: { where: { stockCode: string } }) =>
+        where.stockCode === '1155' ? instrument('1155') : null,
+    } as unknown as Repository<Instrument>;
+
+    const store = new TechnicalAnalysisStore(bus, repo, instruments);
+    store.onModuleInit();
+
+    const factsOnlyResult: JobResult = {
+      ...TECHNICAL_RESULT,
+      summary: {
+        ...TECHNICAL_RESULT.summary,
+        headline: 'facts-only: Grounding check failed.',
+      },
+    };
+
+    await Promise.resolve(results[0](factsOnlyResult));
+    await new Promise((r) => setImmediate(r));
+
+    expect(rows.get('inst-1155')?.status).toBe(StockAnalysisStatus.FactsOnly);
+  });
 });
 
 describe('FundamentalAnalysisStore', () => {
@@ -195,7 +220,7 @@ describe('FundamentalAnalysisStore', () => {
       instrumentId: 'inst-fa',
       status: StockAnalysisStatus.Pending,
       correlationId: 'b2c3d4e5-f6a7-8901-bcde-f12345678901',
-      jobId: 'fa-1155-quarterly-2026-10-08T18',
+      jobId: 'fa:1155:quarterly:2026-10-08T18',
     });
 
     await Promise.resolve(results[0](FUNDAMENTAL_RESULT));
@@ -209,7 +234,7 @@ describe('FundamentalAnalysisStore', () => {
     await Promise.resolve(
       failures[0]({
         correlationId: '',
-        jobId: 'fa-1155-quarterly-2026-10-08T18',
+        jobId: 'fa:1155:quarterly:2026-10-08T18',
         failureClass: 'terminal',
         retryable: false,
         userMessage: 'grounding hard-fail stub',
@@ -227,5 +252,30 @@ describe('FundamentalAnalysisStore', () => {
           StockAnalysisStatus.FactsOnly,
       ),
     ).toBe(true);
+  });
+
+  it('facts-only headline → FactsOnly status', async () => {
+    const { bus, results } = fakeJobBus();
+    const { repo, rows } = fakeRepo<FundamentalAnalysis>();
+    const instruments = {
+      findOne: async ({ where }: { where: { stockCode: string } }) =>
+        where.stockCode === '1155' ? instrument('1155', 'inst-fa') : null,
+    } as unknown as Repository<Instrument>;
+
+    const store = new FundamentalAnalysisStore(bus, repo, instruments);
+    store.onModuleInit();
+
+    const factsOnlyResult: JobResult = {
+      ...FUNDAMENTAL_RESULT,
+      summary: {
+        ...FUNDAMENTAL_RESULT.summary,
+        headline: 'facts-only: Narration stopped by cost guard.',
+      },
+    };
+
+    await Promise.resolve(results[0](factsOnlyResult));
+    await new Promise((r) => setImmediate(r));
+
+    expect(rows.get('inst-fa')?.status).toBe(StockAnalysisStatus.FactsOnly);
   });
 });

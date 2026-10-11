@@ -28,6 +28,7 @@ import type {
   StockSeriesResponse,
   StockTechnicalAnalysisResponse,
 } from './stocks.types';
+import type { AnalysisReferenceResponse } from './analysis-reference';
 
 @Controller('stocks')
 export class StocksController {
@@ -98,6 +99,19 @@ export class StocksController {
     @Param('code') code: string,
   ): Promise<StockFundamentalAnalysisResponse> {
     return this.stocks.getFundamentalAnalysis(code);
+  }
+
+  /**
+   * Worker-facing reference endpoint (ticket 08): all facts (TA indicators + events,
+   * FA metrics) for the Python AI worker to fetch without direct Postgres access.
+   * No narrative — that is LLM-generated server-side in the worker.
+   * KLCI-30 gate, 404 when no indicator snapshot.
+   */
+  @Get(':code/analysis/reference')
+  async getAnalysisReference(
+    @Param('code') code: string,
+  ): Promise<AnalysisReferenceResponse> {
+    return this.stocks.getAnalysisReference(code);
   }
 
   /** The bounded core snapshot — one round trip, identity ⋈ fundamentals ⋈ technicals ⋈ shariah. */
