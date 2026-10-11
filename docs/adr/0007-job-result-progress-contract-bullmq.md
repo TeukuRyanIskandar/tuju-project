@@ -252,6 +252,80 @@ reportProgress(p: JobProgress) -> None
   future multi-instance NestJS would need these moved to shared Redis
   pub/sub — noted, not built.
 
+## Amendment: Payload Versioning Strategy (Issue m-11)
+
+**Status:** Proposed; implementation tracked separately.
+
+The current contract lacks a versioning strategy for schema-breaking changes to job payloads. If a required field is added to `TechnicalPayload`, all previously-enqueued jobs fail validation and poison the queue.
+
+### Proposed Design (Option A from m-11)
+
+Add version fields to the job envelope and per-payload type:
+
+```typescript
+// packages/contracts/src/events.ts
+export const JOB_ENVELOPE_VERSION = '1.0';
+
+export type JobEnvelope<P> = {
+  jobId: string;
+  correlationId: UUID;
+  envelopeVersion: string;        // version the envelope itself
+  payloadVersion: string;         // e.g., 'technical-payload-v1' | 'technical-payload-v2'
+  payload: P;
+  requestedBy: string;
+  trigger: 'user' | 'price-move';
+  asOf: string;
+};
+
+export type TechnicalPayload = {
+  symbol: string;
+  timeframe: '1D' | '1W' | '1M';
+  indicators?: string[];          // new field in v2; optional for backward compat
+};
+```
+
+**Worker behavior:**
+
+```python
+def process_job(envelope: dict) -> JobResult:
+    payload_version = envelope.get('payloadVersion', 'technical-payload-v1')
+    
+    if payload_version == 'technical-payload-v1':
+        payload = TechnicalPayloadV1.parse_obj(envelope['payload'])
+        # v1 logic
+    elif payload_version == 'technical-payload-v2':
+        payload = TechnicalPayloadV2.parse_obj(envelope['payload'])
+        # v2 logic, possibly with migration from v1 format
+    else:
+        raise UnrecoverableError(f"Unsupported payload version: {payload_version}")
+    
+    # Process...
+```
+
+**Deployment implications:**
+
+1. Add `payloadVersion` field to `JobEnvelope` in all contexts.
+2. Backend sets `payloadVersion = 'technical-payload-v1'` when enqueueing.
+3. Worker validates and dispatches based on version.
+4. Future breaking changes increment the version string; worker handles both old and new.
+5. Enables zero-downtime deploys and easy rollback.
+
+### Short-Term Mitigation (Until Versioning Ships)
+
+Follow **Option B** (backward compatibility) in `docs/ops/queue-deployment-runbook.md`:
+
+- Make all new fields optional with sensible defaults.
+- Test with both old and new schemas before merging.
+- Deploy worker → wait for queue to drain → deploy backend.
+- Fallback: drain the failed queue if poisoning occurs.
+
+### Related Issue
+
+- **Issue m-11:** BullMQ payload migration strategy
+- **Runbook:** `docs/ops/queue-deployment-runbook.md` (deployment checklist + incident response)
+
+---
+
 ## Out of scope (recorded here, ruled out of the map)
 
 - **The concrete TA/FA indicator & metric set** (e.g. which SMAs, PE ratio, news,
@@ -261,6 +335,8 @@ reportProgress(p: JobProgress) -> None
   does not block and is not part of the architecture destination.
 - **IPO/prospectus doc-analysis job type** — deferred ~6+ months; not forward-
   declared. Added additively when it lands.
+- **Versioning implementation details** — see the amendment above and issue m-11.
+  Design is pinned here; implementation is deferred.
 
 ## Alternatives considered
 
