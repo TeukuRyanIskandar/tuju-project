@@ -47,36 +47,42 @@ def _run(client: FakeLLMClient | None = None, *, shariah: str | None = "complian
     return artifact, client, tracker, steps
 
 
-def test_all_five_sections_and_both_insights_present() -> None:
+def test_all_five_sections_and_four_insights_present() -> None:
     artifact, _client, _tracker, steps = _run()
 
     assert set(artifact["sections"]) == {
         "offer", "business", "financials", "riskFactors", "whatToWatch",
     }
-    assert set(artifact["insights"]) == {"shariah", "cornerstone"}
+    assert set(artifact["insights"]) == {"shariah", "cornerstone", "lockup", "relatedParty"}
     assert artifact["sections"]["offer"]["data"]["useOfProceeds"]
     assert len(artifact["sections"]["business"]["data"]["lines"]) == 3
     assert artifact["sections"]["riskFactors"]["data"]["themes"][0]["rank"] == 1
     assert artifact["insights"]["shariah"]["status"] == "compliant"
     assert artifact["insights"]["cornerstone"]["present"] is True
     assert artifact["insights"]["cornerstone"]["investors"]
+    assert artifact["insights"]["lockup"]["entries"][0]["duration"]
+    assert artifact["insights"]["lockup"]["routing"]["source"] in ("located", "fallback")
+    assert artifact["insights"]["relatedParty"]["items"][0]["counterparty"]
     assert artifact["provenance"]["source"] == "real"
     assert artifact["headline"] == artifact["sections"]["whatToWatch"]["data"]["headline"]
     assert steps == [
         "offer", "business", "financials", "risk-factors",
-        "cornerstone-investors", "what-to-watch",
+        "cornerstone-investors", "lockup", "related-party", "what-to-watch",
     ]
 
 
-def test_what_to_watch_is_a_reduce_over_the_four_section_outputs() -> None:
+def test_what_to_watch_is_a_reduce_over_the_structured_outputs() -> None:
     artifact, client, _t, _s = _run()
     watch_call = client.calls[client.steps.index("what-to-watch")]
     joined = "\n".join(m.content for m in watch_call)
 
-    # The reduce prompt embeds the four structured outputs ...
+    # The reduce prompt embeds the structured outputs (4 sections + lock-up
+    # and related-party insights) ...
     marker = "SECTION_OUTPUTS:\n"
     payload, _ = json.JSONDecoder().raw_decode(joined[joined.index(marker) + len(marker):])
-    assert set(payload) == {"offer", "business", "financials", "riskFactors"}
+    assert set(payload) == {
+        "offer", "business", "financials", "riskFactors", "lockup", "relatedParty",
+    }
     assert payload["riskFactors"] == artifact["sections"]["riskFactors"]["data"]
     # ... and NOT the raw document text.
     assert "150,000,000 shares at RM0.50" not in joined
@@ -115,6 +121,23 @@ def test_malformed_json_twice_is_a_clear_failure() -> None:
     with pytest.raises(MalformedModelOutput, match="business"):
         _run(client)
     assert client.steps.count("business") == 2  # bounded: exactly one retry
+
+
+def test_free_model_gets_more_retries_then_succeeds() -> None:
+    # $0 model: a retry costs nothing and openrouter/free may route it to a
+    # different model, so the bound is MAX_RETRIES_FREE (3), not 1.
+    client = FakeLLMClient(model="openrouter/free", garbage_first={"lockup": 3})
+    artifact, client, tracker, _s = _run(client)
+    assert tracker.free
+    assert client.steps.count("lockup") == 4  # 3 bad replies + the good one
+    assert artifact["insights"]["lockup"]["entries"]
+
+
+def test_free_model_retries_are_still_bounded() -> None:
+    client = FakeLLMClient(model="openrouter/free", garbage_first={"lockup": 4})
+    with pytest.raises(MalformedModelOutput, match="lockup.*3 retries"):
+        _run(client)
+    assert client.steps.count("lockup") == 4
 
 
 def test_schema_violation_counts_as_malformed() -> None:
@@ -210,14 +233,14 @@ def test_small_section_is_untouched() -> None:
 
 def test_realistic_run_stays_well_under_the_2_usd_ceiling() -> None:
     # Worst-case-sized fake usage per call: a maxed-out 240k-char section
-    # (~80k tokens in) + full output, for every one of the 6 LLM steps.
+    # (~80k tokens in) + full output, for every one of the 8 LLM steps.
     usage = Usage(prompt_tokens=80_000, completion_tokens=3_000)
     artifact, _c, tracker, _s = _run(FakeLLMClient(model="google/gemini-2.5-flash", usage=usage))
     cost = artifact["cost"]
-    assert cost["calls"] == 6
-    assert cost["promptTokens"] == 6 * 80_000
+    assert cost["calls"] == 8
+    assert cost["promptTokens"] == 8 * 80_000
     assert 0 < cost["estimatedCostUsd"] < 2.0
-    assert cost["estimatedCostUsd"] < 0.5  # Flash is cheap: ~0.18 here
+    assert cost["estimatedCostUsd"] < 0.5  # Flash is cheap: ~0.25 here
     assert cost["ceilingUsd"] == 2.0
     assert tracker.spent_usd == pytest.approx(cost["estimatedCostUsd"])
 
@@ -227,8 +250,8 @@ def test_every_builtin_model_fits_the_ceiling_at_worst_case_budget() -> None:
     from tuju_ai.prospectus.budget import CORNERSTONE_CHAR_BUDGET
     from tuju_ai.llm.cost import CHARS_PER_TOKEN_ESTIMATE, DEFAULT_PRICE_TABLE, usage_cost_usd
 
-    worst_in = (4 * SECTION_CHAR_BUDGET + CORNERSTONE_CHAR_BUDGET) // CHARS_PER_TOKEN_ESTIMATE
-    worst_out = 5 * 3000 + 1500
+    worst_in = (6 * SECTION_CHAR_BUDGET + CORNERSTONE_CHAR_BUDGET) // CHARS_PER_TOKEN_ESTIMATE
+    worst_out = 7 * 3000 + 1500
     for model, price in DEFAULT_PRICE_TABLE.items():
         # +10% for prompts/system overhead and the reduce input.
         cost = usage_cost_usd(Usage(int(worst_in * 1.1), worst_out), price)
@@ -259,6 +282,46 @@ def test_unknown_model_is_priced_conservatively() -> None:
     t = CostTracker(model="mystery/model", ceiling_usd=10.0)
     t.record("x", Usage(prompt_tokens=1_000_000, completion_tokens=0))
     assert t.spent_usd == pytest.approx(3.0)  # the priciest known input rate (Sonnet)
+
+
+def test_free_router_costs_nothing_and_never_trips_the_guard() -> None:
+    """openrouter/free (the default model): $0 even on worst-case usage, and a
+    tiny ceiling cannot abort it."""
+    usage = Usage(prompt_tokens=1_000_000, completion_tokens=100_000)
+    artifact, client, tracker, _s = _run(
+        FakeLLMClient(model="openrouter/free", usage=usage), ceiling=0.01
+    )
+    assert artifact["cost"]["estimatedCostUsd"] == 0.0
+    assert "what-to-watch" in client.steps  # ran to the end
+
+
+def test_free_suffixed_models_cost_nothing() -> None:
+    t = CostTracker(model="nvidia/nemotron-3-ultra-550b-a55b:free", ceiling_usd=0.01)
+    t.record("x", Usage(prompt_tokens=1_000_000, completion_tokens=100_000))
+    assert t.spent_usd == 0.0
+
+
+class _RoutedFakeClient(FakeLLMClient):
+    """A router: the response names a different serving model per call."""
+
+    SERVED = ("google/gemma-4-31b-it:free", "meta-llama/llama-4-scout:free")
+
+    def complete(self, messages, **kwargs):  # noqa: ANN001, ANN003, ANN201
+        response = super().complete(messages, **kwargs)
+        served = self.SERVED[(len(self.calls) - 1) % len(self.SERVED)]
+        return type(response)(text=response.text, usage=response.usage, model=served)
+
+
+def test_provenance_and_cost_record_the_models_that_actually_answered() -> None:
+    from tuju_ai.contracts_generated import ProspectusCostReport
+
+    artifact, _c, _t, _s = _run(_RoutedFakeClient(model="openrouter/free"))
+
+    assert artifact["provenance"]["model"] == ", ".join(_RoutedFakeClient.SERVED)
+    per_call = artifact["cost"]["perCall"]
+    assert {c["model"] for c in per_call} == set(_RoutedFakeClient.SERVED)
+    assert artifact["cost"]["model"] == "openrouter/free"  # what was requested
+    ProspectusCostReport.model_validate(artifact["cost"])  # wire-contract conformant
 
 
 def test_price_table_override_is_honoured_and_validated() -> None:

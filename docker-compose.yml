@@ -165,7 +165,7 @@ services:
       # cleanly (terminal) with a clear message; supply the key from your shell
       # or an untracked .env (`OPENROUTER_API_KEY=... docker compose up`).
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      LLM_MODEL: ${LLM_MODEL:-google/gemini-2.5-flash}
+      LLM_MODEL: ${LLM_MODEL:-openrouter/free}
     depends_on:
       redis:
         condition: service_healthy

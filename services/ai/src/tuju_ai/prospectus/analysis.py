@@ -10,8 +10,9 @@ contract) holding the five sections and the two Bursa insights:
 4. ``riskFactors``  — risks ranked + themed                       (LLM, section)
 5. ``whatToWatch``  — a REDUCE over 1-4's structured outputs      (LLM, no doc)
 
-Insights: ``shariah`` (NestJS ``ShariahStatus`` data; absent/unknown tolerated)
-and ``cornerstone`` (LLM-extracted from the prospectus text itself).
+Insights: ``shariah`` (NestJS ``ShariahStatus`` data; absent/unknown tolerated),
+``cornerstone`` (LLM-extracted from the prospectus text itself), and
+``lockup`` / ``relatedParty`` (LLM, routed sections like 1-4; prospectus-v2 T05).
 
 Design points
 -------------
@@ -24,7 +25,9 @@ Design points
 * Every LLM reply is validated with pydantic; a malformed reply gets ONE
   bounded retry (with the validation error fed back), then a clear
   :class:`MalformedModelOutput` (terminal, ADR-0007 "worker-rejected bad
-  generation").
+  generation"). On a $0 model the bound is :data:`MAX_RETRIES_FREE` instead:
+  a retry costs nothing, and ``openrouter/free`` routes each call to a
+  possibly different model, so a bad reply is often not repeated.
 * The prospectus text is untrusted data: the system prompt instructs the
   model to ignore instructions inside it.
 * Every call goes through the :class:`~tuju_ai.llm.cost.CostTracker` so the
@@ -46,7 +49,9 @@ from .analysis_models import (
     CornerstoneOutput,
     FinancialsOutput,
     IpoReference,
+    LockupOutput,
     OfferOutput,
+    RelatedPartyOutput,
     RiskOutput,
     WatchOutput,
 )
@@ -61,6 +66,8 @@ STEP_BUSINESS = "business"
 STEP_FINANCIALS = "financials"
 STEP_RISKS = "risk-factors"
 STEP_CORNERSTONE = "cornerstone-investors"
+STEP_LOCKUP = "lockup"
+STEP_RELATED_PARTY = "related-party"
 STEP_WATCH = "what-to-watch"
 # Order the handler reports progress in.
 LLM_STEPS = (
@@ -69,19 +76,23 @@ LLM_STEPS = (
     STEP_FINANCIALS,
     STEP_RISKS,
     STEP_CORNERSTONE,
+    STEP_LOCKUP,
+    STEP_RELATED_PARTY,
     STEP_WATCH,
 )
 
 MAX_TOKENS_SECTION = 3000
 MAX_TOKENS_WATCH = 1500
 MAX_RAW_ECHO_CHARS = 2000  # how much of a bad reply is echoed back on retry
+MAX_RETRIES = 1  # malformed-reply retries on a paid model (ADR-0007)
+MAX_RETRIES_FREE = 3  # ... and on a $0 model (prospectus-v2 T04 live run)
 
 T = TypeVar("T", bound=BaseModel)
 StepCallback = Callable[[str], None]
 
 
 class MalformedModelOutput(Exception):
-    """The model's reply stayed invalid after the one bounded retry."""
+    """The model's reply stayed invalid after the bounded retries."""
 
 
 SYSTEM_PROMPT = """\
@@ -137,16 +148,38 @@ shares before the IPO). JSON shape:
  "investors": [{"name": str, "allocation": str|null, "notes": str|null}],
  "summary": str|null}
 Set "present" to false and "investors" to [] if the text names none.""",
+    STEP_LOCKUP: """\
+Identify the moratorium (lock-up) on shares held by promoters, specified \
+shareholders, or cornerstone investors after listing. JSON shape:
+{"present": bool,
+ "entries": [{"name": str, "shares": str|null, "duration": str|null,
+              "notes": str|null}],
+ "summary": str|null}
+"shares" is the number or percentage of shares under moratorium; "duration" \
+is the period as written (e.g. "6 months from the date of listing"). Set \
+"present" to false and "entries" to [] if the text names no moratorium.""",
+    STEP_RELATED_PARTY: """\
+Identify the material related-party transactions (dealings with directors, \
+substantial shareholders, or persons connected to them). JSON shape:
+{"present": bool,
+ "items": [{"counterparty": str, "nature": str|null, "amount": str|null,
+            "basis": str|null}],
+ "aggregateAmount": str|null, "summary": str|null}
+"basis" is whether the prospectus states it is on arm's length terms. At most \
+8 items, largest first. Set "present" to false and "items" to [] if the text \
+names no related-party transactions.""",
 }
 
 _WATCH_TASK = """\
 You are given the structured analysis of the four main sections of one IPO \
-prospectus (SECTION_OUTPUTS above). Do NOT assume anything beyond them. \
+prospectus, plus its lock-up and related-party insights (SECTION_OUTPUTS \
+above). Do NOT assume anything beyond them. \
 Write the "what to watch" synthesis: the few things an investor should \
 monitor after reading this prospectus. JSON shape:
 {"headline": str,
  "items": [{"point": str, "why": str|null, "sourceSection":
-            "offer"|"business"|"financials"|"risk-factors"}]}
+            "offer"|"business"|"financials"|"risk-factors"|"lockup"|
+            "related-party"}]}
 "headline" is ONE sentence (under 160 characters) naming the single most \
 important thing to watch. 3-5 items. No verdict, no recommendation."""
 
@@ -180,16 +213,18 @@ def _complete_validated(
     model: type[T],
     max_tokens: int,
 ) -> T:
-    """One guarded call, validated; ONE bounded retry on malformed output."""
+    """One guarded call, validated; bounded retries on malformed output
+    (:data:`MAX_RETRIES`, or :data:`MAX_RETRIES_FREE` on a $0 model)."""
+    retries = MAX_RETRIES_FREE if tracker.free else MAX_RETRIES
     last_error = ""
     convo = list(messages)
-    for attempt in (1, 2):
+    for attempt in range(1, retries + 2):
         response = tracker.call(client, step, convo, max_tokens=max_tokens)
         try:
             return model.model_validate(extract_json(response.text))
         except (ValueError, ValidationError) as exc:  # JSONDecodeError ⊂ ValueError
             last_error = str(exc).splitlines()[0][:300] if str(exc) else repr(exc)
-            if attempt == 2:
+            if attempt == retries + 1:
                 break
             convo = messages + [
                 Message("assistant", response.text[:MAX_RAW_ECHO_CHARS]),
@@ -201,8 +236,8 @@ def _complete_validated(
                 ),
             ]
     raise MalformedModelOutput(
-        f"step {step!r}: the model's reply was still invalid after one retry "
-        f"({last_error})"
+        f"step {step!r}: the model's reply was still invalid after "
+        f"{retries} retr{'y' if retries == 1 else 'ies'} ({last_error})"
     )
 
 
@@ -289,7 +324,7 @@ def analyze_prospectus(
     on_step: StepCallback | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
 ) -> dict[str, Any]:
-    """Run the five sections + two insights; return the rich artifact dict.
+    """Run the five sections + four insights; return the rich artifact dict.
 
     ``on_step(step_id)`` fires BEFORE each LLM step (progress hook).
     """
@@ -350,13 +385,24 @@ def analyze_prospectus(
             "llmCalled": True,
         }
 
-    # Section 5: REDUCE over the other four structured outputs — not the doc.
+    # Insights: lock-up and related-party transactions, routed like 1-4
+    # (whole-document fallback when their heading is not found).
+    lockup, lockup_routing = section_call(
+        STEP_LOCKUP, ProspectusSection.LOCKUP, LockupOutput
+    )
+    related, related_routing = section_call(
+        STEP_RELATED_PARTY, ProspectusSection.RELATED_PARTY, RelatedPartyOutput
+    )
+
+    # Section 5: REDUCE over the structured outputs above — not the doc.
     notify(STEP_WATCH)
     section_outputs = {
         "offer": _dump(offer),
         "business": _dump(business),
         "financials": _dump(financials),
         "riskFactors": _dump(risks),
+        "lockup": _dump(lockup),
+        "relatedParty": _dump(related),
     }
     watch = _complete_validated(
         client=client,
@@ -381,7 +427,9 @@ def analyze_prospectus(
         "provenance": {
             "source": PROVENANCE_SOURCE,
             "pdfSha256": parse.pdfSha256,
-            "model": client.model,
+            # What actually answered: a router id (openrouter/free) can serve
+            # each call from a different model.
+            "model": ", ".join(tracker.served_models()) or client.model,
             "generatedAt": now().isoformat(),
         },
         "company": {
@@ -403,6 +451,8 @@ def analyze_prospectus(
         "insights": {
             "shariah": shariah_insight(reference),
             "cornerstone": {**_dump(cornerstone), **cornerstone_meta},
+            "lockup": {**_dump(lockup), "routing": lockup_routing},
+            "relatedParty": {**_dump(related), "routing": related_routing},
         },
         "cost": tracker.report(),
     }

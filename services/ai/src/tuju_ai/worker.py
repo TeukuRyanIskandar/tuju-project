@@ -51,9 +51,8 @@ def _make_processor(
             asyncio.run_coroutine_threadsafe(report_progress(progress), loop)
 
         try:
-            # handle_job is sync and can block for MINUTES (the first-run
-            # Docling parse of analyze-prospectus is 4-11 min of CPU). Run it
-            # in a thread so this event loop stays free to renew the BullMQ
+            # handle_job is sync and can block for MINUTES (analyze-prospectus
+            # makes several sequential LLM calls). Run it in a thread so this event loop stays free to renew the BullMQ
             # job lock (bullmq's LockManager is an asyncio task on this loop)
             # and to flush progress updates. Blocking the loop here would let
             # the lock lapse and the job be re-queued as "stalled".

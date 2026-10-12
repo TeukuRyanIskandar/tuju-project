@@ -1,6 +1,6 @@
 """One-off corpus inspection (not part of the test suite).
 
-Parses each real demo-corpus prospectus with Docling, prints the heading
+Parses each real demo-corpus prospectus (PyMuPDF, the default parse), prints the heading
 skeleton + routing table, and dumps a compact headings.json next to the PDFs
 so the section-skeleton patterns can be tuned against reality.
 
@@ -18,7 +18,7 @@ REPO = Path(__file__).resolve().parents[3]
 CORPUS = REPO / ".scratch" / "free-tier" / "demo-corpus" / "prospectuses"
 
 from tuju_ai.prospectus.models import ProspectusSection
-from tuju_ai.prospectus.parsing import parse_prospectus
+from tuju_ai.prospectus.parsing import parse_prospectus_fast
 from tuju_ai.prospectus.router import route_sections
 
 
@@ -32,7 +32,7 @@ def main() -> int:
     for pdf in pdfs:
         t0 = time.time()
         print(f"--- parsing {pdf.name} ...", flush=True)
-        parse = parse_prospectus(pdf.read_bytes())
+        parse = parse_prospectus_fast(pdf.read_bytes())
         routed = route_sections(parse)
         elapsed = time.time() - t0
         print(

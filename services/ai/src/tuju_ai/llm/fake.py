@@ -106,6 +106,31 @@ _CANNED: dict[str, dict] = {
         ],
         "summary": "Two cornerstone investors take up part of the offering.",
     },
+    "lockup": {
+        "present": True,
+        "entries": [
+            {
+                "name": "Example Promoter Sdn Bhd",
+                "shares": "45.0% of enlarged share capital",
+                "duration": "6 months from the date of listing",
+                "notes": None,
+            }
+        ],
+        "summary": "Promoters' shares are under a six-month moratorium.",
+    },
+    "related-party": {
+        "present": True,
+        "items": [
+            {
+                "counterparty": "Example Director Holdings",
+                "nature": "Rental of office premises",
+                "amount": "RM120,000 per year",
+                "basis": "Arm's length",
+            }
+        ],
+        "aggregateAmount": "RM120,000",
+        "summary": "One recurrent rental arrangement with a director's company.",
+    },
     "narrate": {"narrative": "Fake: price above all SMAs with RSI at mid-band."},
 }
 

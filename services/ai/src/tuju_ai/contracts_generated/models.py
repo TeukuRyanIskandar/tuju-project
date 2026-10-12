@@ -129,6 +129,7 @@ class ProspectusCostCall(BaseModel):
     completionTokens: conint(ge=0, le=9007199254740991)
     cachedTokens: conint(ge=0, le=9007199254740991)
     costUsd: confloat(ge=0.0)
+    model: constr(min_length=1) | None = None
 
 
 class ProspectusCostReport(BaseModel):
@@ -166,6 +167,16 @@ class ProspectusFinancialsData(BaseModel):
     highlights: list[str]
 
 
+class ProspectusLockupEntry(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    name: str
+    shares: str | None
+    duration: str | None
+    notes: str | None
+
+
 class ProspectusParseInfo(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -189,6 +200,16 @@ class ProspectusProvenance(BaseModel):
     pdfSha256: constr(min_length=1)
     model: constr(min_length=1)
     generatedAt: AwareDatetime
+
+
+class ProspectusRelatedPartyItem(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    counterparty: str
+    nature: str | None
+    amount: str | None
+    basis: str | None
 
 
 class ProspectusRiskTheme(BaseModel):
@@ -220,6 +241,14 @@ class ProspectusShariahInsight(BaseModel):
     status: Literal['compliant', 'non-compliant', 'unknown']
     source: Literal['sc-shariah-list', 'unavailable']
     note: str | None
+
+
+class ProspectusTiming(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    parseMs: conint(ge=0, le=9007199254740991)
+    analysisMs: conint(ge=0, le=9007199254740991)
 
 
 class ProspectusUseOfProceedsItem(BaseModel):
@@ -398,14 +427,6 @@ class ProspectusFinancialsSection(BaseModel):
     data: ProspectusFinancialsData
 
 
-class ProspectusInsights(BaseModel):
-    model_config = ConfigDict(
-        extra='forbid',
-    )
-    shariah: ProspectusShariahInsight
-    cornerstone: ProspectusCornerstoneInsight
-
-
 class ProspectusJobEnvelope(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -415,6 +436,16 @@ class ProspectusJobEnvelope(BaseModel):
     trigger: Literal['user', 'price-move', 'system']
     asOf: AwareDatetime
     payload: ProspectusPayload
+
+
+class ProspectusLockupInsight(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    present: bool
+    entries: list[ProspectusLockupEntry]
+    summary: str | None
+    routing: ProspectusRouting
 
 
 class ProspectusOfferData(BaseModel):
@@ -437,6 +468,17 @@ class ProspectusOfferSection(BaseModel):
     )
     routing: ProspectusRouting
     data: ProspectusOfferData
+
+
+class ProspectusRelatedPartyInsight(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    present: bool
+    items: list[ProspectusRelatedPartyItem]
+    aggregateAmount: str | None
+    summary: str | None
+    routing: ProspectusRouting
 
 
 class ProspectusRiskData(BaseModel):
@@ -492,6 +534,16 @@ class TechnicalJobEnvelope(BaseModel):
     payload: TechnicalPayload
 
 
+class ProspectusInsights(BaseModel):
+    model_config = ConfigDict(
+        extra='forbid',
+    )
+    shariah: ProspectusShariahInsight
+    cornerstone: ProspectusCornerstoneInsight
+    lockup: ProspectusLockupInsight | None = None
+    relatedParty: ProspectusRelatedPartyInsight | None = None
+
+
 class ProspectusSections(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
@@ -532,3 +584,4 @@ class ProspectusArtifact(BaseModel):
     insights: ProspectusInsights
     cost: ProspectusCostReport
     parse: ProspectusParseInfo
+    timing: ProspectusTiming | None = None

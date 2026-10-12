@@ -34,14 +34,17 @@ ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = "ann:"
 PROSPECTUS_JOB_ID_PREFIX = "prospectus:"
 
 # --- LLM defaults (ticket 05) ------------------------------------------------
-DEFAULT_LLM_MODEL = "google/gemini-2.5-flash"
+# OpenRouter's free-tier router (prospectus-v2 T04): $0/call, ~200K context,
+# picks the serving model per request (recorded per call in the cost report).
+DEFAULT_LLM_MODEL = "openrouter/free"
 DEFAULT_LLM_BASE_URL = "https://openrouter.ai/api/v1"
 # Per-document spend ceiling (spec 06: ~$2/doc). A run that would cross it is
 # aborted as a terminal failure (see tuju_ai.llm.cost).
 DEFAULT_COST_CEILING_USD = 2.0
-# BullMQ lock duration for the worker. The first-run Docling parse is 4-11 min
-# of CPU; the handler runs in a thread so the lock-renewal task keeps ticking
-# (renewed every lockDuration/2), but a generous lock is belt-and-braces.
+# BullMQ lock duration for the worker. analyze-prospectus runs for minutes
+# (sequential LLM calls; free-tier models are slow); the handler runs in a
+# thread so the lock-renewal task keeps ticking (renewed every lockDuration/2),
+# but a generous lock is belt-and-braces.
 DEFAULT_WORKER_LOCK_DURATION_MS = 5 * 60 * 1000
 
 

@@ -1,0 +1,595 @@
+{
+  "schemaVersion": "prospectus-at-a-glance-1",
+  "prospectusId": "iab_insights-analytics-berhad_2025-10-07",
+  "provenance": {
+    "source": "real",
+    "pdfSha256": "4906dce0e1342f69a0fa0d0db793c63293a38c82cf0d4b2a4e83514a87da8680",
+    "model": "apodex/apodex-1.1-mini:free, nvidia/nemotron-3.5-lightning:free, liquid/lfm-2.5-2.6b:free, poolside/laguna-s-2.1:free, cohere/north-mini-code:free",
+    "generatedAt": "2026-10-12T03:51:59.837263+00:00"
+  },
+  "company": {
+    "name": "iab_insights-analytics-berhad_2025-10-07",
+    "board": null,
+    "listingDate": null
+  },
+  "headline": "Watch the concentration of revenue among a few water agencies and the execution of the company’s expansion and M&A plans.",
+  "sections": {
+    "offer": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "offer for sale of 27,500,000 existing shares by way of private placement to bumiputera investors approved by the miti",
+          "utilisation of proceeds",
+          "utilisation of proceeds rm’000 %",
+          "details of our ipo",
+          "offer for sale",
+          "utilisation of proceeds",
+          "utilisation of proceeds notes rm’000 %",
+          "offer for sale"
+        ],
+        "routedChars": 31640,
+        "inputChars": 31640,
+        "truncated": false
+      },
+      "data": {
+        "summary": "The IPO comprises a public issue of 121,000,000 shares (22.0% of enlarged share capital) and an offer for sale of 27,500,000 shares (5.0%) via private placement to Bumiputera investors approved by MITI, with estimated gross proceeds of approximately RM43.6 million from the public issue (accruing to the Company) and RM9.9 million from the offer for sale (accruing to Selling Shareholders).",
+        "totalShares": "148,500,000",
+        "publicIssueShares": "121,000,000",
+        "offerForSaleShares": "27,500,000",
+        "priceRange": null,
+        "marketCapAtIpo": null,
+        "grossProceeds": "RM43.6 million from Public Issue; approximately RM9.9 million from Offer for Sale",
+        "useOfProceeds": [
+          {
+            "purpose": "Business expansion - Expansion of corporate office in Sarawak with a mini data centre",
+            "amount": "RM4,400,000",
+            "percentOfProceeds": "10.1%"
+          },
+          {
+            "purpose": "Business expansion - Expansion of IT operations",
+            "amount": "RM1,860,000",
+            "percentOfProceeds": "4.3%"
+          },
+          {
+            "purpose": "Business expansion - Expansion of West Malaysia branch office",
+            "amount": "RM1,212,000",
+            "percentOfProceeds": "2.8%"
+          },
+          {
+            "purpose": "General working capital",
+            "amount": "RM22,181,000",
+            "percentOfProceeds": "50.9%"
+          },
+          {
+            "purpose": "Strategic investments, mergers and acquisitions opportunities",
+            "amount": "RM9,000,000",
+            "percentOfProceeds": "20.7%"
+          },
+          {
+            "purpose": "Estimated listing expenses",
+            "amount": "RM4,907,000",
+            "percentOfProceeds": "11.2%"
+          }
+        ]
+      }
+    },
+    "business": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "business overview",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business model",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)"
+        ],
+        "routedChars": 160484,
+        "inputChars": 160484,
+        "truncated": false
+      },
+      "data": {
+        "lines": [
+          "The company supplies water technology solutions and intelligent asset management systems for water distribution, treatment, and other industries.",
+          "Its primary customers are water agencies in Sarawak (such as JBALB, Sibu Water Board) and businesses in hospitality, transportation, and construction.",
+          "It earns revenue through project-based contracts for system design, supply, installation, and ongoing maintenance or support services."
+        ]
+      }
+    },
+    "financials": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "financial highlights",
+          "financial information",
+          "historical financial information",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)"
+        ],
+        "routedChars": 100477,
+        "inputChars": 100477,
+        "truncated": false
+      },
+      "data": {
+        "currency": "RM'000",
+        "periods": [
+          {
+            "period": "FYE 2022",
+            "revenue": "29,117",
+            "grossProfit": "5,478",
+            "profitAfterTax": "2,332",
+            "netMargin": "8.0"
+          },
+          {
+            "period": "FYE 2023",
+            "revenue": "40,617",
+            "grossProfit": "9,058",
+            "profitAfterTax": "4,788",
+            "netMargin": "11.8"
+          },
+          {
+            "period": "FYE 2024",
+            "revenue": "31,950",
+            "grossProfit": "12,774",
+            "profitAfterTax": "6,899",
+            "netMargin": "21.6"
+          },
+          {
+            "period": "FYE 2025",
+            "revenue": "49,639",
+            "grossProfit": "29,683",
+            "profitAfterTax": "18,996",
+            "netMargin": "38.2"
+          }
+        ],
+        "trend": "The company demonstrated strong financial acceleration from FYE 2022 to FYE 2025, with revenue growing from RM29.1M to RM49.6M and profitability expanding dramatically. Gross profit and net margins more than doubled, driven by the high-margin intelligent asset management solutions segment.",
+        "highlights": [
+          "Revenue increased 64% from FYE 2022 to FYE 2025",
+          "GP margin rose from 18.8% to 59.8% (more than doubled)",
+          "PAT margin surged from 8.0% to 38.2% (more than tripled)",
+          "Intelligent asset management solutions became the dominant high-margin growth driver"
+        ]
+      }
+    },
+    "riskFactors": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "risk factors",
+          "risk factors notwithstanding the prospects of our group as outlined in this prospectus, you should carefully consider the following risk factors that may have a significant impact on our future performance, in addition to all other relevant information contained elsewhere in this prospectus, before making an application for our ipo shares.",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)"
+        ],
+        "routedChars": 65940,
+        "inputChars": 65940,
+        "truncated": false
+      },
+      "data": {
+        "summary": "The prospectus identifies key risks centered on customer concentration, project-based revenue volatility, intellectual property and cybersecurity exposure, credit and collection risks, execution of growth strategies, supply chain and subcontractor dependencies, and regulatory and licensing requirements.",
+        "themes": [
+          {
+            "rank": 1,
+            "theme": "Customer Concentration and Revenue Dependency",
+            "severity": "high",
+            "summary": "The Group is heavily reliant on JBALB and other Sarawak water agencies, which contributed the majority of revenue, and the loss of any major customer could significantly impact financial performance."
+          },
+          {
+            "rank": 2,
+            "theme": "Project-Based Revenue Volatility",
+            "severity": "high",
+            "summary": "Revenue, profit, and cash flow fluctuate due to the project-based nature of contracts, lack of long-term agreements, and dependency on securing new projects through competitive bidding."
+          },
+          {
+            "rank": 3,
+            "theme": "Intellectual Property and Cybersecurity Risks",
+            "severity": "high",
+            "summary": "The Group faces risks of IP infringement, source code leakage, hacking, and IT system breaches that could disrupt operations and harm reputation."
+          },
+          {
+            "rank": 4,
+            "theme": "Credit and Collection Risks",
+            "severity": "medium",
+            "summary": "Delays or defaults in customer payments, including RM3.7 million in overdue receivables, may lead to bad debt write-offs and adversely affect cash flow."
+          },
+          {
+            "rank": 5,
+            "theme": "Execution of Growth and Acquisition Strategies",
+            "severity": "medium",
+            "summary": "Future growth depends on successfully executing business strategies, managing M&A opportunities, and integrating acquired businesses, with no guarantee of success."
+          },
+          {
+            "rank": 6,
+            "theme": "Supply Chain and Subcontractor Dependencies",
+            "severity": "medium",
+            "summary": "Reliance on principals, suppliers, and subcontractors for IoT devices and project services exposes the Group to supply disruptions and cost overruns."
+          },
+          {
+            "rank": 7,
+            "theme": "Regulatory and Licensing Compliance",
+            "severity": "medium",
+            "summary": "The Group must maintain various licenses and approvals, including UPKJ registration, and failure to do so could restrict participation in government procurements."
+          }
+        ]
+      }
+    },
+    "whatToWatch": {
+      "derivedFrom": [
+        "offer",
+        "business",
+        "financials",
+        "riskFactors"
+      ],
+      "data": {
+        "headline": "Watch the concentration of revenue among a few water agencies and the execution of the company’s expansion and M&A plans.",
+        "items": [
+          {
+            "point": "Heavy reliance on a small number of water agency customers (e.g., JBALB) for the majority of revenue.",
+            "why": "Loss of any major customer could materially impact financial performance.",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Project‑based revenue leads to volatility in earnings and cash flow.",
+            "why": "Revenue, profit and cash flow fluctuate as contracts are won and completed on a competitive bidding basis.",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Large portion of IPO proceeds (≈51%) allocated to general working capital and ~21% to strategic investments/M&A.",
+            "why": "Future growth and capital allocation decisions will affect profitability and shareholder value.",
+            "sourceSection": "offer"
+          },
+          {
+            "point": "Significant lock‑up on insider holdings (e.g., Wee Khiam Hui 37.2% of enlarged capital) limits immediate share supply.",
+            "why": "Potential market impact when lock‑up expires and insiders may sell up to one‑third per year.",
+            "sourceSection": "lockup"
+          },
+          {
+            "point": "Related‑party purchases not on arm‑length terms (e.g., Advantage Focus) and personal guarantees for bank facilities.",
+            "why": "These non‑arm‑length transactions could create conflicts of interest and affect financial obligations.",
+            "sourceSection": "related-party"
+          }
+        ]
+      }
+    }
+  },
+  "insights": {
+    "shariah": {
+      "status": "unknown",
+      "source": "unavailable",
+      "note": "No Shariah classification is on record for this company yet."
+    },
+    "cornerstone": {
+      "present": false,
+      "investors": [],
+      "summary": "The prospectus text does not mention cornerstone investors.",
+      "inputChars": 0,
+      "truncated": false,
+      "llmCalled": false
+    },
+    "lockup": {
+      "present": true,
+      "entries": [
+        {
+          "name": "Ts. Wee Khiam Hui",
+          "shares": "204,765,000 (37.2%)",
+          "duration": "First 6-Month Moratorium: 6 months from the date of admission to the Official List; Second 6-Month Moratorium: 6 months; thereafter up to 1/3 per annum (on a straight-line basis) of shares held under moratorium",
+          "notes": "After Offer for Sale; based on enlarged share capital of 550,000,000 Shares after IPO"
+        },
+        {
+          "name": "Bong Joon Fook",
+          "shares": "96,360,000 (17.5%)",
+          "duration": "First 6-Month Moratorium: 6 months from the date of admission to the Official List; Second 6-Month Moratorium: 6 months; thereafter up to 1/3 per annum (on a straight-line basis) of shares held under moratorium",
+          "notes": "After Offer for Sale; based on enlarged share capital of 550,000,000 Shares after IPO"
+        },
+        {
+          "name": "Charlene Bong Myn Ee",
+          "shares": "100,375,000 (18.3%)",
+          "duration": "First 6-Month Moratorium: 6 months from the date of admission to the Official List; Second 6-Month Moratorium: 6 months; thereafter up to 1/3 per annum (on a straight-line basis) of shares held under moratorium",
+          "notes": "After Offer for Sale; based on enlarged share capital of 550,000,000 Shares after IPO"
+        },
+        {
+          "name": "Aggregate Specified Shareholders",
+          "shares": "401,500,000 (73.0%)",
+          "duration": "First 6-Month Moratorium: 6 months from the date of admission to the Official List; Second 6-Month Moratorium: 6 months; thereafter up to 1/3 per annum (on a straight-line basis) of shares held under moratorium",
+          "notes": "After Offer for Sale; based on enlarged share capital of 550,000,000 Shares after IPO"
+        }
+      ],
+      "summary": "A moratorium is imposed on the entire shareholdings of Specified Shareholders for 6 months from the date of admission to the Official List (First 6-Month Moratorium). Upon expiry, at least 45.0% of the total issued ordinary shares must remain under moratorium for another 6 months (Second 6-Month Moratorium). On expiry of the Second 6-Month Moratorium, Specified Shareholders may sell, transfer or assign up to a maximum of 1/3 per annum (on a straight-line basis) of the shares held under moratorium. The moratorium has been accepted by the Specified Shareholders, who provided written undertakings not to sell, transfer or assign their shareholdings during the moratorium period, and the restrictions are endorsed on the share certificates.",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "moratorium on our shares",
+          "moratorium shares",
+          "moratorium",
+          "moratorium shares"
+        ],
+        "routedChars": 2369,
+        "inputChars": 2369,
+        "truncated": false
+      }
+    },
+    "relatedParty": {
+      "present": true,
+      "items": [
+        {
+          "counterparty": "Wee Kang Soon and Ho Soh Hong",
+          "nature": "Office premises rental (tenancy agreements)",
+          "amount": "RM2,200 per month",
+          "basis": "Arm's length basis"
+        },
+        {
+          "counterparty": "Coast",
+          "nature": "Subcontractor for 2 water treatment plant projects awarded directly by Coast",
+          "amount": null,
+          "basis": "Arm's length basis"
+        },
+        {
+          "counterparty": "Coast",
+          "nature": "Purchase of fittings and consumables and supply of devices and instruments on an ad-hoc basis",
+          "amount": null,
+          "basis": "Not arm's length basis"
+        },
+        {
+          "counterparty": "Advantage Focus Sdn Bhd",
+          "nature": "Purchase of 1 unit of computer and installation works",
+          "amount": null,
+          "basis": "Not arm's length basis"
+        },
+        {
+          "counterparty": "Advantage Focus Sdn Bhd",
+          "nature": "Interest-free advances and/or payments on behalf",
+          "amount": null,
+          "basis": "Not arm's length basis"
+        },
+        {
+          "counterparty": "Ts. Wee Khiam Hui, Bong Joon Fook, and Charlene Bong Myn Ee",
+          "nature": "Personal guarantees for banking facilities (2 performance guarantees, 2 overdrafts, 2 term loans) granted to the Group by UOB",
+          "amount": "Outstanding balance RM1,135,000; Facility limit RM9,645,000; Amount guaranteed RM9,645,000",
+          "basis": null
+        },
+        {
+          "counterparty": "Chiong Pik Lang (spouse of Bong Joon Fook)",
+          "nature": "Third-party securities: assignment of benefits, rights, title and interest in service apartments at Vivacity Jazz Suite 2, Kuching and Pacific Place @ Ara Damansara",
+          "amount": null,
+          "basis": null
+        },
+        {
+          "counterparty": "Bong Mui Lan (sister of Bong Joon Fook)",
+          "nature": "Third-party securities: assignment of benefits, rights, title and interest in service apartment at Pacific Place @ Ara Damansara",
+          "amount": null,
+          "basis": null
+        }
+      ],
+      "aggregateAmount": null,
+      "summary": "The Group had several material related-party transactions including office premises rentals, subcontractor arrangements, ad-hoc purchases and supplies, computer and installation purchases, interest-free advances, and personal guarantees and third-party securities provided by directors and substantial shareholders for banking facilities. Some transactions were conducted on an arm's length basis while others were not. The Group has established procedures to ensure future related-party transactions are conducted on arm's length terms and has applied for the release of personal guarantees and third-party securities upon listing.",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "related party transactions",
+          "related party transactions",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "recurrent related party transactions",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)"
+        ],
+        "routedChars": 13794,
+        "inputChars": 13794,
+        "truncated": false
+      }
+    }
+  },
+  "cost": {
+    "model": "openrouter/free",
+    "calls": 9,
+    "promptTokens": 103203,
+    "completionTokens": 14746,
+    "cachedTokens": 0,
+    "estimatedCostUsd": 0.0,
+    "ceilingUsd": 2.0,
+    "perCall": [
+      {
+        "step": "offer",
+        "promptTokens": 7893,
+        "completionTokens": 2348,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "apodex/apodex-1.1-mini:free"
+      },
+      {
+        "step": "business",
+        "promptTokens": 36382,
+        "completionTokens": 1870,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3.5-lightning:free"
+      },
+      {
+        "step": "financials",
+        "promptTokens": 27946,
+        "completionTokens": 1448,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "liquid/lfm-2.5-2.6b:free"
+      },
+      {
+        "step": "risk-factors",
+        "promptTokens": 16096,
+        "completionTokens": 559,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "lockup",
+        "promptTokens": 1186,
+        "completionTokens": 773,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "related-party",
+        "promptTokens": 3591,
+        "completionTokens": 3000,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "apodex/apodex-1.1-mini:free"
+      },
+      {
+        "step": "related-party",
+        "promptTokens": 3708,
+        "completionTokens": 3000,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3.5-lightning:free"
+      },
+      {
+        "step": "related-party",
+        "promptTokens": 3657,
+        "completionTokens": 716,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 2744,
+        "completionTokens": 1032,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "cohere/north-mini-code:free"
+      }
+    ]
+  }
+}

@@ -4,7 +4,8 @@ This is the testable core of the worker, independent of BullMQ/Redis. It:
 
 * VALIDATES the incoming ``JobEnvelope`` against the generated Pydantic model
   (runtime conformance, ADR-0011) — a bad envelope is a *terminal* failure.
-* runs the trivial LangGraph stub / deterministic narrative (ADR-0003 scope),
+* runs the TA/FA handlers (``ta_fa_analysis``) and the deterministic
+  showcase narratives,
 * emits step-based progress via an injected callback (ADR-0007 §4),
 * claim-checks the artifact to S3 and returns a validated ``JobResult``
   (pointer + thin summary, ADR-0004 §4 / ADR-0007 §5).
@@ -18,6 +19,7 @@ whatever Postgres-backed context they need via the injected ``BackendClient``
 from __future__ import annotations
 
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Callable, Iterator
@@ -59,12 +61,15 @@ from .llm import (
     LLMPermanentError,
 )
 from .market_brief import compose_market_brief
+from .ta_fa_analysis import _handle_fundamental_job, _handle_technical_job
 from .prospectus.analysis import (
     LLM_STEPS,
     STEP_BUSINESS,
     STEP_CORNERSTONE,
     STEP_FINANCIALS,
+    STEP_LOCKUP,
     STEP_OFFER,
+    STEP_RELATED_PARTY,
     STEP_RISKS,
     STEP_WATCH,
     MalformedModelOutput,
@@ -107,14 +112,19 @@ def handle_job(
 
     ``job_name`` selects the envelope model and dispatches to the job
     family's handling. ``raw_envelope`` is the untrusted wire payload.
-    ``backend_client`` is only used by the system-triggered showcase jobs
-    (market brief, announcement summary, prospectus); the TA/FA jobs ignore it.
+    ``backend_client`` is used by the TA/FA jobs (reference reads) and the
+    system-triggered showcase jobs (market brief, announcement summary,
+    prospectus).
     ``prospectus_runtime`` (LLM client, parse fn, cost ceiling) is only used by
     ``analyze-prospectus``; ``None`` behaves as "no API key configured".
     """
-    if job_name in (JOB_ANALYZE_TECHNICAL, JOB_ANALYZE_FUNDAMENTAL):
-        return _handle_analysis_job(
-            job_name, raw_envelope, artifact_store, report_progress
+    if job_name == JOB_ANALYZE_TECHNICAL:
+        return _handle_technical_job(
+            raw_envelope, artifact_store, report_progress, backend_client
+        )
+    if job_name == JOB_ANALYZE_FUNDAMENTAL:
+        return _handle_fundamental_job(
+            raw_envelope, artifact_store, report_progress, backend_client
         )
     if job_name == JOB_GENERATE_MARKET_BRIEF:
         return _handle_market_brief(
@@ -135,6 +145,7 @@ def handle_job(
     raise TerminalJobError(f"Unknown job name: {job_name!r}")
 
 
+# NOTE: stub kept for reference; replaced by ta_fa_analysis. See graph.py.
 def _handle_analysis_job(
     job_name: str,
     raw_envelope: dict,
@@ -371,6 +382,8 @@ _PROSPECTUS_STEPS: list[tuple[str, str]] = [
     ("analyzing-sections", "Reading financials"),  # STEP_FINANCIALS
     ("analyzing-sections", "Ranking risk factors"),  # STEP_RISKS
     ("analyzing-sections", "Finding cornerstone investors"),  # STEP_CORNERSTONE
+    ("analyzing-sections", "Checking share lock-ups"),  # STEP_LOCKUP
+    ("analyzing-sections", "Reviewing related-party transactions"),  # STEP_RELATED_PARTY
     ("synthesizing-watchlist", "Synthesizing what to watch"),  # STEP_WATCH
     ("persisting-artifact", "Persisting artifact"),
     ("done", "Done"),
@@ -382,7 +395,9 @@ _STEP_INDEX = {
     STEP_FINANCIALS: 5,
     STEP_RISKS: 6,
     STEP_CORNERSTONE: 7,
-    STEP_WATCH: 8,
+    STEP_LOCKUP: 8,
+    STEP_RELATED_PARTY: 9,
+    STEP_WATCH: 10,
 }
 assert set(_STEP_INDEX) == set(LLM_STEPS)
 
@@ -458,6 +473,7 @@ def _handle_prospectus(
     # --- parse (long on first run; reused on re-run) ---------------------------
     report_progress(step(2))
     parse_fn = runtime.parse_fn or _default_parse_fn
+    t_parse = time.perf_counter()
     with _heartbeat(report_progress, lambda: step(2), runtime.heartbeat_seconds):
         try:
             parse, parsed_now = ensure_parse(
@@ -473,11 +489,13 @@ def _handle_prospectus(
                 f"Could not parse prospectus PDF for {prospectus_id!r}: {exc!r}"
             ) from exc
     routed = route_sections(parse)
+    parse_ms = int((time.perf_counter() - t_parse) * 1000)
     log.info(
         "job.parse_ready",
         extra={
             "jobId": job_id,
             "parsedNow": parsed_now,
+            "parseMs": parse_ms,
             "located": {s.value: r.located for s, r in routed.items()},
         },
     )
@@ -488,6 +506,7 @@ def _handle_prospectus(
         ceiling_usd=runtime.cost_ceiling_usd,
         price_table=runtime.price_table,
     )
+    t_analysis = time.perf_counter()
     try:
         artifact = analyze_prospectus(
             prospectus_id=prospectus_id,
@@ -503,6 +522,10 @@ def _handle_prospectus(
     except (LLMConfigError, LLMPermanentError, MalformedModelOutput) as exc:
         raise TerminalJobError(f"LLM analysis failed permanently: {exc}") from exc
     artifact["parse"] = {"parsedNow": parsed_now, "reusedParse": not parsed_now}
+    artifact["timing"] = {
+        "parseMs": parse_ms,
+        "analysisMs": int((time.perf_counter() - t_analysis) * 1000),
+    }
 
     if len(artifact.get("riskFactors", {}).get("data", {}).get("themes", [])) == 0:
         log.warning(
@@ -524,7 +547,7 @@ def _handle_prospectus(
     pointer = artifact_store.put_artifact(
         f"prospectus/{prospectus_id}/at-a-glance.json", artifact
     )
-    report_progress(step(9))
+    report_progress(step(_PROSPECTUS_TOTAL - 1))  # persisting-artifact
     log.info(
         "job.artifact_written",
         extra={
@@ -542,17 +565,17 @@ def _handle_prospectus(
         summary=SystemSummary(headline=artifact["headline"], asOf=envelope.asOf),
         at=_now(),
     )
-    report_progress(step(10))
+    report_progress(step(_PROSPECTUS_TOTAL))  # done
     log.info("job.done", extra={"jobId": job_id})
     return result
 
 
 def _default_parse_fn(pdf_bytes: bytes):  # noqa: ANN202
-    """The real Docling adapter (lazy: it lives in the optional ``parse`` extra)."""
-    try:
-        from .prospectus.parsing import parse_prospectus
-    except ImportError as exc:  # pragma: no cover - image lacks the extra
-        raise TerminalJobError(
-            "Docling is not installed (install the `parse` extra): " + str(exc)
-        ) from exc
-    return parse_prospectus(pdf_bytes)
+    """Fast PyMuPDF-based parser (prospectus-v2 ticket 01).
+    
+    Extracts headings from PDF native TOC + text blocks with page numbers.
+    Falls back to heading recovery heuristic for un-numbered PDFs.
+    """
+    from .prospectus.parsing import parse_prospectus_fast
+
+    return parse_prospectus_fast(pdf_bytes)

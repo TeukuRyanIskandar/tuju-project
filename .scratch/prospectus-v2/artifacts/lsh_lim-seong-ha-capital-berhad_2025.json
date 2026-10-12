@@ -1,0 +1,721 @@
+{
+  "schemaVersion": "prospectus-at-a-glance-1",
+  "prospectusId": "lsh_lim-seong-ha-capital-berhad_2025",
+  "provenance": {
+    "source": "real",
+    "pdfSha256": "678da5518db733adac420ed7c1037c83bf2c769935f1efe7b33bf1c1008f48b1",
+    "model": "liquid/lfm-2.5-2.6b:free, nvidia/nemotron-3-ultra-550b-a55b:free, nvidia/nemotron-3.5-lightning:free, poolside/laguna-s-2.1:free, nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "generatedAt": "2026-10-12T03:55:21.305983+00:00"
+  },
+  "company": {
+    "name": "lsh_lim-seong-ha-capital-berhad_2025",
+    "board": null,
+    "listingDate": null
+  },
+  "headline": "Investors should monitor customer concentration, orderbook dependency, lock‑up restrictions, and related‑party transaction risks.",
+  "sections": {
+    "offer": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "offer for sale of up to 59,000,000 existing shares in the following manner: • 2,137,600 shares by way of private placement to bumiputera investors approved by the miti; and • 56,862,400 shares by way of private placement to other institutional and selected investors, subject to the clawback and reallocation provisions as set out in this prospectus, at an issue/ offer price of rm0.88 per share (“public offering”), payable in full upon application",
+          "use of proceeds",
+          "details of our public offering",
+          "details of our public offering &rqw¶g",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "offer for sale",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "use of proceeds",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "use of proceeds raised during our listing on the leap market",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "details of our public offering &rqw¶g",
+          "details of our public offering (cont’d)",
+          "details of our public offering (cont’d)",
+          "offer for sale"
+        ],
+        "routedChars": 70450,
+        "inputChars": 70450,
+        "truncated": false
+      },
+      "data": {
+        "summary": "LSH Resources is conducting a public offering of 132,000,000 shares and an offer for sale of 59,000,000 shares, with an IPO price of RM0.88 per share.",
+        "totalShares": "191,000,000",
+        "publicIssueShares": "132,000,000",
+        "offerForSaleShares": "59,000,000",
+        "priceRange": "RM0.88",
+        "marketCapAtIpo": "RM737.76 million",
+        "grossProceeds": "RM116.16 million",
+        "useOfProceeds": [
+          {
+            "purpose": "Working capital for Group's construction projects",
+            "amount": "RM108.86 million",
+            "percentOfProceeds": "93.72"
+          },
+          {
+            "purpose": "Estimated expenses in relation to Transfer of Listing",
+            "amount": "RM7.30 million",
+            "percentOfProceeds": "6.28"
+          }
+        ]
+      }
+    },
+    "business": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "our business",
+          "business",
+          "business overview",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)"
+        ],
+        "routedChars": 235458,
+        "inputChars": 235458,
+        "truncated": false
+      },
+      "data": {
+        "lines": [
+          "Provides construction and engineering works (building and infrastructure), construction-related services and solutions, construction products (building materials, lighting, hardware, tools, machinery rental), and property development.",
+          "Serves property developers, contractors, government agencies, and retail customers across Malaysia.",
+          "Generates revenue from construction contracts, value-engineering fees under its BEST Collaboration Framework, product sales and rentals, and property sales; key strength is integrated model with G7 contractor status and RM1.52 billion orderbook."
+        ]
+      }
+    },
+    "financials": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "financial and operational highlights",
+          "financial information",
+          "historical financial information",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information 11.1.3 consolidated statements of cash flows",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information &rqw¶g",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information &rqw¶g",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information &rqw¶g"
+        ],
+        "routedChars": 213767,
+        "inputChars": 213767,
+        "truncated": false
+      },
+      "data": {
+        "currency": "RM'000",
+        "periods": [
+          {
+            "period": "FYE 2021",
+            "revenue": "67,416",
+            "grossProfit": "17,278",
+            "profitAfterTax": "7,930",
+            "netMargin": "11.76%"
+          },
+          {
+            "period": "FYE 2022",
+            "revenue": "165,866",
+            "grossProfit": "67,520",
+            "profitAfterTax": "41,812",
+            "netMargin": "25.21%"
+          },
+          {
+            "period": "FYE 2023",
+            "revenue": "357,755",
+            "grossProfit": "103,472",
+            "profitAfterTax": "58,883",
+            "netMargin": "16.46%"
+          },
+          {
+            "period": "FYE 2024",
+            "revenue": "361,405",
+            "grossProfit": "128,187",
+            "profitAfterTax": "74,283",
+            "netMargin": "20.55%"
+          }
+        ],
+        "trend": "Revenue grew rapidly from FYE 2021 to FYE 2023 (over 5x), then stabilised in FYE 2024. Profit after tax rose strongly across the period, with net margin peaking in FYE 2022 before moderating and recovering in FYE 2024.",
+        "highlights": [
+          "Revenue increased ~5.4x from RM67.4m to RM361.4m over four years",
+          "Profit after tax grew ~9.4x from RM7.9m to RM74.3m",
+          "Gross profit margin improved from 25.6% to 35.5%",
+          "Property development segment launched in FYE 2023, contributing 20% of revenue by FYE 2024"
+        ]
+      }
+    },
+    "riskFactors": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "risk factors",
+          "risk factors you should evaluate and carefully consider the following risks along with other information in this prospectus before investing in our company.",
+          "risk factors &rqw¶g",
+          "risk factors &rqw¶g",
+          "risk factors &rqw¶g",
+          "risk factors &rqw¶g",
+          "risk factors &rqw¶g",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)"
+        ],
+        "routedChars": 63497,
+        "inputChars": 63497,
+        "truncated": false
+      },
+      "data": {
+        "summary": "Risk factors grouped by severity, ranking from most to least severe for investor impact.",
+        "themes": [
+          {
+            "rank": 1,
+            "theme": "Customer Concentration Risk",
+            "severity": "high",
+            "summary": "Major customers contribute disproportionately to revenue (up to 95.91% in FYE 2023), making the company vulnerable to loss of key clients and significant financial impact."
+          },
+          {
+            "rank": 2,
+            "theme": "Orderbook Dependency",
+            "severity": "high",
+            "summary": "Business performance heavily relies on continuous project acquisition; inability to secure new projects leads to declining orderbook and adverse financial consequences."
+          },
+          {
+            "rank": 3,
+            "theme": "Cost Overruns",
+            "severity": "high",
+            "summary": "Unfavorable price fluctuations in construction materials, subcontractor costs, and labor can significantly increase project expenses and reduce profitability."
+          },
+          {
+            "rank": 4,
+            "theme": "Credit and Liquidity Risks",
+            "severity": "medium",
+            "summary": "Delays in receivable collection and retention sum non-payment threaten cash flow and operational continuity, potentially impacting project execution."
+          },
+          {
+            "rank": 5,
+            "theme": "Legal and Regulatory Risks",
+            "severity": "medium",
+            "summary": "Ongoing legal proceedings and CIDB certification dependencies could disrupt operations, halt projects, or impose significant financial burdens."
+          },
+          {
+            "rank": 6,
+            "theme": "Market and Industry Risks",
+            "severity": "medium",
+            "summary": "Competitive pressures, property market conditions, and economic downturns pose external threats to business performance and revenue stability."
+          },
+          {
+            "rank": 7,
+            "theme": "Insurance Coverage Gaps",
+            "severity": "low",
+            "summary": "Potential inadequacies in insurance coverage for certain risks like wars, terrorism, and natural disasters could result in large uncovered losses."
+          }
+        ]
+      }
+    },
+    "whatToWatch": {
+      "derivedFrom": [
+        "offer",
+        "business",
+        "financials",
+        "riskFactors"
+      ],
+      "data": {
+        "headline": "Investors should monitor customer concentration, orderbook dependency, lock‑up restrictions, and related‑party transaction risks.",
+        "items": [
+          {
+            "point": "Customer concentration risk may cause sharp revenue drops if major clients reduce or terminate contracts.",
+            "why": "High reliance on up to 95.91% of revenue from a few customers creates vulnerability.",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Orderbook dependency means performance hinges on securing new construction projects; failure can shrink the RM1.52 billion orderbook.",
+            "why": "Continuous project acquisition is critical for revenue and profit stability.",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Lock‑up restrictions lock 602.5 million shares (71.87% of enlarged issued shares) for at least six months, limiting tradable supply.",
+            "why": "Reduced liquidity can affect share price and exit flexibility for investors.",
+            "sourceSection": "lockup"
+          },
+          {
+            "point": "Related‑party transactions include sales, rentals, and loans with terms potentially more favorable than market rates, raising conflict‑of‑interest concerns.",
+            "why": "These arrangements may impact fairness and future pricing.",
+            "sourceSection": "related-party"
+          }
+        ]
+      }
+    }
+  },
+  "insights": {
+    "shariah": {
+      "status": "unknown",
+      "source": "unavailable",
+      "note": "No Shariah classification is on record for this company yet."
+    },
+    "cornerstone": {
+      "present": false,
+      "investors": [],
+      "summary": "The prospectus text does not mention cornerstone investors.",
+      "inputChars": 0,
+      "truncated": false,
+      "llmCalled": false
+    },
+    "lockup": {
+      "present": true,
+      "entries": [
+        {
+          "name": "LSH Resources",
+          "shares": "542,019,809",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "64.65% of enlarged issued shares; wholly-owned subsidiary of LSH Holdings"
+        },
+        {
+          "name": "LSH Holdings",
+          "shares": "0",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "Does not hold shares directly; shareholders are Tan Sri KC Lim, DLKG, Lim Pak Lian, Lim Keng Hun (siblings)"
+        },
+        {
+          "name": "Tan Sri KC Lim",
+          "shares": "14,955,281",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "1.78% of enlarged issued shares; shareholder of LSH Holdings"
+        },
+        {
+          "name": "DLKG",
+          "shares": "14,955,281",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "1.78% of enlarged issued shares; shareholder of LSH Holdings"
+        },
+        {
+          "name": "Lim Pak Lian",
+          "shares": "14,955,281",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "1.78% of enlarged issued shares; shareholder of LSH Holdings"
+        },
+        {
+          "name": "Lim Keng Hun",
+          "shares": "14,955,281",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "1.78% of enlarged issued shares; shareholder of LSH Holdings"
+        },
+        {
+          "name": "Lim Ding Shyong",
+          "shares": "500,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "0.06% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        },
+        {
+          "name": "Lor Kar Mun",
+          "shares": "100,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "0.01% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        },
+        {
+          "name": "Lim Wei Xin",
+          "shares": "25,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "Less than 0.01% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        },
+        {
+          "name": "Lor Khang Chee",
+          "shares": "25,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "Less than 0.01% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        },
+        {
+          "name": "Lim Wei Ling",
+          "shares": "10,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "Less than 0.01% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        },
+        {
+          "name": "Lim Zhuo Tuong",
+          "shares": "10,000",
+          "duration": "6 months from date of admission to Official List (First 6-Month Moratorium); subsequent 6 months for at least 45% of enlarged issued shares (Second 6-Month Moratorium); thereafter up to 1/3 per annum on straight-line basis",
+          "notes": "Less than 0.01% of enlarged issued shares; assuming full subscription under allocation to Eligible Persons"
+        }
+      ],
+      "summary": "Moratorium applies to Specified Shareholders (Promoters and connected persons). Entire shareholdings locked for first 6 months from admission; thereafter at least 45% of enlarged issued shares locked for another 6 months; subsequently up to 1/3 per annum releasable on straight-line basis. Total shares under moratorium initially: 602,510,933 (71.87% of enlarged issued shares).",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "moratorium on our shares",
+          "moratorium on our shares"
+        ],
+        "routedChars": 5483,
+        "inputChars": 5483,
+        "truncated": false
+      }
+    },
+    "relatedParty": {
+      "present": true,
+      "items": [
+        {
+          "counterparty": "LSH Lighting",
+          "nature": "Sale of building materials (ready-mixed concrete, reinforcement bar, fabric reinforcement mesh, plywood and timber) to ASSB",
+          "amount": null,
+          "basis": "Cost price plus 10% margin; arm's length terms"
+        },
+        {
+          "counterparty": "Knight Auto",
+          "nature": "Rental of cranes and other construction machinery to ASSB",
+          "amount": null,
+          "basis": "Agreed-upon monthly and daily rates; arm's length terms"
+        },
+        {
+          "counterparty": "Knight Auto",
+          "nature": "Rental of scaffolding and steel mould for construction of Wisma Knight Auto to ASSB",
+          "amount": null,
+          "basis": "Payable within 90 days from invoice; arm's length terms"
+        },
+        {
+          "counterparty": "Knight Auto",
+          "nature": "Rental of cranes and other construction machinery to LSHCC",
+          "amount": null,
+          "basis": "Agreed-upon monthly and daily rates; arm's length terms"
+        },
+        {
+          "counterparty": "Knight Auto",
+          "nature": "Equipment lease agreement (cranes, lorries, machines, equipment, workers or agents) for Wisma LSH Extension Project to LSHCC",
+          "amount": null,
+          "basis": "Mutually agreed rental rates; arm's length terms"
+        },
+        {
+          "counterparty": "LSHCC",
+          "nature": "Subcontract work for piling and reinforced concrete works for Wisma LSH Extension Project granted by ASSB",
+          "amount": "Approximately RM1.87 million",
+          "basis": "Letter of award dated 11 October 2023; arm's length terms"
+        },
+        {
+          "counterparty": "LSH Holdings",
+          "nature": "Loans obtained by the Group with interest payments",
+          "amount": null,
+          "basis": "Interest rate of 1.0% and 3.0% per annum; lower than commercial bank rates, beneficial to the Group"
+        },
+        {
+          "counterparty": "Lim Pak Lian and Lor Siew Hung (and LSH Lighting)",
+          "nature": "Tenancy agreements",
+          "amount": null,
+          "basis": "Rental rates lower than market rate; beneficial to the Group"
+        }
+      ],
+      "aggregateAmount": null,
+      "summary": "The prospectus discloses multiple material related-party transactions involving entities such as LSH Lighting, Knight Auto, LSHCC, LSH Holdings, and individuals including Lim Pak Lian and Lor Siew Hung. These transactions include sales of building materials, rentals of construction machinery and equipment, subcontracting works, loans with interest payments, and tenancy agreements. While most transactions are stated to be on arm's length terms, certain tenancy arrangements and loan interest rates are noted as being more favorable to the Group compared to market conditions. Some transactions were approved by non-interested shareholders at an EGM held on 28 March 2023.",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "related party transactions",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions &rqw¶g",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions &rqw¶g",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions &rqw¶g",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)",
+          "related party transactions entered into that are unusual in their nature or condition",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)"
+        ],
+        "routedChars": 17934,
+        "inputChars": 17934,
+        "truncated": false
+      }
+    }
+  },
+  "cost": {
+    "model": "openrouter/free",
+    "calls": 8,
+    "promptTokens": 162343,
+    "completionTokens": 13327,
+    "cachedTokens": 0,
+    "estimatedCostUsd": 0.0,
+    "ceilingUsd": 2.0,
+    "perCall": [
+      {
+        "step": "offer",
+        "promptTokens": 17504,
+        "completionTokens": 1672,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "liquid/lfm-2.5-2.6b:free"
+      },
+      {
+        "step": "business",
+        "promptTokens": 54679,
+        "completionTokens": 635,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "financials",
+        "promptTokens": 63981,
+        "completionTokens": 1163,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "risk-factors",
+        "promptTokens": 13993,
+        "completionTokens": 1260,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "liquid/lfm-2.5-2.6b:free"
+      },
+      {
+        "step": "lockup",
+        "promptTokens": 2003,
+        "completionTokens": 3000,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3.5-lightning:free"
+      },
+      {
+        "step": "lockup",
+        "promptTokens": 2057,
+        "completionTokens": 2456,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "related-party",
+        "promptTokens": 4453,
+        "completionTokens": 733,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 3673,
+        "completionTokens": 2408,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+      }
+    ]
+  }
+}

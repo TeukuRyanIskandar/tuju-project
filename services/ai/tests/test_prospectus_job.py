@@ -104,7 +104,8 @@ def test_happy_path_result_is_verdictless_and_contract_valid() -> None:
     assert set(artifact["sections"]) == {
         "offer", "business", "financials", "riskFactors", "whatToWatch",
     }
-    assert set(artifact["insights"]) == {"shariah", "cornerstone"}
+    assert set(artifact["insights"]) == {"shariah", "cornerstone", "lockup", "relatedParty"}
+    assert artifact["timing"]["parseMs"] >= 0 and artifact["timing"]["analysisMs"] >= 0
     assert artifact["insights"]["shariah"]["status"] == "compliant"
     assert artifact["parse"]["parsedNow"] is True
     assert artifact["cost"]["estimatedCostUsd"] < 2.0
@@ -115,13 +116,13 @@ def test_progress_is_step_based_monotonic_with_known_phases() -> None:
     runtime, _p, _l = _runtime()
     _r, progress, _f, _b = _run(runtime=runtime)
     indices = [p.stepIndex for p in progress]
-    assert indices == sorted(indices) and indices[0] == 0 and indices[-1] == 10
+    assert indices == sorted(indices) and indices[0] == 0 and indices[-1] == 12
     phases = [p.phase for p in progress]
     assert phases[0] == "queued" and phases[-1] == "done"
     for needed in ("fetching-prospectus", "parsing-document", "analyzing-sections",
                    "synthesizing-watchlist", "persisting-artifact"):
         assert needed in phases
-    assert {p.stepTotal for p in progress} == {10}
+    assert {p.stepTotal for p in progress} == {12}
     for p in progress:
         JobProgress.model_validate(p.model_dump(mode="json"))
 
@@ -176,7 +177,7 @@ def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(var, raising=False)
     s = Settings.from_env()
     assert s.openrouter_api_key is None
-    assert s.llm_model == "google/gemini-2.5-flash"
+    assert s.llm_model == "openrouter/free"
     assert s.llm_base_url == "https://openrouter.ai/api/v1"
     assert s.cost_ceiling_usd == 2.0
     monkeypatch.setenv("OPENROUTER_API_KEY", "fake-not-a-real-key")

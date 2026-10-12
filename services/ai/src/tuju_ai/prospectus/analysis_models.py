@@ -109,6 +109,33 @@ class CornerstoneOutput(_Out):
     summary: Text = None
 
 
+class LockupEntry(_Out):
+    name: str
+    shares: Text = None  # count or % of shares under moratorium
+    duration: Text = None  # e.g. "6 months from listing", as written
+    notes: Text = None
+
+
+class LockupOutput(_Out):
+    present: bool
+    entries: list[LockupEntry] = Field(default_factory=list)
+    summary: Text = None
+
+
+class RelatedPartyItem(_Out):
+    counterparty: str
+    nature: Text = None  # what the transaction is
+    amount: Text = None
+    basis: Text = None  # arm's length or not, as stated
+
+
+class RelatedPartyOutput(_Out):
+    present: bool
+    items: list[RelatedPartyItem] = Field(default_factory=list)
+    aggregateAmount: Text = None
+    summary: Text = None
+
+
 class WatchItem(_Out):
     point: str
     why: Text = None

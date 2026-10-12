@@ -116,15 +116,20 @@ def _load(name: str) -> dict:
     return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
 
 
-class _UnusedBackendClient:
-    """Stand-in `BackendClient` — this test only exercises the TA job, which
-    never calls it."""
+class _TaBackendClient:
+    """Serves the TA analysis reference row; the other reads are unused here."""
+
+    def __init__(self, reference: dict) -> None:
+        self._reference = reference
 
     def get_market_indices(self) -> dict:
-        raise AssertionError("analyze-technical must not call the backend client")
+        raise AssertionError("unused")
 
     def get_announcement(self, announcement_id: str) -> dict:
-        raise AssertionError("analyze-technical must not call the backend client")
+        raise AssertionError("unused")
+
+    def get_analysis_reference(self, symbol: str) -> dict:
+        return self._reference
 
 
 def test_round_trip_over_redis_and_localstack(
@@ -134,6 +139,29 @@ def test_round_trip_over_redis_and_localstack(
     from bullmq import Queue, Worker
 
     envelope = _load("technical-job-envelope.json")
+    backend = _TaBackendClient(
+        {
+            "code": "1155",
+            "shortName": "MAYBANK",
+            "latestCloseDay": "2026-10-08",
+            "asOfDatetime": "2026-10-08T18:00:00Z",
+            "technical": {
+                "sma": {"p20": 9.7, "p50": 9.55, "p200": 9.3},
+                "rsi": {"period": 14, "value": 57.4},
+                "macd": {"line": 0.02123, "signal": 0.015, "histogram": 0.00623},
+                "week52": {"high": 10.45, "low": 8.32},
+            },
+            "technicalEvents": [
+                {
+                    "id": "ma_cross_20_50",
+                    "label": "SMA-20 crossed above SMA-50",
+                    "fired": True,
+                    "values": {"sma20": 9.7, "sma50": 9.55},
+                    "at": "2026-10-08",
+                }
+            ],
+        }
+    )
 
     async def scenario() -> JobResult:
         queue = Queue(QUEUE_ANALYSIS, {"connection": settings.redis_url})
@@ -155,7 +183,7 @@ def test_round_trip_over_redis_and_localstack(
                 job.data,
                 artifact_store=artifact_store,
                 report_progress=report,
-                backend_client=_UnusedBackendClient(),
+                backend_client=backend,
             )
             payload = result.model_dump(mode="json")
             if not done.done():
@@ -176,14 +204,15 @@ def test_round_trip_over_redis_and_localstack(
     result = asyncio.run(scenario())
 
     JobResult.model_validate(result.model_dump(mode="json"))
-    assert result.jobId.startswith("ta:MAYBANK:1D:")
-    assert result.summary.verdict in ("bullish", "bearish", "neutral")
+    assert result.jobId.startswith("technical:MAYBANK:1D:")
+    assert "verdict" not in result.model_dump(mode="json")["summary"]
+    assert len(result.summary.headline) > 0
 
     head = s3_client.head_object(
         Bucket=result.pointer.bucket, Key=result.pointer.key
     )
     assert head["ContentLength"] == result.pointer.bytes
-    assert result.pointer.key.startswith("analysis/ta/MAYBANK/")
+    assert result.pointer.key.startswith("analysis/technical/MAYBANK/")
 
 
 class _PdfBackendClient:

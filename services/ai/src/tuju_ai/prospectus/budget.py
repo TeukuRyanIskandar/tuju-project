@@ -60,6 +60,15 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
         "risk factor", "risk", "adversely affect", "may not be able", "dependence on",
         "we depend", "no assurance", "uncertain",
     ),
+    ProspectusSection.LOCKUP.value: (
+        "moratorium", "lock-up", "lock up", "specified shareholders",
+        "shall not sell", "dispose", "transfer or assign", "months from the date of",
+    ),
+    ProspectusSection.RELATED_PARTY.value: (
+        "related party", "related parties", "related-party", "arm's length",
+        "arms' length", "interested director", "interested major shareholder",
+        "person connected", "recurrent",
+    ),
 }
 
 

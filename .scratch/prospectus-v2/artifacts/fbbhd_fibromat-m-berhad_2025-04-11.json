@@ -1,0 +1,543 @@
+{
+  "schemaVersion": "prospectus-at-a-glance-1",
+  "prospectusId": "fbbhd_fibromat-m-berhad_2025-04-11",
+  "provenance": {
+    "source": "real",
+    "pdfSha256": "7d514d74558150bfcfb3dba9a7c243af4c157ea5173e4f5b06798a0b5fbc047a",
+    "model": "poolside/laguna-s-2.1:free, nvidia/nemotron-3-ultra-550b-a55b:free, cohere/north-mini-code:free, poolside/laguna-xs-2.1:free, dots-studio/dots-3-note-preview:free, nvidia/nemotron-3-super-120b-a12b:free",
+    "generatedAt": "2026-10-12T03:48:37.575653+00:00"
+  },
+  "company": {
+    "name": "fbbhd_fibromat-m-berhad_2025-04-11",
+    "board": null,
+    "listingDate": null
+  },
+  "headline": "Monitor the post‑IPO share‑price impact of the major shareholder’s lock‑up release and subsequent staggered sell‑down.",
+  "sections": {
+    "offer": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "offer for sale of 24,827,000 existing shares in the following manner",
+          "utilisation of proceeds",
+          "utilisation of proceeds rm’000 %",
+          "details of our ipo",
+          "details of our ipo",
+          "details of our ipo (cont’d)",
+          "offer for sale",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "utilisation of proceeds",
+          "utilisation of proceeds notes rm’000 %",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "offer for sale",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "details of our ipo (cont’d)",
+          "offer for sale"
+        ],
+        "routedChars": 52519,
+        "inputChars": 52519,
+        "truncated": false
+      },
+      "data": {
+        "summary": "Fibromat M Berhad is offering 32,276,000 new shares under a Public Issue and 24,827,000 existing shares under an Offer for Sale at an IPO price of RM0.55 per share, with gross proceeds of RM17.8 million from the Public Issue to be used for machinery purchase, working capital, and listing expenses.",
+        "totalShares": "248,276,000",
+        "publicIssueShares": "32,276,000",
+        "offerForSaleShares": "24,827,000",
+        "priceRange": "RM0.55",
+        "marketCapAtIpo": "RM136.6 million",
+        "grossProceeds": "RM17.8 million",
+        "useOfProceeds": [
+          {
+            "purpose": "Purchase of machinery",
+            "amount": "RM7,560,000",
+            "percentOfProceeds": "42.6%"
+          },
+          {
+            "purpose": "Working capital",
+            "amount": "RM6,712,000",
+            "percentOfProceeds": "37.8%"
+          },
+          {
+            "purpose": "Estimated listing expenses",
+            "amount": "RM3,480,000",
+            "percentOfProceeds": "19.6%"
+          }
+        ]
+      }
+    },
+    "business": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "business",
+          "business overview",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)",
+          "business overview (cont’d)"
+        ],
+        "routedChars": 119629,
+        "inputChars": 119629,
+        "truncated": false
+      },
+      "data": {
+        "lines": [
+          "Manufactures and sells geosynthetic and erosion control products like erosion control blankets, PVDs, and geobags.",
+          "Provides design, installation, and trading services for geotechnical solutions to construction contractors and project owners.",
+          "Generates revenue through project-based contracts and product sales, supported by in-house manufacturing and quality certifications."
+        ]
+      }
+    },
+    "financials": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "financial highlights",
+          "financial information",
+          "historical financial information",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)",
+          "financial information (cont’d)"
+        ],
+        "routedChars": 110102,
+        "inputChars": 110102,
+        "truncated": false
+      },
+      "data": {
+        "currency": "RM'000",
+        "periods": [
+          {
+            "period": "FYE 2021",
+            "revenue": "45,787",
+            "grossProfit": "11,798",
+            "profitAfterTax": "5,753",
+            "netMargin": "12.6%"
+          },
+          {
+            "period": "FYE 2022",
+            "revenue": "47,953",
+            "grossProfit": "10,535",
+            "profitAfterTax": "3,537",
+            "netMargin": "7.4%"
+          },
+          {
+            "period": "FYE 2023",
+            "revenue": "68,300",
+            "grossProfit": "17,136",
+            "profitAfterTax": "8,490",
+            "netMargin": "12.4%"
+          },
+          {
+            "period": "FYE 2024",
+            "revenue": "75,463",
+            "grossProfit": "20,707",
+            "profitAfterTax": "9,974",
+            "netMargin": "13.2%"
+          }
+        ],
+        "trend": "Revenue grew at a compound annual rate of approximately 13.5% from FYE 2021 to FYE 2024, with a sharp 42% increase in FYE 2023. Profit after tax dipped in FYE 2022 but rebounded strongly, lifting net margin from 7.4% to 13.2% over the period.",
+        "highlights": [
+          "Revenue CAGR ~13.5% over four years, driven by design & installation and trading segments",
+          "Net margin expanded from 7.4% (FYE 2022) to 13.2% (FYE 2024)",
+          "Gross profit margin improved from 22.0% to 27.4%",
+          "Unbilled order book of RM49.9 million as at LPD provides revenue visibility"
+        ]
+      }
+    },
+    "riskFactors": {
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "risk factors",
+          "risk factors",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)",
+          "risk factors (cont’d)"
+        ],
+        "routedChars": 42044,
+        "inputChars": 42044,
+        "truncated": false
+      },
+      "data": {
+        "summary": null,
+        "themes": [
+          {
+            "rank": 1,
+            "theme": "Operational & Project Risk",
+            "severity": "high",
+            "summary": "Project cost overruns, subcontractor failures, material shortages, equipment breakdowns, and defect liability can disrupt cash flow and damage financial performance."
+          },
+          {
+            "rank": 2,
+            "theme": "Regulatory & Licensing Risk",
+            "severity": "high",
+            "summary": "Failure to obtain, maintain, or renew required licences, permits, and approvals could halt operations and materially affect the business."
+          },
+          {
+            "rank": 3,
+            "theme": "Management & Human Capital Risk",
+            "severity": "high",
+            "summary": "Loss of key executive directors or senior managers without timely replacement may impair continuity, growth, and operational effectiveness."
+          },
+          {
+            "rank": 4,
+            "theme": "Market & Industry Risk",
+            "severity": "high",
+            "summary": "Intense competition, substitute products, and dependence on infrastructure spending expose the group to demand fluctuations and pricing pressure."
+          },
+          {
+            "rank": 5,
+            "theme": "Commercial & Contractual Risk",
+            "severity": "medium",
+            "summary": "Absence of long‑term contracts and reliance on purchase orders lead to sales volatility, credit defaults, and reduced profitability."
+          },
+          {
+            "rank": 6,
+            "theme": "Financial Risk",
+            "severity": "medium",
+            "summary": "Foreign‑exchange exposure, funding constraints, and insufficient insurance coverage can increase costs and erode earnings."
+          },
+          {
+            "rank": 7,
+            "theme": "Listing & Share Structure Risk",
+            "severity": "low",
+            "summary": "Limited market liquidity, potential listing delays, and promoter control may restrict share price stability and investor exit options."
+          }
+        ]
+      }
+    },
+    "whatToWatch": {
+      "derivedFrom": [
+        "offer",
+        "business",
+        "financials",
+        "riskFactors"
+      ],
+      "data": {
+        "headline": "Monitor the post‑IPO share‑price impact of the major shareholder’s lock‑up release and subsequent staggered sell‑down.",
+        "items": [
+          {
+            "point": "Release of Ng Kian Boon’s 63.7% stake after the initial 6‑month moratorium and subsequent gradual sell‑down.",
+            "why": "Large‑scale share sales could pressure the share price.",
+            "sourceSection": "lockup"
+          },
+          {
+            "point": "Revenue growth trend and net margin expansion from FYE 2021 to FYE 2024.",
+            "why": "Indicates business momentum and profitability sustainability.",
+            "sourceSection": "financials"
+          },
+          {
+            "point": "Order book visibility – unbilled order book of RM49.9 million as at LPD.",
+            "why": "Provides near‑term revenue visibility and helps assess future performance.",
+            "sourceSection": "financials"
+          },
+          {
+            "point": "Dependence on infrastructure spending and competitive intensity.",
+            "why": "Industry‑level demand fluctuations could affect sales volatility.",
+            "sourceSection": "risk-factors"
+          },
+          {
+            "point": "Use of IPO proceeds – machinery purchase, working capital, listing expenses.",
+            "why": "Shows how funds will be deployed to support growth and operations.",
+            "sourceSection": "offer"
+          }
+        ]
+      }
+    }
+  },
+  "insights": {
+    "shariah": {
+      "status": "unknown",
+      "source": "unavailable",
+      "note": "No Shariah classification is on record for this company yet."
+    },
+    "cornerstone": {
+      "present": false,
+      "investors": [],
+      "summary": "The prospectus text does not mention cornerstone investors.",
+      "inputChars": 0,
+      "truncated": false,
+      "llmCalled": false
+    },
+    "lockup": {
+      "present": true,
+      "entries": [
+        {
+          "name": "Ng Kian Boon",
+          "shares": "158,040,098 (63.7%)",
+          "duration": "6 months from date of admission to ACE Market (First 6-Month Moratorium); thereafter 45.0% of enlarged share capital for another 6 months (Second 6-Month Moratorium); then up to 1/3 per annum on straight-line basis",
+          "notes": "Based on enlarged share capital of 248,276,000 Shares after IPO"
+        },
+        {
+          "name": "Ng Chun Hou",
+          "shares": "1,200,000 (0.5%)",
+          "duration": "6 months from date of admission to ACE Market (First 6-Month Moratorium)",
+          "notes": "Assuming full subscription for Pink Form Allocation; no shares under Second 6-Month Moratorium"
+        },
+        {
+          "name": "Ng Chun Yew",
+          "shares": "400,000 (0.2%)",
+          "duration": "6 months from date of admission to ACE Market (First 6-Month Moratorium)",
+          "notes": "Assuming full subscription for Pink Form Allocation; no shares under Second 6-Month Moratorium"
+        }
+      ],
+      "summary": "Moratorium applies to Specified Shareholders per Rule 3.19(1) of AMLR. First 6-Month Moratorium on entire shareholding (64.4% of enlarged share capital). Second 6-Month Moratorium on at least 45.0% of enlarged share capital. Thereafter, Specified Shareholders may sell up to 1/3 per annum on straight-line basis. Written undertakings provided.",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "moratorium on our shares",
+          "moratorium shares during the first 6-month",
+          "moratorium",
+          "moratorium shares"
+        ],
+        "routedChars": 2211,
+        "inputChars": 2211,
+        "truncated": false
+      }
+    },
+    "relatedParty": {
+      "present": false,
+      "items": [],
+      "aggregateAmount": null,
+      "summary": "The prospectus states there were no material related party transactions involving directors, substantial shareholders, or connected persons during FYE 2021 to 2024 and up to LPD.",
+      "routing": {
+        "source": "located",
+        "located": true,
+        "matchedHeadings": [
+          "related party transactions",
+          "related party transactions",
+          "recurrent related party transactions",
+          "related party transactions (cont’d)",
+          "related party transactions (cont’d)"
+        ],
+        "routedChars": 7424,
+        "inputChars": 7424,
+        "truncated": false
+      }
+    }
+  },
+  "cost": {
+    "model": "openrouter/free",
+    "calls": 9,
+    "promptTokens": 100451,
+    "completionTokens": 8601,
+    "cachedTokens": 0,
+    "estimatedCostUsd": 0.0,
+    "ceilingUsd": 2.0,
+    "perCall": [
+      {
+        "step": "offer",
+        "promptTokens": 13805,
+        "completionTokens": 353,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "business",
+        "promptTokens": 32390,
+        "completionTokens": 72,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-s-2.1:free"
+      },
+      {
+        "step": "financials",
+        "promptTokens": 36121,
+        "completionTokens": 1148,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "risk-factors",
+        "promptTokens": 8865,
+        "completionTokens": 1545,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "cohere/north-mini-code:free"
+      },
+      {
+        "step": "lockup",
+        "promptTokens": 1045,
+        "completionTokens": 1563,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "related-party",
+        "promptTokens": 2074,
+        "completionTokens": 1442,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free"
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 2008,
+        "completionTokens": 334,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "poolside/laguna-xs-2.1:free"
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 2021,
+        "completionTokens": 1500,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "dots-studio/dots-3-note-preview:free"
+      },
+      {
+        "step": "what-to-watch",
+        "promptTokens": 2122,
+        "completionTokens": 644,
+        "cachedTokens": 0,
+        "costUsd": 0.0,
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      }
+    ]
+  }
+}

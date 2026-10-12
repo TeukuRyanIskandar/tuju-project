@@ -217,10 +217,56 @@ export const ProspectusCornerstoneInsight = z
   .meta({ id: 'ProspectusCornerstoneInsight' });
 export type ProspectusCornerstoneInsight = z.infer<typeof ProspectusCornerstoneInsight>;
 
+export const ProspectusLockupEntry = z
+  .strictObject({
+    name: z.string(),
+    shares: NullableText,
+    duration: NullableText,
+    notes: NullableText,
+  })
+  .meta({ id: 'ProspectusLockupEntry' });
+export type ProspectusLockupEntry = z.infer<typeof ProspectusLockupEntry>;
+
+// Moratorium on promoters'/specified shareholders' shares (prospectus-v2 T05).
+export const ProspectusLockupInsight = z
+  .strictObject({
+    present: z.boolean(),
+    entries: z.array(ProspectusLockupEntry),
+    summary: NullableText,
+    routing: ProspectusRouting,
+  })
+  .meta({ id: 'ProspectusLockupInsight' });
+export type ProspectusLockupInsight = z.infer<typeof ProspectusLockupInsight>;
+
+export const ProspectusRelatedPartyItem = z
+  .strictObject({
+    counterparty: z.string(),
+    nature: NullableText,
+    amount: NullableText,
+    basis: NullableText,
+  })
+  .meta({ id: 'ProspectusRelatedPartyItem' });
+export type ProspectusRelatedPartyItem = z.infer<typeof ProspectusRelatedPartyItem>;
+
+// Material related-party transactions (prospectus-v2 T05).
+export const ProspectusRelatedPartyInsight = z
+  .strictObject({
+    present: z.boolean(),
+    items: z.array(ProspectusRelatedPartyItem),
+    aggregateAmount: NullableText,
+    summary: NullableText,
+    routing: ProspectusRouting,
+  })
+  .meta({ id: 'ProspectusRelatedPartyInsight' });
+export type ProspectusRelatedPartyInsight = z.infer<typeof ProspectusRelatedPartyInsight>;
+
 export const ProspectusInsights = z
   .strictObject({
     shariah: ProspectusShariahInsight,
     cornerstone: ProspectusCornerstoneInsight,
+    // Optional: artifacts written before prospectus-v2 T05 lack them.
+    lockup: ProspectusLockupInsight.optional(),
+    relatedParty: ProspectusRelatedPartyInsight.optional(),
   })
   .meta({ id: 'ProspectusInsights' });
 export type ProspectusInsights = z.infer<typeof ProspectusInsights>;
@@ -233,6 +279,9 @@ export const ProspectusCostCall = z
     completionTokens: Count,
     cachedTokens: Count,
     costUsd: z.number().min(0),
+    // The model that actually answered (OpenRouter's response `model`). With a
+    // router id like `openrouter/free` it can differ per call (prospectus-v2 T04).
+    model: z.string().min(1).optional(),
   })
   .meta({ id: 'ProspectusCostCall' });
 export type ProspectusCostCall = z.infer<typeof ProspectusCostCall>;
@@ -260,6 +309,16 @@ export const ProspectusParseInfo = z
   .meta({ id: 'ProspectusParseInfo' });
 export type ProspectusParseInfo = z.infer<typeof ProspectusParseInfo>;
 
+// Wall-clock phase timings (prospectus-v2 T06). parseMs covers fetching the
+// persisted parse or parsing afresh, plus routing; analysisMs the LLM calls.
+export const ProspectusTiming = z
+  .strictObject({
+    parseMs: Count,
+    analysisMs: Count,
+  })
+  .meta({ id: 'ProspectusTiming' });
+export type ProspectusTiming = z.infer<typeof ProspectusTiming>;
+
 // --- the artifact -----------------------------------------------------------
 export const ProspectusArtifact = z
    .strictObject({
@@ -272,6 +331,7 @@ export const ProspectusArtifact = z
     insights: ProspectusInsights,
     cost: ProspectusCostReport,
     parse: ProspectusParseInfo,
+    timing: ProspectusTiming.optional(), // absent on pre-prospectus-v2 artifacts
   })
   .meta({ id: 'ProspectusArtifact' });
 export type ProspectusArtifact = z.infer<typeof ProspectusArtifact>;

@@ -38,7 +38,7 @@ A stateless job consumer:
   (httpx, OpenAI-compatible chat completions), deterministic `FakeLLMClient` for
   tests/CI (tests never touch the network), and a `CostTracker` with a per-model price
   table. Env: `OPENROUTER_API_KEY` (unset ⇒ the job fails terminally and cleanly, no
-  retry), `LLM_MODEL` (default `google/gemini-2.5-flash`), optional `LLM_BASE_URL`,
+  retry), `LLM_MODEL` (default `openrouter/free`, the $0 free-tier router), optional `LLM_BASE_URL`,
   `LLM_PROMPT_CACHE`, `LLM_COST_CEILING_USD`, `LLM_PRICE_TABLE_JSON`,
   `WORKER_LOCK_DURATION_MS`, `PROSPECTUS_S3_PREFIX`.
 - **Stateless reader (ADR-0004):** data reads go through NestJS's anonymous read API
@@ -49,12 +49,13 @@ A stateless job consumer:
 - **Claim-check (ADR-0004):** writes the artifact to S3 (LocalStack locally) and
   returns `job.returnvalue` = pointer + thin summary. Never writes Postgres.
 - **Structured logging (ADR-0010):** JSON to stdout, `correlationId` on every line.
-- **Prospectus pipeline (spec 06):** `prospectus/` parses a PDF once
-  with Docling, routes the four regulated Bursa/SC sections by heading (explicit
-  whole-document fallback), and claim-checks the parse to S3 idempotently (keyed by
-  prospectus + PDF sha). Standalone entrypoint: `tuju-ai-prospectus-parse`. Docling
-  lives in the optional `parse` extra (the worker image installs it). The
-  LLM analysis on top of it is `prospectus/analysis.py` (ticket 05).
+- **Prospectus pipeline (spec 06, prospectus-v2):** `prospectus/` parses a PDF
+  once with PyMuPDF (seconds; headings from the PDF TOC or from typography),
+  routes the regulated Bursa/SC sections by heading (explicit whole-document
+  fallback), and claim-checks the parse to S3 idempotently (keyed by prospectus +
+  PDF sha). Standalone entrypoint: `tuju-ai-prospectus-parse`. The legacy Docling
+  parse lives in the optional `parse-ml` extra (the worker image does not install
+  it). The LLM analysis on top of it is `prospectus/analysis.py` (ticket 05).
 
 Real TA/FA indicator/metric logic is out of scope here (indicators are computed in
 the NestJS ingestion worker, ADR-0012).
@@ -76,7 +77,7 @@ src/tuju_ai/
 ├── smoke.py                offline smoke run, no infra (entrypoint: tuju-ai-smoke)
 ├── prospectus/
 │   ├── models.py           internal parse / routed-section models (not wire contract)
-│   ├── parsing.py          Docling parse adapter (lazy import; `parse` extra)
+│   ├── parsing.py          PyMuPDF parse (default) + legacy Docling adapter (`parse-ml`)
 │   ├── skeleton.py         regulated Bursa/SC section heading patterns
 │   ├── router.py           heading-based section router + whole-doc fallback
 │   ├── budget.py           per-section input budgets / trimming (ticket 05)
@@ -116,10 +117,10 @@ uv sync --project services/ai          # or: pnpm run ai:sync
 uv run --project services/ai pytest     # or: pnpm run ai:test
 
 # from within services/ai
-uv sync                                       # add --extra parse for Docling
+uv sync                                       # add --extra parse-ml for legacy Docling
 uv run pytest -m "not integration and not corpus"   # fast lane
 uv run pytest -m integration                  # testcontainers JobBus round-trip
-uv run pytest -m corpus                       # demo-corpus parse (needs --extra parse)
+uv run pytest -m corpus                       # demo-corpus parse + routing (~10 s)
 uv run tuju-ai-smoke                          # offline smoke: full handler path, no Redis/S3
 uv run tuju-ai-worker                         # boot the worker (needs Redis; S3; backend API)
 uv run tuju-ai-prospectus-parse --prospectus-id <id> --pdf <path>   # parse + route one PDF

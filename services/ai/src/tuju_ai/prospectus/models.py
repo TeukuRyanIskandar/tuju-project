@@ -7,8 +7,8 @@ is owned by this module and evolves freely without touching
 
 Two layers:
 
-* :class:`ProspectusParse` — the persisted Docling parse (headings + ordered
-  content blocks), claim-checked to S3 and reused across re-runs (ticket 04).
+* :class:`ProspectusParse` — the persisted PDF parse (headings + ordered
+  content blocks; PyMuPDF by default, Docling as the legacy extra), claim-checked to S3 and reused across re-runs (ticket 04).
 * :class:`RoutedSection` — one regulated output section sliced out of the
   parse by the router (ticket 04), the input the ticket-05 LLM prompts read.
 """
@@ -23,12 +23,14 @@ from ..contracts_generated import SCHEMA_VERSIONS
 
 
 class ProspectusSection(StrEnum):
-    """The four regulated output sections routed out of a prospectus."""
+    """The regulated output sections routed out of a prospectus."""
 
     OFFER = "offer"
     BUSINESS = "business"
     FINANCIALS = "financials"
     RISK_FACTORS = "risk-factors"
+    LOCKUP = "lockup"
+    RELATED_PARTY = "related-party"
 
 
 class Heading(BaseModel):
@@ -46,27 +48,41 @@ class Heading(BaseModel):
 class Block(BaseModel):
     """One content block under the most recent heading.
 
-    ``kind`` is ``"text"`` (body text) or ``"table"`` (markdown-rendered table
+    ``kind`` is ``"text"`` (body text), ``"table"`` (markdown-rendered table
     — Docling's table-structure recovery, research ticket 08's reason for
-    choosing Docling over plain text extraction).
+    choosing Docling over plain text extraction), or ``"heading"`` (a heading's
+    own text echoed into the content stream by the PyMuPDF typographic parse,
+    so sub-headings and bold table column headers reach the prompts; it does
+    not by itself make a section "located").
+
+    ``pageNumber`` is the 0-indexed page this block appears on (PyMuPDF parse;
+    ``None`` for Docling parses). Used for debugging and multi-part stitching.
     """
 
     kind: str
     text: str
     headingIndex: int = -1
+    pageNumber: int | None = None
 
 
 class ProspectusParse(BaseModel):
-     """The normalized, persistable Docling parse of one prospectus PDF.
+    """The normalized, persistable parse of one prospectus PDF.
 
-     Keyed by ``pdfSha256`` so a re-run against a CHANGED PDF re-parses even
-     under the same prospectus id (idempotent re-run, ticket 04 AC 2).
-     """
+    Keyed by ``pdfSha256`` so a re-run against a CHANGED PDF re-parses even
+    under the same prospectus id (idempotent re-run, ticket 04 AC 2).
 
-     schemaVersion: str = SCHEMA_VERSIONS['prospectusparse']
-     pdfSha256: str
-     headings: list[Heading] = Field(default_factory=list)
-     blocks: list[Block] = Field(default_factory=list)
+    ``headingsFromToc`` marks headings extracted from the PDF's native table
+    of contents (PyMuPDF parse): those levels are trusted as-is by the
+    router. ``False`` (Docling parses, or the no-TOC heuristic fallback)
+    means the stored levels are flat/unreliable and the router recovers the
+    hierarchy via ``effective_levels()``.
+    """
+
+    schemaVersion: str = SCHEMA_VERSIONS['prospectusparse']
+    pdfSha256: str
+    headingsFromToc: bool = False
+    headings: list[Heading] = Field(default_factory=list)
+    blocks: list[Block] = Field(default_factory=list)
 
 
 class RoutedSection(BaseModel):

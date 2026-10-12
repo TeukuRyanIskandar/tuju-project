@@ -14,6 +14,9 @@ Prices are APPROXIMATE list prices (OpenRouter passes provider prices
 through) and will drift. Override at deploy time with ``LLM_PRICE_TABLE_JSON``;
 an unknown model is priced at the most expensive built-in rate so the guard
 errs on the side of over-estimating.
+
+Free models (``openrouter/free`` and any ``…:free`` variant) cost $0: the guard
+stays wired for consistency but can never trip on them.
 """
 
 from __future__ import annotations
@@ -43,7 +46,10 @@ class ModelPrice:
 
 
 # APPROXIMATE list prices — see module docstring.
+FREE = ModelPrice(input=0.0, output=0.0, cached_input=0.0)
+
 DEFAULT_PRICE_TABLE: dict[str, ModelPrice] = {
+    "openrouter/free": FREE,
     "google/gemini-2.5-flash": ModelPrice(input=0.30, output=2.50, cached_input=0.075),
     "google/gemini-2.5-pro": ModelPrice(input=1.25, output=10.00, cached_input=0.31),
     "anthropic/claude-sonnet-4.5": ModelPrice(
@@ -80,6 +86,8 @@ def price_for(model: str, table: dict[str, ModelPrice]) -> ModelPrice:
     """Price for ``model``; unknown models get the most expensive known rate."""
     if model in table:
         return table[model]
+    if model.endswith(":free"):
+        return FREE
     return max(table.values(), key=lambda p: (p.input, p.output))
 
 
@@ -117,6 +125,12 @@ class CostTracker:
         self.spent_usd = 0.0
         self.calls: list[dict[str, Any]] = []
 
+    @property
+    def free(self) -> bool:
+        """True when every token is priced at $0 (``openrouter/free``, ``…:free``)."""
+        p = self._price
+        return p.input == 0 and p.output == 0 and not p.cached_input
+
     def worst_case_call_usd(self, prompt_tokens: int, max_tokens: int) -> float:
         """Upper bound for a call: no cache discount, full max output."""
         return (
@@ -142,10 +156,14 @@ class CostTracker:
                 f"${self.ceiling_usd:.2f}/doc ceiling (spent ${self.spent_usd:.2f})"
             )
         response = client.complete(messages, json_mode=json_mode, max_tokens=max_tokens)
-        self.record(step, response.usage)
+        self.record(step, response.usage, served_by=response.model)
         return response
 
-    def record(self, step: str, usage: Usage) -> None:
+    def served_models(self) -> list[str]:
+        """Distinct models that actually answered, in first-use order."""
+        return list(dict.fromkeys(c["model"] for c in self.calls if "model" in c))
+
+    def record(self, step: str, usage: Usage, served_by: str | None = None) -> None:
         cost = usage_cost_usd(usage, self._price)
         self.prompt_tokens += usage.prompt_tokens
         self.completion_tokens += usage.completion_tokens
@@ -158,6 +176,7 @@ class CostTracker:
                 "completionTokens": usage.completion_tokens,
                 "cachedTokens": usage.cached_tokens,
                 "costUsd": round(cost, 6),
+                **({"model": served_by} if served_by else {}),
             }
         )
         if self.spent_usd > self.ceiling_usd:

@@ -1,0 +1,126 @@
+STATUS 2026-10-12: implemented with changes (Camelot dropped, single image,
+typographic headings). See map.md 'Decisions so far' and ADR-0015.
+
+================================================================================
+                  PROSPECTUS-V2 PARSE REDESIGN — SPEC COMPLETE
+================================================================================
+
+PROJECT:  tuju-project | prospectus-at-a-glance optimization
+STATUS:   Specification written, ready for implementation
+EFFORT:   ~20–25 hours (1 dev, 3–4 days)
+TICKETS:  7 total, dependency-ordered
+
+================================================================================
+                              THE PROBLEM
+================================================================================
+
+Current state (spec-06):
+  - Prospectus parse: Docling full-document layout ML → 10–12 min per PDF
+  - Docker image: ~2.5 GB (torch wheels dominate)
+  - Corpus scale: 3 PDFs = 30 min; 20 PDFs = 3+ hours (unacceptable)
+
+Why it matters:
+  - Blocks dev iteration ("parse takes longer than coding")
+  - Impossible to expand corpus without batch-window explosion
+  - Docker image size = deployment friction
+
+================================================================================
+                             THE SOLUTION
+================================================================================
+
+Two-phase parse architecture:
+
+  Phase A (PyMuPDF, ~5–15 sec):
+    - Extract headings via native PDF TOC (true hierarchy levels)
+    - Extract text blocks in reading order + page numbers
+    - No ML, no torch (pure C binding)
+
+  Phase B (Camelot, ~10–30 sec on financials pages only):
+    - Only target the located financials section's page range
+    - Extract tables with lattice→stream fallback
+    - Splice into parse, deduplicate vs. raw text
+    - If financials not located, skip entirely
+
+  Total: ~1–2 min per PDF (5–10x faster than Docling)
+  Docker image size: ~350 MB (7x smaller)
+
+Model switch:
+  - Gemini 2.5 Flash (paid) → openrouter/free (router, $0/call)
+  - Sufficient for showcase; no credits needed
+
+New sections (materiality for Bursa retail investors):
+  - Lock-up / moratorium arrangements (founder lock-in periods)
+  - Related-party transactions (governance risk)
+
+================================================================================
+                         QUICK REFERENCE (RESULTS)
+================================================================================
+
+Parse time breakdown (target):
+  Phase A (PyMuPDF):        ~5–15 sec
+  Phase B (Camelot):        ~10–30 sec (financials section only)
+  Section routing:          ~1 sec
+  LLM analysis (8 calls):   ~60–90 sec on free tier
+  S3 I/O:                   ~5 sec
+  ─────────────────────────────────
+  Total (first run):        ~2–3 min
+  Total (cached):           ~30 sec (parse skipped, LLM only)
+
+Docker images (size verification in T03):
+  ai-worker (lean):         < 400 MB
+  ai-parse-worker:          < 500 MB
+
+Quality gates (T06 corpus tests):
+  ✓ All 3 PDFs: FinancialsOutput.periods non-empty
+  ✓ All 3 PDFs: RiskOutput.themes non-empty + ranked
+  ✓ All 3 PDFs: WatchOutput.headline present
+  ✓ 12/12 sections located (after multi-part stitching)
+  ✓ Lock-up section located on ≥ 2/3 PDFs
+  ✓ RPT section located on ≥ 1/3 PDFs
+
+Cost (live model):
+  OpenRouter free tier: $0.00/doc (no spend)
+
+================================================================================
+                            THE TICKETS (7)
+================================================================================
+
+T01 — PyMuPDF Phase A structural parse (3–4h)
+T02 — Camelot Phase B financial table extraction (4–5h) [dep: T01]
+T03 — Docker image split: lean + parse workers (2–3h) [dep: T02]
+T04 — Model config: openrouter/free + live validation (3–4h) [dep: T03]
+T05 — New sections: lock-up + related-party transactions (3–4h) [dep: T04]
+T06 — Corpus expansion + timing documentation (2–3h) [dep: T05]
+T07 — ADR-0015: Parse architecture decision record (2–3h) [dep: T06]
+
+(See individual ticket files in issues/ for full details)
+
+================================================================================
+                         IMPLEMENTATION ORDER
+================================================================================
+
+Sequential dependency chain:
+  T01 → T02 → T03 → {T04 ∥ T05} → T06 → T07
+        (parallel after T03)
+
+Estimated total time: 20–25 hours serial
+
+================================================================================
+                              FILE LOCATIONS
+================================================================================
+
+Feature root:           .scratch/prospectus-v2/
+  README.md             Overview + tickets summary
+  map.md                Feature breakdown + ticket matrix
+  SPEC-SUMMARY.txt      This file
+  
+Tickets (7):            .scratch/prospectus-v2/issues/
+  01-pymupdf-phase-a.md
+  02-camelot-phase-b.md
+  03-docker-image-split.md
+  04-model-config-openrouter-free.md
+  05-new-sections-lockup-rpt.md
+  06-corpus-expansion-timing.md
+  07-adr-0015-parse-architecture.md
+
+================================================================================

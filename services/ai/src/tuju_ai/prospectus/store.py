@@ -1,7 +1,7 @@
 """Idempotent parse persistence for the prospectus pipeline (spec 06, ticket 04).
 
-The Docling parse is the expensive step (minutes of one-time CPU per PDF,
-research ticket 08), so it is persisted ONCE as an S3 claim-check artifact
+The parse is the expensive step (seconds with the PyMuPDF default, minutes
+with the legacy Docling extra), so it is persisted ONCE as an S3 claim-check artifact
 (ADR-0004) keyed by prospectus, and reused across re-runs: a re-run against
 the same PDF does not re-parse (ticket 04 AC 2). The artifact carries the
 PDF's sha256 so a re-seeded, CHANGED PDF under the same prospectus id
@@ -16,7 +16,7 @@ from typing import Callable
 from ..artifacts import ArtifactStore
 from .models import ProspectusParse
 
-# Parse functions: raw PDF bytes → normalized parse (the Docling adapter in
+# Parse functions: raw PDF bytes → normalized parse (parse_prospectus_fast in
 # parsing.py is the default; tests inject a counted fake).
 ParseFn = Callable[[bytes], ProspectusParse]
 

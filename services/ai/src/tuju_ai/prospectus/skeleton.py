@@ -64,6 +64,22 @@ SECTION_SKELETON: dict[ProspectusSection, tuple[str, ...]] = {
         r"^risk factors?\b",
         r"^principal risks\b",
     ),
+    # Moratorium on promoters'/specified shareholders' shares ("3.2 Moratorium
+    # on our Shares" in all three demo-corpus prospectuses).
+    ProspectusSection.LOCKUP: (
+        r"^moratorium on (the |our )?(disposal|shares)\b",
+        r"^moratorium (shares|period)\b",
+        r"^moratorium$",
+        r"^lock.?up (period|shares|arrangements?)\b",
+        r"^shareholding restrictions\b",
+    ),
+    # Its own chapter in a Bursa prospectus (chapter 10 in the demo corpus,
+    # which lives in Part 2).
+    ProspectusSection.RELATED_PARTY: (
+        r"^related.part(y|ies) transactions?\b",
+        r"^recurrent related.party\b",
+        r"^(interested|connected) (person|party) transactions?\b",
+    ),
 }
 
 _LEADING_ENUMERATION = re.compile(

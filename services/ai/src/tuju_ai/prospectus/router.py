@@ -1,6 +1,6 @@
 """Heading-based section router (spec 06, ticket 04; research ticket 08).
 
-Routes the four regulated output sections (:class:`ProspectusSection`) out of
+Routes the regulated output sections (:class:`ProspectusSection`) out of
 a persisted :class:`~tuju_ai.prospectus.models.ProspectusParse` by matching
 headings against the regulated Bursa/SC section skeleton. A matched heading
 opens a slice that runs until the NEXT same-or-higher level heading — so the
@@ -53,13 +53,42 @@ def effective_levels(headings: list) -> list[int]:
     for heading in headings:
         match = _NUMBERING.match(heading.text)
         if match:
-            last_numbered_depth = match.group(1).count(".") + 1
-            levels.append(last_numbered_depth)
+            depth = match.group(1).count(".") + 1
+            levels.append(depth)
+            # A page-break running header repeats the ENCLOSING chapter; the
+            # subsection it interrupts (and its unnumbered children) goes on.
+            if not is_continuation(heading.text):
+                last_numbered_depth = depth
         elif last_numbered_depth is not None:
             levels.append(last_numbered_depth + heading.level)
         else:
             levels.append(heading.level)
     return levels
+
+
+def heading_levels(parse: ProspectusParse) -> list[int]:
+    """Levels to slice with: native PDF-TOC levels when the parse carries them
+    (the PyMuPDF parse sets ``headingsFromToc``), else the numbering-recovery
+    heuristic above (Docling parses and the no-TOC fallback both report
+    flat/unreliable levels)."""
+    if parse.headingsFromToc:
+        return [h.level for h in parse.headings]
+    return effective_levels(parse.headings)
+
+
+def section_heading_indexes(
+    parse: ProspectusParse, section: ProspectusSection
+) -> set[int]:
+    """Heading indexes belonging to ``section``'s routed slices: the directly
+    matched headings plus every heading nested inside their span."""
+    levels = heading_levels(parse)
+    indexes: set[int] = set()
+    for heading in parse.headings:
+        if matches_skeleton(heading.text) is section:
+            indexes.update(
+                range(heading.index, _slice_end(parse.headings, levels, heading.index))
+            )
+    return indexes
 
 
 def _slice_end(headings: list, levels: list[int], matched_index: int) -> int:
@@ -93,38 +122,30 @@ def _whole_document(parse: ProspectusParse) -> str:
 def route_sections(
     parse: ProspectusParse,
 ) -> dict[ProspectusSection, RoutedSection]:
-    """Route all four regulated sections out of ``parse``.
+    """Route every regulated section out of ``parse``.
 
     Always returns one :class:`RoutedSection` per section — ``located=True``
     with the sliced content when at least one skeleton heading matched,
     ``located=False`` with the whole-document content otherwise.
     """
     routed: dict[ProspectusSection, RoutedSection] = {}
-    levels = effective_levels(parse.headings)
 
     for section in ProspectusSection:
-        matched: list[int] = []
-        matched_headings: list[str] = []
-        for heading in parse.headings:
-            if matches_skeleton(heading.text) is section:
-                matched.append(heading.index)
-                matched_headings.append(normalize_heading(heading.text))
-
-        if matched:
-            # Every heading inside a matched slice's span belongs to the
-            # section (sub-headings too); block indexes dedupe nested matches.
-            heading_indexes: set[int] = set()
-            for i in matched:
-                heading_indexes.update(range(i, _slice_end(parse.headings, levels, i)))
-            content_blocks = _blocks_for(parse.blocks, heading_indexes)
-            content = "\n\n".join(b.text for b in content_blocks if b.text.strip())
-        else:
-            content = ""
+        heading_indexes = section_heading_indexes(parse, section)
+        content_blocks = _blocks_for(parse.blocks, heading_indexes)
+        content = "\n\n".join(b.text for b in content_blocks if b.text.strip())
+        matched_headings = [
+            normalize_heading(h.text)
+            for h in parse.headings
+            if matches_skeleton(h.text) is section
+        ]
 
         # A heading matched but its slice carries no content (e.g. a
         # heading-only page): that is NOT located — fall back explicitly
         # rather than hand ticket 05 an empty section.
-        if matched and content:
+        if heading_indexes and any(
+            b.kind != "heading" and b.text.strip() for b in content_blocks
+        ):
             routed[section] = RoutedSection(
                 section=section.value,
                 located=True,

@@ -514,6 +514,9 @@
         },
         "parse": {
           "$ref": "#/$defs/ProspectusParseInfo"
+        },
+        "timing": {
+          "$ref": "#/$defs/ProspectusTiming"
         }
       },
       "required": [
@@ -678,6 +681,10 @@
         "costUsd": {
           "type": "number",
           "minimum": 0
+        },
+        "model": {
+          "type": "string",
+          "minLength": 1
         }
       },
       "required": [
@@ -841,6 +848,12 @@
         },
         "cornerstone": {
           "$ref": "#/$defs/ProspectusCornerstoneInsight"
+        },
+        "lockup": {
+          "$ref": "#/$defs/ProspectusLockupInsight"
+        },
+        "relatedParty": {
+          "$ref": "#/$defs/ProspectusRelatedPartyInsight"
         }
       },
       "required": [
@@ -884,6 +897,69 @@
         "trigger",
         "asOf",
         "payload"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusLockupEntry": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "shares": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "duration": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "shares",
+        "duration",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusLockupInsight": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusLockupEntry"
+          }
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        }
+      },
+      "required": [
+        "present",
+        "entries",
+        "summary",
+        "routing"
       ],
       "additionalProperties": false
     },
@@ -1022,6 +1098,76 @@
         "pdfSha256",
         "model",
         "generatedAt"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRelatedPartyInsight": {
+      "type": "object",
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ProspectusRelatedPartyItem"
+          }
+        },
+        "aggregateAmount": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "routing": {
+          "$ref": "#/$defs/ProspectusRouting"
+        }
+      },
+      "required": [
+        "present",
+        "items",
+        "aggregateAmount",
+        "summary",
+        "routing"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusRelatedPartyItem": {
+      "type": "object",
+      "properties": {
+        "counterparty": {
+          "type": "string"
+        },
+        "nature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "amount": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "basis": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "counterparty",
+        "nature",
+        "amount",
+        "basis"
       ],
       "additionalProperties": false
     },
@@ -1198,6 +1344,26 @@
         "status",
         "source",
         "note"
+      ],
+      "additionalProperties": false
+    },
+    "ProspectusTiming": {
+      "type": "object",
+      "properties": {
+        "parseMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "analysisMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "parseMs",
+        "analysisMs"
       ],
       "additionalProperties": false
     },
