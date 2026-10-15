@@ -39,6 +39,12 @@ package emits (ADR-0008).
   plus the spec-06 system-triggered showcase jobs `generate-market-brief` /
   `summarize-announcement`, and the prospectus at-a-glance `analyze-prospectus`
   with `ProspectusPayload = { prospectusId }`).
+- **JOBS** (job registry) — per-`JobName` metadata: `{ name, queue, phases,
+  resultIdPrefix, schemaVersion }`. `phases` is the job type's fixed ordered
+  phase list (ADR-0007 §4); `resultIdPrefix` is the colon-form prefix of the
+  worker's `JobResult.jobId` (the BullMQ custom id is a separate hyphen form
+  owned by each job family). Generated into
+  `contracts_generated/job_registry.py`; metadata only, no wire shape.
 - **TechnicalAnalysisArtifact** — claim-checked S3 JSON for a system
   `analyze-technical` run: code-owned nested indicator facts + structured
   events, LLM narrative, provenance, and LLM cost report. No root headline and

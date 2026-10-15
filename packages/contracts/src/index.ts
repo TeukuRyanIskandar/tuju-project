@@ -18,5 +18,6 @@ export * from './envelope.js';
 export * from './result.js';
 export * from './artifact.js';
 export * from './schema-versions.js';
+export * from './job-registry.js';
 export { buildJsonSchema, modelOrder } from './jsonSchema.js';
 export * from './http/index.js';
