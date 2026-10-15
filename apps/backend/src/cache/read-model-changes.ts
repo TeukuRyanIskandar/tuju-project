@@ -15,7 +15,7 @@ import {
 
 /**
  * A domain change a writer announces to `ReadModelCache.changed` AFTER its
- * write commits. Writers say what happened; {@link invalidationPrefixesFor}
+ * write commits. Writers say what happened; {@link invalidationsFor}
  * decides which cached reads that makes stale.
  */
 export type ReadModelChange =
@@ -54,29 +54,43 @@ const BULK_DATA_PREFIXES = [
   MARKET_CACHE_PREFIX,
 ] as const;
 
-/** The event → prefixes table. Exhaustive over `ReadModelChange['kind']`. */
+/**
+ * What one change makes stale: exact `keys` (one DEL, no SCAN) and key
+ * `prefixes` (swept together in one SCAN pass).
+ */
+export interface Invalidation {
+  readonly keys: readonly string[];
+  readonly prefixes: readonly string[];
+}
+
+const prefixes = (...p: readonly string[]): Invalidation => ({ keys: [], prefixes: p });
+
+/** The event → invalidation table. Exhaustive over `ReadModelChange['kind']`. */
 const INVALIDATES: {
-  [K in ReadModelChange['kind']]: (change: ChangeOf<K>) => readonly string[];
+  [K in ReadModelChange['kind']]: (change: ChangeOf<K>) => Invalidation;
 } = {
-  eodIngested: () => BULK_DATA_PREFIXES,
-  purged: () => BULK_DATA_PREFIXES,
+  eodIngested: () => prefixes(...BULK_DATA_PREFIXES),
+  purged: () => prefixes(...BULK_DATA_PREFIXES),
   // Reads that carry `aiSummary`: the market feed, the dealings view (same
   // rows, filtered) and the stock page's announcements list. Calendars and
   // news do not carry it.
-  announcementSummarised: ({ stockCodes }) => [
-    `${DISCLOSURES_CACHE_PREFIX}announcements:`,
-    `${DISCLOSURES_CACHE_PREFIX}dealings:`,
-    ...stockCodes.map(stockAnnouncementsPrefix),
-  ],
-  stockAnalysisChanged: ({ stockCode, analysis }) => [
-    stockAnalysisKey(stockCode, analysis),
-  ],
-  marketBriefLanded: () => [BRIEF_CACHE_PREFIX],
-  prospectusAnalysed: ({ prospectusId }) => [prospectusPrefix(prospectusId)],
+  announcementSummarised: ({ stockCodes }) =>
+    prefixes(
+      `${DISCLOSURES_CACHE_PREFIX}announcements:`,
+      `${DISCLOSURES_CACHE_PREFIX}dealings:`,
+      ...stockCodes.map(stockAnnouncementsPrefix),
+    ),
+  // One envelope per stock and kind: an exact key, never a sweep.
+  stockAnalysisChanged: ({ stockCode, analysis }) => ({
+    keys: [stockAnalysisKey(stockCode, analysis)],
+    prefixes: [],
+  }),
+  marketBriefLanded: () => prefixes(BRIEF_CACHE_PREFIX),
+  prospectusAnalysed: ({ prospectusId }) => prefixes(prospectusPrefix(prospectusId)),
 };
 
-/** The key prefixes one change invalidates (pure; the table's unit-test surface). */
-export function invalidationPrefixesFor(change: ReadModelChange): readonly string[] {
-  const rule = INVALIDATES[change.kind] as (c: ReadModelChange) => readonly string[];
+/** The keys and prefixes one change invalidates (pure; the table's unit-test surface). */
+export function invalidationsFor(change: ReadModelChange): Invalidation {
+  const rule = INVALIDATES[change.kind] as (c: ReadModelChange) => Invalidation;
   return rule(change);
 }

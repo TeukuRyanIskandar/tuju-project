@@ -1,6 +1,7 @@
 import type { Redis } from 'ioredis';
 import {
   DEFAULT_READ_CACHE_TTL_SECONDS,
+  READ_CACHE_GENERATION_KEY,
   ReadModelCache,
 } from './read-model-cache';
 import { ReadModelReads } from './read-model-reads';
@@ -18,11 +19,23 @@ function fakeRedis() {
   const store = new Map<string, string>();
   const redis = {
     store,
+    ttls: new Map<string, number>(),
     get: jest.fn(async (key: string) => store.get(key) ?? null),
-    set: jest.fn(async (key: string, value: string) => {
-      store.set(key, value);
-      return 'OK';
+    mget: jest.fn(async (...keys: string[]) => keys.map((k) => store.get(k) ?? null)),
+    incr: jest.fn(async (key: string) => {
+      const n = Number(store.get(key) ?? 0) + 1;
+      store.set(key, String(n));
+      return n;
     }),
+    // The SET_IF_GENERATION script, modelled.
+    eval: jest.fn(
+      async (_script: string, _n: number, genKey: string, key: string, gen: string, value: string, ttl: number) => {
+        if ((store.get(genKey) ?? '') !== gen) return null;
+        store.set(key, value);
+        redis.ttls.set(key, ttl);
+        return 'OK';
+      },
+    ),
     del: jest.fn(async (...keys: string[]) => {
       let n = 0;
       for (const k of keys) if (store.delete(k)) n++;
@@ -38,7 +51,10 @@ function fakeRedis() {
     }),
     keys: jest.fn(),
   };
-  return redis as unknown as Redis & { store: Map<string, string> };
+  return redis as unknown as Redis & {
+    store: Map<string, string>;
+    ttls: Map<string, number>;
+  };
 }
 
 function config(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
@@ -54,7 +70,27 @@ describe('ReadModelCache', () => {
     const payload = { stockCode: '1155', ratios: { pe: null, dy: 4.25 } };
 
     expect(await cache.read(CORE, async () => payload)).toEqual(payload);
-    expect(redis.set).toHaveBeenCalledWith(CORE.key, JSON.stringify(payload), 'EX', 90);
+    expect(redis.store.get(CORE.key)).toBe(JSON.stringify(payload));
+    expect(redis.ttls.get(CORE.key)).toBe(90);
+  });
+
+  it('read: a fill whose loader overlapped a change is not cached (no stale re-fill)', async () => {
+    const redis = fakeRedis();
+    const cache = new ReadModelCache(redis, config());
+    const read = ReadModelReads.stockAnalysis('1155', 'technical');
+
+    // The loader reads the row (pending) …
+    const value = await cache.read(read, async () => {
+      // … then the writer lands `ready` and announces before the fill.
+      await cache.changed({ kind: 'stockAnalysisChanged', stockCode: '1155', analysis: 'technical' });
+      return { status: 'pending' };
+    });
+
+    expect(value).toEqual({ status: 'pending' });
+    expect(await cache.peek(read)).toBeNull();
+    // The next read fills normally.
+    await cache.read(read, async () => ({ status: 'ready' }));
+    expect(await cache.peek(read)).toEqual({ status: 'ready' });
   });
 
   it('read: a hit is served without running the loader', async () => {
@@ -106,9 +142,43 @@ describe('ReadModelCache', () => {
     expect(redis.keys).not.toHaveBeenCalled();
     expect([...redis.store.keys()].sort()).toEqual([
       'cache:brief:latest',
+      READ_CACHE_GENERATION_KEY,
       'intraday:movers:gainers',
       'session:abc',
     ]);
+  });
+
+  it('changed: several prefixes are swept in ONE SCAN pass', async () => {
+    const redis = fakeRedis();
+    const cache = new ReadModelCache(redis, config());
+    await cache.read(ReadModelReads.stockAnnouncements('1155', [], { offset: 0, limit: 20 }), async () => 1);
+    await cache.read(ReadModelReads.stockAnnouncements('1023', [], { offset: 0, limit: 20 }), async () => 2);
+    await cache.read(ReadModelReads.stockCore('1155'), async () => 3);
+
+    await cache.changed({
+      kind: 'announcementSummarised',
+      announcementId: 'a-1',
+      stockCodes: ['1155', '1023'],
+    });
+
+    const patterns = (redis.scan as jest.Mock).mock.calls.map((c) => c[2] as string);
+    expect(new Set(patterns)).toEqual(new Set(['cache:*']));
+    expect(await cache.peek(ReadModelReads.stockCore('1155'))).toBe(3);
+    expect(
+      await cache.peek(ReadModelReads.stockAnnouncements('1155', [], { offset: 0, limit: 20 })),
+    ).toBeNull();
+  });
+
+  it('changed: an exact-key change is one DEL, no SCAN', async () => {
+    const redis = fakeRedis();
+    const cache = new ReadModelCache(redis, config());
+    const read = ReadModelReads.stockAnalysis('1155', 'fundamental');
+    await cache.read(read, async () => ({ status: 'ready' }));
+
+    await cache.changed({ kind: 'stockAnalysisChanged', stockCode: '1155', analysis: 'fundamental' });
+
+    expect(redis.scan).not.toHaveBeenCalled();
+    expect(await cache.peek(read)).toBeNull();
   });
 
   it('changed: an invalidation failure throws (the writer fails loudly)', async () => {

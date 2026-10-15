@@ -5,11 +5,15 @@
  * builds or sweeps a key (tests may import these to inspect Redis).
  *
  * Everything under `cache:` is a cold-rebuildable read-through copy of
- * Postgres-derived data — losing it is never data loss. Which prefixes a
+ * Postgres-derived data — losing it is never data loss. Which keys a
  * change clears is decided in one table (`read-model-changes.ts`).
  *
- * The strings are byte-identical to the pre-ReadModelCache keys, so a deploy
- * neither orphans nor mis-hits anything already in Redis.
+ * The strings match the pre-ReadModelCache keys EXCEPT the stock-analysis
+ * envelopes, which moved from `cache:stocks:{code}:technical-analysis` /
+ * `:fundamental-analysis` to `cache:stocks:{code}:analysis:{kind}`. Old-format
+ * entries are orphaned on deploy (they expire within their old 1h TTL), and
+ * during a mixed-version rollout an old pod's writes to them are never
+ * invalidated by a new pod — let old pods drain before relying on them.
  */
 
 /** Root prefix separating the read cache from BullMQ, sessions and `intraday:` (class 3). */

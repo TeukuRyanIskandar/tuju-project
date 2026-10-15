@@ -63,7 +63,7 @@ import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
 import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { PROSPECTUS_CACHE_PREFIX } from '../cache/cache-keys';
-import { invalidationPrefixesFor } from '../cache/read-model-changes';
+import { invalidationsFor } from '../cache/read-model-changes';
 import { IpoController } from './ipo.controller';
 import { IpoService } from './ipo.service';
 import { ProspectusAnalysisStore } from './prospectus-analysis.store';
@@ -252,7 +252,7 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
 
   it('the prospectus cache prefix is NOT cleared by the nightly ingest or the purge', () => {
     for (const kind of ['eodIngested', 'purged'] as const) {
-      expect(invalidationPrefixesFor({ kind })).not.toContain(PROSPECTUS_CACHE_PREFIX);
+      expect(invalidationsFor({ kind }).prefixes).not.toContain(PROSPECTUS_CACHE_PREFIX);
     }
   });
 

@@ -1,10 +1,10 @@
 /**
- * The event → prefixes table, pinned as data. The Redis-level behaviour
+ * The event → invalidation table, pinned as data. The Redis-level behaviour
  * ("after change X, read Y misses") is pinned once in
  * `read-model-cache.int-spec.ts`.
  */
 
-import { invalidationPrefixesFor } from './read-model-changes';
+import { invalidationsFor } from './read-model-changes';
 
 const BULK = [
   'cache:search:',
@@ -14,11 +14,12 @@ const BULK = [
   'cache:market:',
 ];
 
-describe('invalidationPrefixesFor (the read-model change table)', () => {
+describe('invalidationsFor (the read-model change table)', () => {
   it.each(['eodIngested', 'purged'] as const)(
     '%s clears every EOD/disclosure-derived read, but never the brief or prospectus reads',
     (kind) => {
-      const prefixes = invalidationPrefixesFor({ kind });
+      const { keys, prefixes } = invalidationsFor({ kind });
+      expect(keys).toEqual([]);
       expect([...prefixes]).toEqual(BULK);
       expect(prefixes).not.toContain('cache:brief:');
       expect(prefixes).not.toContain('cache:prospectus:');
@@ -27,54 +28,58 @@ describe('invalidationPrefixesFor (the read-model change table)', () => {
 
   it('announcementSummarised clears the reads that carry aiSummary, for its stocks only', () => {
     expect(
-      invalidationPrefixesFor({
+      invalidationsFor({
         kind: 'announcementSummarised',
         announcementId: 'a-1',
         stockCodes: ['1155', '1023'],
       }),
-    ).toEqual([
-      'cache:disclosures:announcements:',
-      'cache:disclosures:dealings:',
-      'cache:stocks:1155:announcements:',
-      'cache:stocks:1023:announcements:',
-    ]);
+    ).toEqual({
+      keys: [],
+      prefixes: [
+        'cache:disclosures:announcements:',
+        'cache:disclosures:dealings:',
+        'cache:stocks:1155:announcements:',
+        'cache:stocks:1023:announcements:',
+      ],
+    });
   });
 
-  it('stockAnalysisChanged clears only that stock’s TA or FA envelope', () => {
+  it('stockAnalysisChanged deletes exactly that stock’s TA or FA envelope key (no sweep)', () => {
     expect(
-      invalidationPrefixesFor({
+      invalidationsFor({
         kind: 'stockAnalysisChanged',
         stockCode: '1155',
         analysis: 'technical',
       }),
-    ).toEqual(['cache:stocks:1155:analysis:technical']);
+    ).toEqual({ keys: ['cache:stocks:1155:analysis:technical'], prefixes: [] });
   });
 
   it('marketBriefLanded clears the brief reads', () => {
-    expect(invalidationPrefixesFor({ kind: 'marketBriefLanded' })).toEqual([
-      'cache:brief:',
-    ]);
+    expect(invalidationsFor({ kind: 'marketBriefLanded' })).toEqual({
+      keys: [],
+      prefixes: ['cache:brief:'],
+    });
   });
 
   it('prospectusAnalysed clears only that prospectus', () => {
     expect(
-      invalidationPrefixesFor({ kind: 'prospectusAnalysed', prospectusId: 'p-1' }),
-    ).toEqual(['cache:prospectus:p-1:']);
+      invalidationsFor({ kind: 'prospectusAnalysed', prospectusId: 'p-1' }),
+    ).toEqual({ keys: [], prefixes: ['cache:prospectus:p-1:'] });
   });
 
-  it('every prefix stays inside the read cache (never BullMQ, sessions or intraday:)', () => {
+  it('every key and prefix stays inside the read cache (never BullMQ, sessions or intraday:)', () => {
     const all = [
-      ...invalidationPrefixesFor({ kind: 'eodIngested' }),
-      ...invalidationPrefixesFor({ kind: 'purged' }),
-      ...invalidationPrefixesFor({
+      invalidationsFor({ kind: 'eodIngested' }),
+      invalidationsFor({ kind: 'purged' }),
+      invalidationsFor({
         kind: 'announcementSummarised',
         announcementId: 'a',
         stockCodes: ['1155'],
       }),
-      ...invalidationPrefixesFor({ kind: 'stockAnalysisChanged', stockCode: '1155', analysis: 'fundamental' }),
-      ...invalidationPrefixesFor({ kind: 'marketBriefLanded' }),
-      ...invalidationPrefixesFor({ kind: 'prospectusAnalysed', prospectusId: 'p' }),
-    ];
+      invalidationsFor({ kind: 'stockAnalysisChanged', stockCode: '1155', analysis: 'fundamental' }),
+      invalidationsFor({ kind: 'marketBriefLanded' }),
+      invalidationsFor({ kind: 'prospectusAnalysed', prospectusId: 'p' }),
+    ].flatMap(({ keys, prefixes }) => [...keys, ...prefixes]);
     expect(all.every((p) => p.startsWith('cache:'))).toBe(true);
   });
 });
