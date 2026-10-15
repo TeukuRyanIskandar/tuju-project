@@ -76,6 +76,7 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
   let redis: Redis;
   let bus: InMemoryJobBus;
   let analyses: StockAnalysis;
+  let readCache: ReadModelCache;
   let s3Reads: Array<{ Bucket: string; Key: string }>;
   let instrument: { id: string; stockCode: string };
   let runId: string;
@@ -107,6 +108,7 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
     } as unknown as S3Client;
 
     bus = new InMemoryJobBus();
+    readCache = new ReadModelCache(redis, { cache: { readTtlSeconds: 3600 } } as AppConfig);
     analyses = new StockAnalysis(
       bus,
       dataSource.getRepository(entities.TechnicalAnalysis),
@@ -114,7 +116,7 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
       dataSource.getRepository(entities.Instrument),
       dataSource.getRepository(entities.PriceBar),
       new AnalysisResultStore(dataSource.getRepository(entities.AnalysisResult)),
-      new ReadModelCache(redis, { cache: { readTtlSeconds: 3600 } } as AppConfig),
+      readCache,
       fakeS3,
     );
     analyses.onModuleInit();
@@ -248,11 +250,14 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
       jobName: 'analyze-technical',
     });
 
-    // A newer EOD bar lands with no announcement aimed at this read: the
-    // cached entry still says ready, the response says stale.
-    await seedBar('2026-10-09');
-    expect((await analyses.status(MAYBANK, 'technical')).status).toBe('stale');
     expect(await cachedTechnical()).toMatchObject({ status: 'ready' });
+
+    // A newer EOD bar lands; the ingest's eodIngested sweep drops the cached
+    // envelope and the next read caches it promoted to stale.
+    await seedBar('2026-10-09');
+    await readCache.changed({ kind: 'eodIngested' });
+    expect((await analyses.status(MAYBANK, 'technical')).status).toBe('stale');
+    expect(await cachedTechnical()).toMatchObject({ status: 'stale' });
 
     const artifact = await analyses.artifact(MAYBANK, 'technical');
     expect(artifact).not.toHaveProperty('cost');
@@ -286,6 +291,7 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
     });
     expect((await analyses.status(MAYBANK, 'technical')).status).toBe('facts_only');
     await seedBar('2026-10-09');
+    await readCache.changed({ kind: 'eodIngested' });
     expect((await analyses.status(MAYBANK, 'technical')).status).toBe('stale');
   });
 
@@ -317,6 +323,49 @@ describe('StockAnalysis (Postgres + Redis, S3 fake)', () => {
       artifactKey: null,
     });
     expect((await analyses.status(MAYBANK, 'technical')).status).toBe('pending');
+  });
+
+  it('a job that fails before its markPending stays failed (pending is refused)', async () => {
+    const first = await enqueueTechnical();
+    await bus.complete(first.result);
+    bus.setState(first.jobId, 'completed');
+
+    // A forced re-run fails terminally before the enqueuer marks it pending.
+    const second = await enqueueTechnical();
+    await bus.failJob(second.jobId, { userMessage: 'bad envelope' });
+    await expect(
+      analyses.markPending(JobNames.technical, instrument, {
+        correlationId: second.envelope.correlationId,
+        jobId: second.jobId,
+      }),
+    ).resolves.toBe(false);
+
+    expect(await analyses.status(MAYBANK, 'technical')).toMatchObject({
+      status: 'failed',
+      errorMessage: 'bad envelope',
+      // The last good result is kept, not nulled by a pending write.
+      headline: first.result.summary.headline,
+    });
+  });
+
+  it('a failure of a superseded job does not clobber the newer pending job', async () => {
+    const first = await enqueueTechnical();
+    // A newer job (fresh correlationId) is marked pending while the first is
+    // still queued; then the FIRST job's final failure arrives.
+    const second = buildTechnicalEnvelope(MAYBANK, NOW);
+    await analyses.markPending(JobNames.technical, instrument, {
+      correlationId: second.correlationId,
+      jobId: first.jobId,
+    });
+
+    await bus.failJob(first.jobId, { userMessage: 'old job died' });
+
+    expect(
+      await analyses.findByInstrumentId(JobNames.technical, instrument.id),
+    ).toMatchObject({
+      status: StockAnalysisStatus.Pending,
+      correlationId: second.correlationId,
+    });
   });
 
   it('markPending inserts the first row for a never-analysed instrument', async () => {

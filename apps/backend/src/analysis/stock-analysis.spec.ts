@@ -115,9 +115,11 @@ describe('StockAnalysis job family (landing via the bus)', () => {
       expect(rows.get('inst-1155')).toMatchObject({
         status: StockAnalysisStatus.Failed,
         errorMessage: 'worker blew up',
-        // The last good result survives a later failure.
+        // The last good result survives a later failure …
         headline: result.summary.headline,
-        correlationId: result.correlationId,
+        // … but the row now carries the FAILED job's correlationId, so a late
+        // markPending for that job is refused (stock-analysis.int-spec.ts).
+        correlationId: envelope.correlationId,
       });
 
       expect(rows.size).toBe(1);

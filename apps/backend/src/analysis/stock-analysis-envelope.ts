@@ -33,8 +33,8 @@ export function kindOf(jobName: StockAnalysisJob): StockAnalysisKind {
 }
 
 /**
- * The envelope as stored, before stale promotion — the cacheable part (it
- * changes only when the row does). `row === null` ⇒ pending (never enqueued).
+ * The envelope as stored, before stale promotion. `row === null` ⇒ pending
+ * (never enqueued).
  */
 export function toEnvelope<K extends StockAnalysisKind>(
   code: string,
@@ -68,8 +68,8 @@ export function canGoStale(envelope: StockAnalysisEnvelope): boolean {
 
 /**
  * Promote a landed `ready` / `facts_only` envelope to `stale` when its `asOf`
- * calendar day is behind the instrument's latest EOD close day (read-time
- * only — never written back).
+ * calendar day is behind the instrument's latest EOD close day (on read,
+ * never written back to the row).
  */
 export function promoteStale<E extends StockAnalysisEnvelope>(
   envelope: E,

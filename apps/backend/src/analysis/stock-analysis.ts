@@ -73,14 +73,18 @@ type RowWrite = Pick<
  *   `facts_only` when the worker's grounding/cost guard fell back to a
  *   facts-only headline. A verdict-bearing result is the scaffold
  *   `POST /analysis` shape and lands in `analysis_results` instead.
- * - {@link fail} writes `failed`, keeping the last good headline/artifact.
+ * - {@link fail} writes `failed` under the failed job's `correlationId`
+ *   (so a late {@link markPending} for that job is refused), keeping the last
+ *   good headline/artifact. A failure of an older job while a newer one is
+ *   pending is ignored.
  * Each write announces `stockAnalysisChanged` to the read-model cache.
  *
  * Reads (KLCI-30 hard-gated; unknown/outside → 404):
  * - {@link status}: the thin envelope; `pending` when no row. `stale` is
- *   promoted at read time (a landed result whose `asOf` day is behind the
- *   stock's latest EOD close day) AFTER the class-2 cache, so the cache only
- *   ever holds the row as written and staleness tracks the price bars live.
+ *   promoted (a landed result whose `asOf` day is behind the stock's latest
+ *   EOD close day) inside the class-2 loader: the only writers of price bars,
+ *   the EOD ingest and the purge, clear `cache:stocks:*`, so a cached
+ *   envelope never outlives the close that would make it stale.
  * - {@link artifact}: the proxied S3 artifact JSON with `cost` stripped
  *   (ADR-0014); 404 when the row has no pointer.
  */
@@ -117,9 +121,7 @@ export class StockAnalysis
     stockCode: string,
     kind: K,
   ): Promise<StockAnalysisEnvelope<K>> {
-    const envelope = await this.storedEnvelope(stockCode, kind);
-    if (!canGoStale(envelope)) return envelope;
-    return promoteStale(envelope, await this.latestEodCloseDay(stockCode));
+    return this.cachedEnvelope(stockCode, kind);
   }
 
   /** `GET /stocks/:code/analysis/{kind}/artifact` — proxied, `cost` stripped. */
@@ -127,7 +129,7 @@ export class StockAnalysis
     stockCode: string,
     kind: StockAnalysisKind,
   ): Promise<Record<string, unknown>> {
-    const { artifact } = await this.storedEnvelope(stockCode, kind);
+    const { artifact } = await this.cachedEnvelope(stockCode, kind);
     if (!artifact) {
       throw new NotFoundException(
         `No analysis artifact for stockCode=${stockCode}`,
@@ -248,10 +250,26 @@ export class StockAnalysis
     if (!instrument) return;
 
     const existing = await this.findByInstrumentId(ref.jobName, instrument.id);
+    if (
+      existing?.status === StockAnalysisStatus.Pending &&
+      existing.correlationId !== failure.correlationId
+    ) {
+      this.logger.warn({
+        msg: 'stock analysis: failure of a superseded job ignored',
+        jobName: ref.jobName,
+        jobId: failure.jobId,
+        correlationId: failure.correlationId,
+        pendingCorrelationId: existing.correlationId,
+        stockCode: ref.key.stockCode,
+      });
+      return;
+    }
     await this.write(ref.jobName, {
       instrumentId: instrument.id,
       status: StockAnalysisStatus.Failed,
-      correlationId: existing?.correlationId ?? failure.correlationId,
+      // This job's id, not the last good result's: markPending's guard keys
+      // on it, so a pending write arriving after this failure is refused.
+      correlationId: failure.correlationId,
       jobId: failure.jobId,
       headline: existing?.headline ?? null,
       asOf: existing?.asOf ?? null,
@@ -273,11 +291,12 @@ export class StockAnalysis
   // ─── internals ──────────────────────────────────────────────────────────
 
   /**
-   * The envelope as written (no stale promotion), class-2 cached under
-   * `stockAnalysis(code, kind)`. Every write announces, so the cache never
-   * outlives the row; a 404 is thrown through the loader and never cached.
+   * The envelope with `stale` promoted, class-2 cached under
+   * `stockAnalysis(code, kind)`. Every row write announces and every price-bar
+   * write sweeps `cache:stocks:`, so the cache outlives neither; a 404 is
+   * thrown through the loader and never cached.
    */
-  private storedEnvelope<K extends StockAnalysisKind>(
+  private cachedEnvelope<K extends StockAnalysisKind>(
     stockCode: string,
     kind: K,
   ): Promise<StockAnalysisEnvelope<K>> {
@@ -286,13 +305,15 @@ export class StockAnalysis
       const instrument = await this.instruments.findOne({ where: { stockCode } });
       if (!instrument) throw this.notFound(stockCode);
       const row = await this.findByInstrumentId(jobNameOf(kind), instrument.id);
-      return toEnvelope(stockCode, kind, row);
+      const envelope = toEnvelope(stockCode, kind, row);
+      if (!canGoStale(envelope)) return envelope;
+      return promoteStale(envelope, await this.latestEodCloseDay(instrument.id));
     });
   }
 
-  private async latestEodCloseDay(stockCode: string): Promise<string | null> {
+  private async latestEodCloseDay(instrumentId: string): Promise<string | null> {
     const latest = await this.priceBars.findOne({
-      where: { instrument: { stockCode } },
+      where: { instrumentId },
       order: { tradeDate: 'DESC' },
     });
     return latest?.tradeDate ?? null;

@@ -60,7 +60,7 @@ const feed = (
     `${DISCLOSURES_CACHE_PREFIX}${name}:${listFragment(categories)}:${q.companyCode ?? ''}:${dayFragment(q.from)}:${dayFragment(q.to)}:${q.offset}:${q.limit}`,
   );
 
-/** Prefix of every cached read of one stock's analysis envelope (shared with the change table). */
+/** The one cached read of a stock's analysis envelope (shared with the change table). */
 export const stockAnalysisKey = (
   stockCode: string,
   kind: StockAnalysisKind,
@@ -108,8 +108,9 @@ export const ReadModelReads = {
     ),
 
   /**
-   * The TA/FA envelope as written (`StockAnalysis` promotes `stale` after the
-   * cache). Invalidated by `stockAnalysisChanged` (pending, land, fail).
+   * The TA/FA envelope, `stale` already promoted. Invalidated by
+   * `stockAnalysisChanged` (pending, land, fail) and, via the `cache:stocks:`
+   * sweep, by `eodIngested` / `purged` (a new close can make it stale).
    */
   stockAnalysis: (stockCode: string, kind: StockAnalysisKind): ReadModelRead =>
     read(stockAnalysisKey(stockCode, kind)),
