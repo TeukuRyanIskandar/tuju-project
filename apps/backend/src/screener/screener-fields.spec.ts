@@ -26,12 +26,7 @@ import {
   type RawScreenerParams,
 } from './params';
 import type { ScreenerFilters } from './screener-query.interface';
-import { SCREENER_CACHE_PREFIX } from '../cache/cache-keys';
-import {
-  SCREENER_FILTER_FIELDS,
-  SCREENER_FIELDS_CACHE_KEY,
-  type ScreenerFilterField,
-} from './fields';
+import { SCREENER_FILTER_FIELDS, type ScreenerFilterField } from './fields';
 
 /** A syntactically-valid sector id (the domain values are UUIDs). */
 const SECTOR_PROBE_UUID = '00000000-0000-0000-0000-000000000001';
@@ -124,9 +119,5 @@ describe('SCREENER_FILTER_FIELDS (the GET /screener/fields vocabulary)', () => {
     expect(parseScreenerFilters({ sector: SECTOR_PROBE_UUID }).sectorIds).toEqual([
       SECTOR_PROBE_UUID,
     ]);
-  });
-
-  it('the fields cache key rides the swept screener prefix, exactly as ticket 02 reserved it', () => {
-    expect(SCREENER_FIELDS_CACHE_KEY).toBe(`${SCREENER_CACHE_PREFIX}fields`);
   });
 });

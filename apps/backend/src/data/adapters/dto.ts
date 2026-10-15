@@ -123,6 +123,19 @@ export interface CorporateActionDto {
 }
 
 /**
+ * A cash dividend from a market vendor's own history (yfinance), NOT a
+ * {@link CorporateAction} row. Only a {@link FundamentalsFetch} carries these;
+ * see `FundamentalsFetch.dividends` for when they feed DY.
+ */
+export interface DividendDto {
+  readonly stockCode: string;
+  /** Ex-date, ISO `YYYY-MM-DD` (DY trailing-window anchor). */
+  readonly exDate: string;
+  /** RM per share. */
+  readonly amount: number;
+}
+
+/**
  * A curated IPO calendar row (manual entry). Shapes {@link IpoListing}. Not FK'd
  * to a company/instrument — the issuer may not exist in the analysed universe yet.
  */

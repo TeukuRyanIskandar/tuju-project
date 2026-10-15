@@ -5,18 +5,13 @@
  * real testcontainers in `stocks.int.spec.ts`.
  */
 
-import { StockAnalysisStatus } from '../data/entities/enums';
 import {
   DEFAULT_PAGE_LIMIT,
   MAX_PAGE_LIMIT,
   resolvePagination,
 } from './pagination';
 import { pctChange, toNumber } from './serialisation';
-import {
-  isStockSeriesQuery,
-  omitArtifactCost,
-  promoteAnalysisStatus,
-} from './stock-analysis-read';
+import { isStockSeriesQuery } from './series-query';
 
 describe('resolvePagination (clamping, never 400)', () => {
   it('defaults offset 0 and limit 50 when params are absent', () => {
@@ -103,51 +98,5 @@ describe('isStockSeriesQuery (PoC-fixed interval/range)', () => {
   it('rejects other interval or range values', () => {
     expect(isStockSeriesQuery('1h', '2y')).toBe(false);
     expect(isStockSeriesQuery('1d', '1y')).toBe(false);
-  });
-});
-
-describe('promoteAnalysisStatus (read-time stale)', () => {
-  const asOf = new Date('2026-09-28T18:00:00.000Z');
-
-  it('promotes ready/facts_only when as_of date is behind latest EOD', () => {
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.Ready, asOf, '2026-09-30'),
-    ).toBe(StockAnalysisStatus.Stale);
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.FactsOnly, asOf, '2026-09-30'),
-    ).toBe(StockAnalysisStatus.Stale);
-  });
-
-  it('leaves ready when as_of matches or is ahead of latest EOD', () => {
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.Ready, asOf, '2026-09-28'),
-    ).toBe(StockAnalysisStatus.Ready);
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.Ready, asOf, '2026-09-27'),
-    ).toBe(StockAnalysisStatus.Ready);
-  });
-
-  it('does not promote pending/failed/running', () => {
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.Pending, asOf, '2026-09-30'),
-    ).toBe(StockAnalysisStatus.Pending);
-    expect(
-      promoteAnalysisStatus(StockAnalysisStatus.Failed, asOf, '2026-09-30'),
-    ).toBe(StockAnalysisStatus.Failed);
-  });
-});
-
-describe('omitArtifactCost', () => {
-  it('strips cost and leaves the rest intact', () => {
-    const body = {
-      schemaVersion: 'technical-analysis-1',
-      symbol: '1155',
-      cost: { currency: 'USD', totalUsd: 0.01, calls: [] },
-    };
-    expect(omitArtifactCost(body)).toEqual({
-      schemaVersion: 'technical-analysis-1',
-      symbol: '1155',
-    });
-    expect(omitArtifactCost(body)).not.toHaveProperty('cost');
   });
 });

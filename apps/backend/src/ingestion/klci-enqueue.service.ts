@@ -3,12 +3,14 @@
  *
  * Behind `enqueue-klci` in worker-main: fans out system-triggered
  * `analyze-technical` + `analyze-fundamental` for the KLCI 30 (or one code).
- * Same path is called after successful nightly ingest when yfinance is bound.
+ * Same path is called after a successful nightly ingest whose market adapter
+ * serves the `klci30` universe (yfinance today).
  *
  * Skip (non-force): analysis row `status ∈ {ready, facts_only}` and
- * `as_of`/`updated_at` same UTC calendar day. On enqueue: upsert row → pending.
- * Clears completed/failed BullMQ jobs (prospectus pattern) so `--force` works
- * within the hour-bucket retention window; leaves true in-flight as collapse.
+ * `as_of`/`updated_at` same UTC calendar day. On enqueue: row → pending.
+ * Enqueues with `replaceFinished` so a retained completed/failed job does not
+ * swallow `--force` within the hour-bucket retention window; a true in-flight
+ * job collapses (reported as `alreadyInFlight`).
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,9 +26,9 @@ import { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entit
 import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import { StockAnalysisStatus } from '../data/entities/enums';
 import { JobBus } from '../jobbus/job-bus.service';
+import type { StockAnalysisJob } from '../jobbus/job-identities';
 import { JobNames } from '../jobbus/job-names';
-import { TechnicalAnalysisStore } from '../analysis/technical-analysis.store';
-import { FundamentalAnalysisStore } from '../analysis/fundamental-analysis.store';
+import { StockAnalysis } from '../analysis/stock-analysis';
 import {
   getKlci30Row,
   isKlci30,
@@ -72,20 +74,6 @@ export function shouldSkipSameDayAnalysis(
   return utcDay(anchor) === utcDay(now);
 }
 
-/**
- * BullMQ dedup id for TA/FA (mirrors JobBus.deriveJobId default branch).
- * Kept here so ops can clear completed/failed before enqueue.
- */
-export function taFaBullJobId(
-  prefix: 'ta' | 'fa',
-  symbol: string,
-  discriminator: string,
-  asOfIso: string,
-): string {
-  const asOfBucket = asOfIso.slice(0, 13);
-  return [prefix, symbol, discriminator, asOfBucket].join(':');
-}
-
 export function buildTechnicalEnvelope(
   stockCode: string,
   now: Date = new Date(),
@@ -119,8 +107,7 @@ export class KlciEnqueueService {
   constructor(
     private readonly dataSource: DataSource,
     private readonly jobBus: JobBus,
-    private readonly technical: TechnicalAnalysisStore,
-    private readonly fundamental: FundamentalAnalysisStore,
+    private readonly analyses: StockAnalysis,
   ) {}
 
   async enqueue(opts: KlciEnqueueOptions = {}): Promise<KlciEnqueueResult> {
@@ -149,16 +136,14 @@ export class KlciEnqueueService {
       }
 
       await this.enqueueOne({
-        stockCode,
-        instrumentId: instrument.id,
+        instrument,
         jobName: JobNames.technical,
         force,
         now,
         result,
       });
       await this.enqueueOne({
-        stockCode,
-        instrumentId: instrument.id,
+        instrument,
         jobName: JobNames.fundamental,
         force,
         now,
@@ -168,23 +153,6 @@ export class KlciEnqueueService {
 
     this.logger.log({ msg: 'enqueue-klci done', ...result });
     return result;
-  }
-
-  /** @returns true if caller should skip enqueue (already in flight). */
-  private async clearOrSkipInFlight(
-    derivedJobId: string,
-    key: string,
-    result: KlciEnqueueResult,
-  ): Promise<boolean> {
-    const existing = await this.jobBus.getQueue().getJob(derivedJobId);
-    if (!existing) return false;
-    const state = await existing.getState();
-    if (state === 'completed' || state === 'failed') {
-      await existing.remove();
-      return false;
-    }
-    result.alreadyInFlight.push(key);
-    return true;
   }
 
   private resolveCodes(stockCode?: string): string[] {
@@ -200,72 +168,41 @@ export class KlciEnqueueService {
   }
 
   private async enqueueOne(args: {
-    stockCode: string;
-    instrumentId: string;
-    jobName: typeof JobNames.technical | typeof JobNames.fundamental;
+    instrument: Instrument;
+    jobName: StockAnalysisJob;
     force: boolean;
     now: Date;
     result: KlciEnqueueResult;
   }): Promise<void> {
-    const { stockCode, instrumentId, jobName, force, now, result } = args;
+    const { instrument, jobName, force, now, result } = args;
+    const { stockCode } = instrument;
     const key = `${stockCode}:${jobName}`;
 
     try {
-      const isTa = jobName === JobNames.technical;
-      const row = isTa
-        ? await this.technical.findByInstrumentId(instrumentId)
-        : await this.fundamental.findByInstrumentId(instrumentId);
-
+      const row = await this.analyses.findByInstrumentId(jobName, instrument.id);
       if (shouldSkipSameDayAnalysis(row, now, force)) {
         result.skipped.push(key);
         return;
       }
 
-      if (isTa) {
-        const envelope = buildTechnicalEnvelope(stockCode, now);
-        const derivedJobId = taFaBullJobId('ta', stockCode, '1D', envelope.asOf);
-        if (await this.clearOrSkipInFlight(derivedJobId, key, result)) return;
-        const { jobId } = await this.jobBus.enqueue(
-          JobNames.technical,
-          envelope,
-        );
-        await this.technical.upsert({
-          instrumentId,
-          status: StockAnalysisStatus.Pending,
-          correlationId: envelope.correlationId,
-          jobId,
-          headline: null,
-          asOf: null,
-          artifactBucket: null,
-          artifactKey: null,
-          errorMessage: null,
-        });
-      } else {
-        const envelope = buildFundamentalEnvelope(stockCode, now);
-        const derivedJobId = taFaBullJobId(
-          'fa',
-          stockCode,
-          'quarterly',
-          envelope.asOf,
-        );
-        if (await this.clearOrSkipInFlight(derivedJobId, key, result)) return;
-        const { jobId } = await this.jobBus.enqueue(
-          JobNames.fundamental,
-          envelope,
-        );
-        await this.fundamental.upsert({
-          instrumentId,
-          status: StockAnalysisStatus.Pending,
-          correlationId: envelope.correlationId,
-          jobId,
-          headline: null,
-          asOf: null,
-          artifactBucket: null,
-          artifactKey: null,
-          errorMessage: null,
-        });
+      const envelope: JobEnvelope<TechnicalPayload | FundamentalPayload> =
+        jobName === JobNames.technical
+          ? buildTechnicalEnvelope(stockCode, now)
+          : buildFundamentalEnvelope(stockCode, now);
+      const { jobId, status } = await this.jobBus.enqueue(jobName, envelope, {
+        replaceFinished: true,
+      });
+      if (status === 'inFlight') {
+        result.alreadyInFlight.push(key);
+        return;
       }
-
+      // Marked after the add (an enqueue that throws leaves the row alone);
+      // markPending refuses to overwrite this job's own result if the worker
+      // landed it first.
+      await this.analyses.markPending(jobName, instrument, {
+        correlationId: envelope.correlationId,
+        jobId,
+      });
       result.enqueued.push(key);
     } catch (err) {
       this.logger.error({

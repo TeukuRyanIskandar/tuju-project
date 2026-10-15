@@ -54,7 +54,7 @@ export class IngestionScheduler {
    * no `@RequiresJob` gate (free/anonymous content). Scheduled an hour after
    * the nightly EOD ingest so the brief narrates freshly-ingested index
    * levels; a content-derived `jobId` keyed by date (ADR-0007 §2, derived in
-   * `JobBus.deriveJobId`) collapses a same-day re-enqueue to one job.
+   * `marketBriefIdentity`) collapses a same-day re-enqueue to one job.
    * 21:00 MYT = 13:00 UTC (MYT is UTC+8).
    */
   @Cron('0 13 * * *', {

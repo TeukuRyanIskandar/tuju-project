@@ -1,78 +1,54 @@
-import {
-  Injectable,
-  Logger,
-  type OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { JobResult } from '@tuju/contracts';
-import { JobBus } from '../jobbus/job-bus.service';
-import { isVerdictSummary } from '../jobbus/job-result-helpers';
 import { AnalysisResult } from '../data/entities/analysis-result.entity';
 
+type VerdictSummary = Extract<JobResult['summary'], { verdict: unknown }>;
+
+/** A result carrying the verdict-bearing `Summary` variant (scaffold TA/FA). */
+export type VerdictResult = JobResult & { summary: VerdictSummary };
+
+/** Narrows a result to the verdict-bearing `Summary` variant. */
+export function isVerdictResult(result: JobResult): result is VerdictResult {
+  return 'verdict' in result.summary;
+}
+
 /**
- * Persists the AI worker's JobResult into Postgres (ADR-0004 §2/§4).
+ * The scaffold `analysis_results` table behind `POST /analysis` +
+ * `GET /analysis/:correlationId` (ADR-0004 §2/§4, ticket-06 round-trip proof).
  *
- * NestJS is the SOLE Postgres writer: the Python worker writes the full artifact
- * to S3 and returns a claim-check pointer + thin summary over the JobBus; this
- * subscriber records the Postgres index-of-record row. It closes the ticket-06
- * round-trip: worker returnvalue → JobBus 'completed' → this row → FE read.
+ * NestJS is the SOLE Postgres writer: the worker writes the full artifact to
+ * S3 and returns a claim-check pointer + thin summary over the JobBus. This
+ * table holds verdict-bearing stock-analysis results only (verdict is a
+ * required column); the stock-analysis job family (`StockAnalysis`)
+ * routes them here. Verdict-less results land in the per-family tables.
  */
 @Injectable()
-export class AnalysisResultStore implements OnModuleInit {
+export class AnalysisResultStore {
   private readonly logger = new Logger(AnalysisResultStore.name);
 
   constructor(
-    private readonly jobBus: JobBus,
     @InjectRepository(AnalysisResult)
     private readonly repo: Repository<AnalysisResult>,
   ) {}
 
-  onModuleInit(): void {
-    // Subscribe to completed results and persist them (ADR-0007 §7 hand-off).
-    this.jobBus.onResult((result: JobResult) => {
-      void this.persist(result);
+  async persist(result: VerdictResult): Promise<void> {
+    const row = this.repo.create({
+      correlationId: result.correlationId,
+      jobId: result.jobId,
+      symbol: this.symbolFromKey(result.pointer.key),
+      verdict: result.summary.verdict,
     });
-  }
-
-  private async persist(result: JobResult): Promise<void> {
-    // This table is TA/FA-only (verdict is a required column): the verdict-less
-    // `SystemSummary` variant belongs to the system-triggered artifacts (market
-    // brief, announcement summaries, prospectus at-a-glance) added by later
-    // tickets, which persist through their own tables, not this one.
-    if (!isVerdictSummary(result.summary)) {
-      this.logger.warn({
-        msg: 'skipped: verdict-less summary is not a TA/FA result',
-        correlationId: result.correlationId,
-        jobId: result.jobId,
-      });
-      return;
-    }
-
-    try {
-      const row = this.repo.create({
-        correlationId: result.correlationId,
-        jobId: result.jobId,
-        symbol: this.symbolFromKey(result.pointer.key),
-        verdict: result.summary.verdict,
-      });
-      await this.repo.save(row);
-      this.logger.log({
-        msg: 'analysis result persisted',
-        correlationId: result.correlationId,
-        jobId: result.jobId,
-        verdict: result.summary.verdict,
-        bucket: result.pointer.bucket,
-        key: result.pointer.key,
-      });
-    } catch (err) {
-      this.logger.error({
-        msg: 'failed to persist analysis result',
-        correlationId: result.correlationId,
-        jobId: result.jobId,
-        error: (err as Error).message,
-      });
-    }
+    await this.repo.save(row);
+    this.logger.log({
+      msg: 'analysis result persisted',
+      correlationId: result.correlationId,
+      jobId: result.jobId,
+      verdict: result.summary.verdict,
+      bucket: result.pointer.bucket,
+      key: result.pointer.key,
+    });
   }
 
   findByCorrelationId(

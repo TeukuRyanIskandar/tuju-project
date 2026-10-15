@@ -4,12 +4,11 @@
  * and `/market/sectors` surfaces.
  *
  * Imports `DataModule` (DataSource for Postgres reads), `CacheModule`
- * (ReadCacheService for the class-2 read-through), and `RedisModule`
+ * (ReadModelCache for the class-2 read-through), and `RedisModule`
  * (REDIS_CLIENT for the class-3 intraday-Redis reads). Owns no schedule/worker
  * bits — those stay isolated in the ingestion worker (the cron-isolation rule).
- * The nightly ingest's `cache:market:` sweep is already registered
- * (free-tier-market-overview ticket 03's ReadCacheService.invalidateReadCaches
- * sweeps every READ_CACHE_PREFIXES entry including MARKET_CACHE_PREFIX).
+ * The nightly ingest's `eodIngested` change already clears the market reads
+ * (the cache module's change table).
  *
  * Binds {@link MARKET_CLOCK} — a `() => Date` provider, defaulting to the wall
  * clock — as the service's ONLY source of "now". `MarketService` resolves

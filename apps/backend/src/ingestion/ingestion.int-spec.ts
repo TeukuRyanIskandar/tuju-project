@@ -33,7 +33,8 @@ import {
 
 import { AdaptersModule } from '../data/adapters/adapters.module';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { AnalysisResult } from '../data/entities/analysis-result.entity';
 import {
   Announcement,
@@ -72,10 +73,33 @@ import { KlciSeedService } from './klci-seed.service';
 import { IntradayReplayService, INTRADAY_KEY_PREFIX } from './intraday-replay.service';
 import { PurgeService } from './purge.service';
 import { REFERENCE_UNIVERSE } from './reference-universe';
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
+import { JOB_BUS_PROVIDERS } from '../jobbus/job-bus.module';
 import { JobNames } from '../jobbus/job-names';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -109,7 +133,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
   let eod: EodIngestService;
   let intraday: IntradayReplayService;
   let purge: PurgeService;
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
 
   beforeAll(async () => {
     pgContainer = await new PostgreSqlContainer('postgres:16-alpine').start();
@@ -143,8 +167,9 @@ describe('IngestionWorker (integration — testcontainers)', () => {
         IngestionRunService,
         ReferenceDataService,
         KlciSeedService,
-        ReadCacheService,
-        JobBus,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
+        ...JOB_BUS_PROVIDERS,
         EodIngestService,
         // Ticket-05 nightly follow-on seam: never fires on the synthetic demo
         // adapters (yfinance-only), so a no-op stub satisfies the constructor.
@@ -163,7 +188,7 @@ describe('IngestionWorker (integration — testcontainers)', () => {
     eod = moduleRef.get(EodIngestService);
     intraday = moduleRef.get(IntradayReplayService);
     purge = moduleRef.get(PurgeService);
-    jobBus = moduleRef.get(JobBus);
+    jobBus = moduleRef.get(BullMqJobBus);
   });
 
   afterAll(async () => {

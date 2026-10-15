@@ -31,7 +31,8 @@ import {
 
 import { ConfigModule } from '../config/config.module';
 import { RedisModule, REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService, SCREENER_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
+import { SCREENER_CACHE_PREFIX } from '../cache/cache-keys';
 import {
   AnalysisResult,
   Announcement,
@@ -62,7 +63,6 @@ import { REQUIRES_JOB_KEY } from '../auth/requires-job.decorator';
 
 import {
   SCREENER_FILTER_FIELDS,
-  SCREENER_FIELDS_CACHE_KEY,
 } from './fields';
 import { SCREENER_QUERY, type ScreenerQuery } from './screener-query.interface';
 import { ScreenerController } from './screener.controller';
@@ -123,7 +123,7 @@ describe('Screener fields endpoint (integration — testcontainers)', () => {
 
   let controller: ScreenerController;
   let service: ScreenerService;
-  let readCache: ReadCacheService;
+  let readCache: ReadModelCache;
   let sectorsSpy: jest.SpyInstance;
 
   beforeAll(async () => {
@@ -153,7 +153,7 @@ describe('Screener fields endpoint (integration — testcontainers)', () => {
     moduleRef = await bootModule();
     controller = moduleRef.get(ScreenerController);
     service = moduleRef.get(ScreenerService);
-    readCache = moduleRef.get(ReadCacheService);
+    readCache = moduleRef.get(ReadModelCache);
     redis = moduleRef.get<Redis>(REDIS_CLIENT);
     sectorsSpy = jest.spyOn(moduleRef.get<ScreenerQuery>(SCREENER_QUERY), 'sectors');
 
@@ -220,7 +220,7 @@ describe('Screener fields endpoint (integration — testcontainers)', () => {
 
     // Exactly one screener-prefix key, and it IS the reserved fields key.
     const keys = await redis.keys(`${SCREENER_CACHE_PREFIX}*`);
-    expect(keys).toEqual([SCREENER_FIELDS_CACHE_KEY]);
+    expect(keys).toEqual([ReadModelReads.screenerFields().key]);
   });
 
   it('the nightly-ingest prefix sweep invalidates it: a sector ingested after caching appears once swept', async () => {
@@ -231,10 +231,9 @@ describe('Screener fields endpoint (integration — testcontainers)', () => {
     const stale = await controller.fields();
     expect(stale.sectors.map((s) => s.name)).toEqual(ORDERED_SECTOR_NAMES);
 
-    // The SAME prefix sweep the nightly ingest + purge perform post-commit
-    // (pinned end-to-end in ingestion.int.spec.ts).
-    const deleted = await readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
-    expect(deleted).toBeGreaterThan(0);
+    // The SAME change the nightly ingest announces post-commit (pinned
+    // end-to-end in ingestion.int-spec.ts).
+    await readCache.changed({ kind: 'eodIngested' });
 
     const fresh = await controller.fields();
     expect(fresh.sectors.map((s) => s.name)).toEqual(

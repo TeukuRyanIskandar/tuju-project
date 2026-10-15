@@ -8,21 +8,6 @@ import type { ProspectusAnalysis } from '../data/entities/prospectus-analysis.en
 // deliberately stays local.
 export type { ProspectusAtAGlanceResponse };
 
-/**
- * The Python worker's own `JobResult.jobId` prefix (colon-joined) — mirrors
- * `PROSPECTUS_JOB_ID_PREFIX` in `services/ai/src/tuju_ai/config.py` by hand
- * (no shared cross-language constant; keep both in lock-step). The BullMQ dedup
- * id is the separate hyphen form `prospectus-{id}` (`prospectusBullJobId`).
- */
-export const PROSPECTUS_RESULT_JOB_ID_PREFIX = 'prospectus:';
-
-/** `prospectus:{id}` → `{id}`; `null` when the jobId is not a prospectus result. */
-export function prospectusIdFromJobId(jobId: string): string | null {
-  if (!jobId.startsWith(PROSPECTUS_RESULT_JOB_ID_PREFIX)) return null;
-  const id = jobId.slice(PROSPECTUS_RESULT_JOB_ID_PREFIX.length);
-  return id.length > 0 ? id : null;
-}
-
 /** The three-plus-null vocabulary the Python worker's `IpoReference` accepts. */
 export type ReferenceShariahStatus = 'compliant' | 'non-compliant' | 'unknown';
 

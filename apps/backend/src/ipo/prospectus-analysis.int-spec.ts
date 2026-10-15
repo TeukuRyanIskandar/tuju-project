@@ -58,14 +58,12 @@ import { DisclosureReadModel1727900000000 } from '../data/migrations/17279000000
 import { MarketIndexModel1728000000000 } from '../data/migrations/1728000000000-MarketIndexModel';
 import { ShowcaseJobsModel1728100000000 } from '../data/migrations/1728100000000-ShowcaseJobsModel';
 import { ProspectusAnalysis1728200000000 } from '../data/migrations/1728200000000-ProspectusAnalysis';
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
 import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
-import { ReadCacheService, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
 import { APP_CONFIG, type AppConfig } from '../config/config';
-import {
-  PROSPECTUS_CACHE_PREFIX,
-  READ_CACHE_PREFIXES,
-} from '../cache/cache-keys';
+import { PROSPECTUS_CACHE_PREFIX } from '../cache/cache-keys';
+import { invalidationPrefixesFor } from '../cache/read-model-changes';
 import { IpoController } from './ipo.controller';
 import { IpoService } from './ipo.service';
 import { ProspectusAnalysisStore } from './prospectus-analysis.store';
@@ -123,10 +121,10 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
   let dataSource: DataSource;
   let redis: Redis;
   let s3: S3Client;
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
   let store: ProspectusAnalysisStore;
   let controller: IpoController;
-  let readCache: ReadCacheService;
+  let readCache: ReadModelCache;
 
   let realRunId: string;
   let noPdfId: string;
@@ -168,9 +166,9 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
     await dataSource.runMigrations();
 
     redis = new IORedis(redisC.getConnectionUrl(), { maxRetriesPerRequest: null });
-    jobBus = new JobBus(redis);
+    jobBus = new BullMqJobBus(redis);
     await jobBus.onModuleInit();
-    readCache = new ReadCacheService(redis, fakeConfig());
+    readCache = new ReadModelCache(redis, fakeConfig());
     store = new ProspectusAnalysisStore(
       jobBus,
       readCache,
@@ -252,8 +250,10 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
     }
   }
 
-  it('the prospectus cache prefix is NOT in the nightly-swept READ_CACHE_PREFIXES', () => {
-    expect(READ_CACHE_PREFIXES).not.toContain(PROSPECTUS_CACHE_PREFIX);
+  it('the prospectus cache prefix is NOT cleared by the nightly ingest or the purge', () => {
+    for (const kind of ['eodIngested', 'purged'] as const) {
+      expect(invalidationPrefixesFor({ kind })).not.toContain(PROSPECTUS_CACHE_PREFIX);
+    }
   });
 
   it('GET reference: exact worker shape; shariah null when the company has no status row', async () => {
@@ -354,12 +354,21 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
     }
   });
 
-  it('ignores non-prospectus results and unknown listing ids (no row, no throw)', async () => {
+  it('unknown listing ids and non-uuid keys write no row', async () => {
     const repo = dataSource.getRepository(entities.ProspectusAnalysis);
     const before = await repo.count();
-    await store.persist({ ...GOLDEN, jobId: 'brief:2026-10-07' });
-    await store.persist({ ...GOLDEN, jobId: `prospectus:${randomUUID()}` }); // FK violation, logged
-    await store.persist({ ...GOLDEN, jobId: 'prospectus:not-a-uuid' });
+    const unknownId = randomUUID();
+    // FK violation: thrown to the JobBus, which logs it.
+    await expect(
+      store.land(
+        { ...GOLDEN, jobId: `prospectus:${unknownId}` },
+        { jobName: JobNames.prospectus, key: unknownId },
+      ),
+    ).rejects.toThrow();
+    await store.land(
+      { ...GOLDEN, jobId: 'prospectus:not-a-uuid' },
+      { jobName: JobNames.prospectus, key: 'not-a-uuid' },
+    );
     expect(await repo.count()).toBe(before);
   });
 
@@ -373,11 +382,14 @@ describe('Prospectus at-a-glance (integration — testcontainers)', () => {
     expect(await controller.atAGlance(GOLDEN_ID)).toEqual(primed);
 
     const before = await repo.count();
-    await store.persist({
-      ...GOLDEN,
-      correlationId: randomUUID(),
-      summary: { headline: 'Re-run headline', asOf: '2026-10-08T02:00:00Z' },
-    });
+    await store.land(
+      {
+        ...GOLDEN,
+        correlationId: randomUUID(),
+        summary: { headline: 'Re-run headline', asOf: '2026-10-08T02:00:00Z' },
+      },
+      { jobName: JobNames.prospectus, key: GOLDEN_ID },
+    );
     expect(await repo.count()).toBe(before); // upsert in place
     const fresh = await controller.atAGlance(GOLDEN_ID);
     expect(fresh.headline).toBe('Re-run headline');

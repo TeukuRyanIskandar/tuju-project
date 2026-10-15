@@ -11,7 +11,7 @@
  * connections (not via Nest's DI container) — same posture as
  * `job-bus.int-spec.ts`.
  *
- *   1. A content-derived BullMQ job id, date-bucketed (`JobBus.deriveJobId`,
+ *   1. A content-derived BullMQ job id, date-bucketed (`marketBriefIdentity`,
  *      ADR-0007 §2) — a same-day re-enqueue would collapse, not duplicate.
  *   2. The persisted row upserts on `briefDate`: a second result for the same
  *      day updates the row in place rather than accumulating rows.
@@ -33,9 +33,9 @@ import {
 } from '@testcontainers/postgresql';
 import type { JobEnvelope, JobResult, MarketBriefPayload } from '@tuju/contracts';
 
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
 import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
-import { ReadCacheService, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
 import { APP_CONFIG, type AppConfig } from '../config/config';
 import { BRIEF_CACHE_PREFIX } from '../cache/cache-keys';
 import { MarketBrief } from '../data/entities/market-brief.entity';
@@ -97,7 +97,7 @@ describe('Daily market brief (integration — testcontainers)', () => {
   let redis: Redis;
   let repo: Repository<MarketBrief>;
 
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
   let store: MarketBriefStore;
   let controller: MarketBriefController;
 
@@ -127,9 +127,9 @@ describe('Daily market brief (integration — testcontainers)', () => {
       maxRetriesPerRequest: null,
     });
 
-    jobBus = new JobBus(redis);
+    jobBus = new BullMqJobBus(redis);
     await jobBus.onModuleInit();
-    const readCache = new ReadCacheService(redis, fakeConfig());
+    const readCache = new ReadModelCache(redis, fakeConfig());
     store = new MarketBriefStore(jobBus, readCache, repo);
     store.onModuleInit();
     controller = new MarketBriefController(store, readCache);

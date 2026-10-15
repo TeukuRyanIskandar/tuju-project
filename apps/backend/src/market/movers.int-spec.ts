@@ -40,7 +40,10 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 
-import { ReadCacheService, MARKET_CACHE_PREFIX } from '../cache';
+import { ReadModelCache } from '../cache';
+import { MARKET_CACHE_PREFIX } from '../cache/cache-keys';
+import { DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import {
   AnalysisResult,
@@ -79,6 +82,28 @@ import { MarketService, MARKET_CLOCK } from './market.service';
 import type { MoverRow } from './market.types';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -187,7 +212,8 @@ describe('Movers endpoint (integration — testcontainers)', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: MARKET_CLOCK, useValue: () => clockNow },
-        ReadCacheService,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
         MarketService,
       ],
     }).compile();

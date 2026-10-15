@@ -55,7 +55,7 @@ describe('YFinanceMarketDataAdapter', () => {
     });
 
     const result = await adapter.fetchDailyBars();
-    const maybank = result.filter((b) => b.stockCode === '1155');
+    const maybank = result.rows.filter((b) => b.stockCode === '1155');
     expect(maybank).toEqual([
       {
         stockCode: '1155',
@@ -68,7 +68,10 @@ describe('YFinanceMarketDataAdapter', () => {
       },
     ]);
     expect(historical).toHaveBeenCalledTimes(universeSize);
+    expect(result.failures).toEqual([]);
     expect(adapter.provenanceClass).toBe(ProvenanceClass.Real);
+    expect(adapter.adapterName).toBe('YFinanceMarketDataAdapter');
+    expect(adapter.universe).toBe('klci30');
   });
 
   it('skips a failing symbol and continues the batch', async () => {
@@ -85,10 +88,12 @@ describe('YFinanceMarketDataAdapter', () => {
     );
 
     const result = await adapter.fetchDailyBars();
-    expect(result.every((b) => b.stockCode !== '1155')).toBe(true);
-    expect(adapter.getFailureSummary().some((s) => s.startsWith('1155:'))).toBe(
-      true,
-    );
+    expect(result.rows.every((b) => b.stockCode !== '1155')).toBe(true);
+    expect(result.failures).toEqual(['1155: boom']);
+
+    // Failures are per fetch, not adapter state: a clean re-fetch reports none.
+    historical.mockImplementation(async () => [] as YahooHistoricalBar[]);
+    expect((await adapter.fetchDailyBars()).failures).toEqual([]);
   });
 
   it('serves a cache hit without a second Yahoo fetch', async () => {
@@ -166,7 +171,7 @@ describe('YFinanceFundamentalsAdapter', () => {
     );
 
     const result = await adapter.fetchFundamentals();
-    const maybank = result.find((r) => r.stockCode === '1155');
+    const maybank = result.rows.find((r) => r.stockCode === '1155');
     expect(maybank).toEqual({
       stockCode: '1155',
       sharesOutstanding: 12_000_000_000,
@@ -186,7 +191,13 @@ describe('YFinanceFundamentalsAdapter', () => {
         },
       ],
     });
+    // The vendor dividend history comes back as data on the same fetch.
+    expect(
+      result.dividends?.filter((d) => d.stockCode === '1155'),
+    ).toEqual([{ stockCode: '1155', exDate: '2024-02-15', amount: 0.12 }]);
+    expect(result.failures).toEqual([]);
     expect(adapter.provenanceClass).toBe(ProvenanceClass.Real);
+    expect(adapter.adapterName).toBe('YFinanceFundamentalsAdapter');
   });
 
   it('skips a failing symbol and continues', async () => {
@@ -206,9 +217,7 @@ describe('YFinanceFundamentalsAdapter', () => {
     );
 
     const result = await adapter.fetchFundamentals();
-    expect(result.every((r) => r.stockCode !== '1155')).toBe(true);
-    expect(adapter.getFailureSummary().some((s) => s.startsWith('1155:'))).toBe(
-      true,
-    );
+    expect(result.rows.every((r) => r.stockCode !== '1155')).toBe(true);
+    expect(result.failures).toEqual(['1155: quota']);
   });
 });

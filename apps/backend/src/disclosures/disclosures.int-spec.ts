@@ -43,9 +43,12 @@ import {
 import type { JobEnvelope, JobResult } from '@tuju/contracts';
 
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { DISCLOSURES_CACHE_PREFIX } from '../cache/cache-keys';
-import { JobBus } from '../jobbus/job-bus.service';
+import { ReadModelReads } from '../cache/read-model-reads';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
+import { JOB_BUS_PROVIDERS } from '../jobbus/job-bus.module';
 import { ANALYSIS_QUEUE, JobNames } from '../jobbus/job-names';
 import {
   Announcement,
@@ -88,6 +91,28 @@ import { DisclosuresService } from './disclosures.service';
 import { MAX_PAGE_LIMIT } from '../stocks/pagination';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -134,8 +159,9 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
   let controller: DisclosuresController;
   let service: DisclosuresService;
   let purge: PurgeService;
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
   let announcementSummaryStore: AnnouncementSummaryStore;
+  let readCache: ReadModelCache;
 
   let aggregatorRun: IngestionRun;
   let syntheticRun: IngestionRun;
@@ -171,10 +197,11 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
       providers: [
         { provide: DataSource, useValue: dataSource },
         { provide: REDIS_CLIENT, useValue: redis },
-        ReadCacheService,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
         DisclosuresService,
         PurgeService,
-        JobBus,
+        ...JOB_BUS_PROVIDERS,
         AnnouncementSummaryStore,
       ],
     }).compile();
@@ -182,8 +209,9 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
     controller = moduleRef.get(DisclosuresController);
     service = moduleRef.get(DisclosuresService);
     purge = moduleRef.get(PurgeService);
-    jobBus = moduleRef.get(JobBus);
+    jobBus = moduleRef.get(BullMqJobBus);
     announcementSummaryStore = moduleRef.get(AnnouncementSummaryStore);
+    readCache = moduleRef.get(ReadModelCache);
     await jobBus.onModuleInit();
     announcementSummaryStore.onModuleInit();
 
@@ -550,6 +578,22 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
       where: { title: 'Single tier interim dividend' },
     });
 
+    // Warm the cached reads that carry aiSummary (ticket 04): the market
+    // feed, the dealings view, and this stock's page list — plus another
+    // stock's list, which must survive.
+    const { companyCode } = await controller.getAnnouncementById(row.id);
+    const feedQuery = { offset: 0, limit: 50, from: null, to: null };
+    const warmFeed = await service.getMarketAnnouncements(feedQuery);
+    expect(warmFeed.items.find((a) => a.title === row.title)?.aiSummary).toBeNull();
+    await service.getDealings(feedQuery);
+    const page = { offset: 0, limit: 20 };
+    const stockList = ReadModelReads.stockAnnouncements(companyCode, [], page);
+    const otherStockList = ReadModelReads.stockAnnouncements('0000', [], page);
+    await readCache.read(stockList, async () => ({ warmed: true }));
+    await readCache.read(otherStockList, async () => ({ warmed: true }));
+    const dealingsKeys = () => redis.keys(`${DISCLOSURES_CACHE_PREFIX}dealings:*`);
+    expect(await dealingsKeys()).not.toEqual([]);
+
     const worker = new Worker(
       ANALYSIS_QUEUE,
       async (): Promise<JobResult> => ({
@@ -592,6 +636,20 @@ describe('Disclosures read surface (integration — testcontainers)', () => {
 
       expect(updated.aiSummary).toBe('Malayan Banking Berhad declared a dividend');
       expect(updated.aiSummaryAsOf).toBeInstanceOf(Date);
+
+      // Landing announced `announcementSummarised`: the stock's cached list
+      // (the change's last prefix) misses, so the cached feed shows the
+      // summary at once rather than after the 24h horizon.
+      for (let i = 0; i < 100 && (await redis.exists(stockList.key)) === 1; i++) {
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(await redis.exists(stockList.key)).toBe(0);
+      expect(await redis.exists(otherStockList.key)).toBe(1);
+      expect(await dealingsKeys()).toEqual([]);
+      const freshFeed = await service.getMarketAnnouncements(feedQuery);
+      expect(freshFeed.items.find((a) => a.title === row.title)?.aiSummary).toBe(
+        'Malayan Banking Berhad declared a dividend',
+      );
       // Confirmed through the read surface too (spec 04's existing aiSummary field).
       const viaFeed = await controller.getAnnouncementById(row.id);
       expect(viaFeed.aiSummary).toBe('Malayan Banking Berhad declared a dividend');

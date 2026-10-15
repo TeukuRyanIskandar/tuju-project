@@ -13,8 +13,9 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
 - Authenticate requests and mint/verify the session cookie (`src/auth`).
 - Enforce **tier → capability** at the enqueue seam (`tier.guard`, `tier-policy`,
   `requires-job.decorator`). Tier is re-checked here regardless of what the FE shows.
-- Produce jobs and surface results (`src/jobbus`, `src/analysis`), with Bull-Board
-  for queue inspection.
+- Produce jobs and land their results through job families (`src/jobbus`), with
+  Bull-Board for queue inspection. The `JobBus` seam has two adapters:
+  `BullMqJobBus` (production) and `InMemoryJobBus` (unit tests).
 - Own the data layer: entities, migrations, `data-source.ts` (`src/data`).
 - Expose `/health` (ADR-0010) and structured JSON logging with `correlationId`.
 
@@ -44,6 +45,47 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
 - **Capability** — a permission question (e.g. `canRunJob`) derived from tier;
   code asks capabilities, not tier names.
 - **Enqueue seam** — the guarded boundary where a request becomes a JobBus job.
+- **Job family** — everything the backend knows about one kind of AI job: its
+  *identity* (pure, `jobbus/job-identities.ts`: the domain key, bull id and
+  result id) and its *landing* (`land(result)` / `fail(failure)`, a feature
+  store registered with `JobBus.register`). One family per `JobName`, except TA
+  and FA, which share the parameterised stock-analysis family
+  (`StockAnalysis`). The JobBus delivers each result or final failure to
+  exactly one family; nothing else lands job output.
+- **Bull id** vs **result id** — two ids per job, both derived from the family's
+  domain key. The *bull id* is BullMQ's custom job id, hyphen-joined
+  (`ta-1155-1D-2026-10-08T18`, `brief-2026-10-08`): BullMQ 5 rejects `:` in it.
+  The *result id* is the worker's `JobResult.jobId`, colon-joined with the
+  contract registry's `resultIdPrefix` (`technical:1155:1D:2026-10-08T18`); it is
+  the contract golden and is what routes a result to its family.
+- **In-flight / finished collapse** — `JobBus.enqueue` never duplicates a job
+  whose bull id is waiting/active/delayed (`inFlight`); a retained completed/
+  failed job keeps the id (`finished`) unless the caller passes
+  `replaceFinished` (ops re-runs: `enqueue-klci`, `enqueue-prospectus`).
+- **Read-model cache** — ADR-0004's class-2 read-through cache (Redis `cache:`
+  keys, TTL from `APP_CONFIG.cache.readTtlSeconds`), owned by one module
+  (`ReadModelCache`, `src/cache/`). Readers name a domain read
+  (`ReadModelReads.stockCore(code)`, `.screen(params)`, …) and never build a
+  key; writers announce a *read-model change* after their write commits
+  (`eodIngested`, `purged`, `announcementSummarised`, `stockAnalysisChanged`,
+  `marketBriefLanded`, `prospectusAnalysed`), and the module's change table
+  decides which reads go stale. Ingest/purge never clear the brief or
+  prospectus reads (those change only when their own job lands). Distinct from
+  the *class-3* intraday keys (`intraday:*`: live movers boards and index
+  levels, short-TTL, written by the intraday replay), which this cache never
+  touches.
+- **Stock analysis** — the TA/FA lifecycle of one KLCI-30 stock, owned by one
+  module (`StockAnalysis`, `src/analysis/stock-analysis.ts`) for writes, reads
+  and the artifact proxy. One row per instrument and kind (`technical` /
+  `fundamental`). Status is `pending` (no row, or `markPending` on enqueue),
+  `ready` / `facts_only` (landed; facts-only when the worker's grounding/cost
+  guard fell back), `failed` (keeps the last good headline/artifact), and
+  `stale`: a read-time promotion of a landed result whose `asOf` day is behind
+  the stock's latest EOD close day, never written back. The envelope is cached
+  as written and promoted after the cache. `markPending` never overwrites a
+  row already holding its own job's (`correlationId`'s) result. Artifacts are
+  proxied from S3 with `cost` stripped (the prospectus artifact shares the
+  proxy, `s3/artifact-proxy.ts`, but keeps `cost`).
 - **Free tier** — the dashboard experience available without paying: market data,
   disclosures and discovery tools. Enqueues no user-triggered analysis jobs.
 - **Indicator snapshot** — one current row per instrument written nightly by the
@@ -136,6 +178,10 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
   - **P/E** = price ÷ TTM EPS; **null when TTM EPS ≤ 0** (company flagged
     loss-making; no negative P/E). Screener `P/E < X` excludes nulls.
   - **DY** = trailing-12-month dividend corporate actions per share ÷ price.
+    Only `DIVIDEND`-type actions count. Known deviation: on the yfinance path
+    DY reads the vendor's own dividend history (`FundamentalsFetch.dividends`),
+    not corporate-action rows — pending a product decision (architecture-
+    deepening ticket 05).
   - **P/NTA** = price ÷ NTA/share, NTA/share = (equity − intangibles) ÷ shares
     outstanding (generator emits a small intangibles line so P/NTA ≠ P/B).
   - **ROE** = TTM net profit ÷ **average** equity (opening+closing over TTM window).
@@ -158,12 +204,21 @@ NestJS 11 service. Three roles (ADR-0001/0003/0004/0005/0006/0010):
   house index. Consumers (the market-overview endpoints) read `IndexLevel`
   regardless of which adapter produced it.
 - **Source adapter** — the seam behind which each data class (market data,
-  fundamentals, disclosures, news, Shariah list, IPOs) is served, so a demo source
-  swaps for a licensed production source with no change to consumers.
+  fundamentals, disclosures, news, Shariah list, IPOs, index levels) is served, so
+  a demo source swaps for a licensed production source with no change to
+  consumers. Each adapter **self-reports** its `adapterName` (stamped on its runs,
+  so treat it as stable lineage) and provenance class, plus — for a seeded
+  co-generator only — its `generation` (seed + params). Every fetch returns its
+  rows **and** its per-item failures as data (`SourceFetch`); a market adapter
+  also declares the analysed universe it serves (`reference` demo set or
+  `klci30`). The nightly never names or branches on a producer.
 - **Ingestion run** — a single write of sourced data by one adapter. Records the
   adapter and its **provenance class** (`synthetic` / `aggregator` / `real`). Every
   sourced row carries an `ingestionRunId`; provenance is read via that lineage, not
   a per-row marker. The read-time "illustrative" label is a join to the run.
+  Opened only by the Ingestion run module (`IngestionRunService.run(manager,
+  adapter, land)`) from the adapter's own declaration, which also records the
+  fetch failures. EOD bars and fundamentals share the market adapter's run.
 - **Synthetic run** — an ingestion run that co-generates price bars and fundamentals
   from one seed (decision A1). Carries the seed + generation params; every bar and
   fundamentals snapshot it produces FKs to it, so a coherent reconciled timeline is a

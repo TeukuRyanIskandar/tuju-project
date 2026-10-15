@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { KLCI30_UNIVERSE } from '../../../ingestion/klci30-universe';
 import { ProvenanceClass } from '../../entities/enums';
-import type { FundamentalsAdapter } from '../adapter.interfaces';
-import type { FundamentalsDto, QuarterlyFinancialsDto } from '../dto';
+import type { FundamentalsAdapter, FundamentalsFetch } from '../adapter.interfaces';
+import type { DividendDto, FundamentalsDto, QuarterlyFinancialsDto } from '../dto';
 import type {
   YahooDividendRow,
   YahooFinanceClient,
@@ -102,14 +102,15 @@ function mergeQuarterRows(
   );
 }
 
+/**
+ * yfinance fundamentals for the KLCI 30. Its fetch also carries the vendor's own
+ * dividend history (`FundamentalsFetch.dividends`), which DY reads on this path
+ * instead of the corporate-action single source (see that field's doc).
+ */
 export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
+  readonly adapterName = 'YFinanceFundamentalsAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
   private readonly logger = new Logger(YFinanceFundamentalsAdapter.name);
-  private failures: string[] = [];
-  private dividendsByStockCode = new Map<
-    string,
-    readonly { readonly exDate: string; readonly amount: number }[]
-  >();
 
   constructor(
     private readonly client: YahooFinanceClient,
@@ -117,20 +118,9 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
     private readonly throttle: YFinanceThrottle,
   ) {}
 
-  getFailureSummary(): readonly string[] {
-    return this.failures;
-  }
-
-  getDividendsByStockCode(): ReadonlyMap<
-    string,
-    readonly { readonly exDate: string; readonly amount: number }[]
-  > {
-    return this.dividendsByStockCode;
-  }
-
-  async fetchFundamentals(): Promise<FundamentalsDto[]> {
-    this.failures = [];
-    this.dividendsByStockCode = new Map();
+  async fetchFundamentals(): Promise<FundamentalsFetch> {
+    const failures: string[] = [];
+    const vendorDividends: DividendDto[] = [];
     const out: FundamentalsDto[] = [];
     const period1Date = new Date();
     period1Date.setUTCFullYear(period1Date.getUTCFullYear() - 3);
@@ -146,7 +136,9 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
             (await this.cache.getJson<CachedDividend[]>(
               this.cache.dividendsKey(company.yahooSymbol),
             )) ?? [];
-          this.dividendsByStockCode.set(company.stockCode, cachedDivs);
+          vendorDividends.push(
+            ...cachedDivs.map((d) => ({ stockCode: company.stockCode, ...d })),
+          );
           out.push({
             stockCode: company.stockCode,
             sharesOutstanding: cached.sharesOutstanding,
@@ -220,7 +212,9 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
           dividendRows,
           YFINANCE_DIVIDENDS_TTL_SECONDS,
         );
-        this.dividendsByStockCode.set(company.stockCode, dividendRows);
+        vendorDividends.push(
+          ...dividendRows.map((d) => ({ stockCode: company.stockCode, ...d })),
+        );
 
         out.push({
           stockCode: company.stockCode,
@@ -233,19 +227,19 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
-        this.failures.push(`${company.stockCode}: ${message}`);
+        failures.push(`${company.stockCode}: ${message}`);
         this.logger.warn(
           `yfinance fundamentals skip ${company.stockCode} (${company.yahooSymbol}): ${message}`,
         );
       }
     }
 
-    if (this.failures.length > 0) {
+    if (failures.length > 0) {
       this.logger.warn(
-        `yfinance fundamentals failure summary (${this.failures.length}): ${this.failures.join('; ')}`,
+        `yfinance fundamentals failure summary (${failures.length}): ${failures.join('; ')}`,
       );
     }
 
-    return out;
+    return { rows: out, failures, dividends: vendorDividends };
   }
 }

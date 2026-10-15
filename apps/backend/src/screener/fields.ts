@@ -16,19 +16,11 @@
  * coverage/probe checks against ticket 01's parse layer.
  */
 
-import { SCREENER_CACHE_PREFIX } from '../cache/cache-keys';
 import type { ScreenerFieldsResponse } from '@tuju/contracts';
 import type { RawScreenerParams } from './params';
 
 // The wire shape lives in `@tuju/contracts` (ADR-0014).
 export type { ScreenerFieldsResponse };
-
-/**
- * The class-2 cache key for the fields response — the `…:fields` suffix
- * ticket 02 reserved under the `cache:screener:` prefix the nightly ingest
- * + purge already sweep.
- */
-export const SCREENER_FIELDS_CACHE_KEY = `${SCREENER_CACHE_PREFIX}fields`;
 
 /** One raw `GET /screener` param name (the parse layer's vocabulary). */
 type ScreenerParam = keyof RawScreenerParams & string;

@@ -11,11 +11,14 @@ import {
   FUNDAMENTALS_ADAPTER,
   MARKET_DATA_ADAPTER,
   type FundamentalsAdapter,
+  type FundamentalsFetch,
   type MarketDataAdapter,
+  type SourceFetch,
 } from '../data/adapters';
-import type { FundamentalsDto, PriceBarDto } from '../data/adapters/dto';
+import type { PriceBarDto } from '../data/adapters/dto';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import {
   Announcement,
   Company,
@@ -58,7 +61,8 @@ import {
   RssNewsAdapter,
   SyntheticIndexAdapter,
 } from '../data/adapters/demo-adapters';
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
+import { JOB_BUS_PROVIDERS } from '../jobbus/job-bus.module';
 import { EodIngestService } from './eod-ingest.service';
 import { IngestionRunService } from './ingestion-run.service';
 import { ReferenceDataService } from './reference-data.service';
@@ -67,6 +71,28 @@ import { KlciSeedService } from './klci-seed.service';
 import { KLCI30_UNIVERSE } from './klci30-universe';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -114,46 +140,34 @@ function makeBars(stockCode: string, days: number): PriceBarDto[] {
   return bars;
 }
 
+/**
+ * Stands in for ANY real market adapter: it self-reports its own name (not
+ * yfinance's), so the IngestionRun row proves lineage comes from the bound
+ * adapter, never a name the ingest hardcodes. `failingStockCodes` makes the
+ * next fetch skip-and-continue those codes, reporting them as fetch data.
+ */
 class FakeKlciMarketAdapter implements MarketDataAdapter {
+  readonly adapterName = 'FakeKlciMarketAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
-  private failures: string[] = [];
+  readonly universe = 'klci30';
+  failingStockCodes: string[] = [];
 
-  getFailureSummary(): readonly string[] {
-    return this.failures;
-  }
-
-  fetchDailyBars(): Promise<PriceBarDto[]> {
-    this.failures = [];
-    return Promise.resolve(SUBSET.flatMap((row) => makeBars(row.stockCode, 260)));
+  fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
+    const ok = SUBSET.filter((row) => !this.failingStockCodes.includes(row.stockCode));
+    return Promise.resolve({
+      rows: ok.flatMap((row) => makeBars(row.stockCode, 260)),
+      failures: this.failingStockCodes.map((code) => `${code}: fake outage`),
+    });
   }
 }
 
 class FakeKlciFundamentalsAdapter implements FundamentalsAdapter {
+  readonly adapterName = 'FakeKlciFundamentalsAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
-  private failures: string[] = [];
-  private dividendsByStockCode = new Map<
-    string,
-    readonly { readonly exDate: string; readonly amount: number }[]
-  >();
 
-  getFailureSummary(): readonly string[] {
-    return this.failures;
-  }
-
-  getDividendsByStockCode() {
-    return this.dividendsByStockCode;
-  }
-
-  fetchFundamentals(): Promise<FundamentalsDto[]> {
-    this.failures = [];
-    this.dividendsByStockCode = new Map(
-      SUBSET.map((row) => [
-        row.stockCode,
-        [{ exDate: '2024-06-15', amount: 0.1 }],
-      ]),
-    );
-    return Promise.resolve(
-      SUBSET.map((row) => ({
+  fetchFundamentals(): Promise<FundamentalsFetch> {
+    return Promise.resolve({
+      rows: SUBSET.map((row) => ({
         stockCode: row.stockCode,
         sharesOutstanding: 1_000_000_000,
         quarters: [1, 2, 3, 4].map((fiscalQuarter) => ({
@@ -170,7 +184,13 @@ class FakeKlciFundamentalsAdapter implements FundamentalsAdapter {
           totalBorrowings: 500_000_000,
         })),
       })),
-    );
+      failures: [],
+      dividends: SUBSET.map((row) => ({
+        stockCode: row.stockCode,
+        exDate: '2023-06-15',
+        amount: 0.1,
+      })),
+    });
   }
 }
 
@@ -181,7 +201,8 @@ describe('KLCI seed + ingest ops', () => {
   let redis: Redis;
   let seed: KlciSeedService;
   let eod: EodIngestService;
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
+  let market: FakeKlciMarketAdapter;
 
   beforeAll(async () => {
     pgContainer = await new PostgreSqlContainer('postgres:16-alpine').start();
@@ -221,8 +242,9 @@ describe('KLCI seed + ingest ops', () => {
         IngestionRunService,
         ReferenceDataService,
         KlciSeedService,
-        ReadCacheService,
-        JobBus,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
+        ...JOB_BUS_PROVIDERS,
         EodIngestService,
         // Ticket-05 nightly follow-on seam: `ingestKlci` (what this spec
         // exercises) never calls it; a no-op stub satisfies the constructor.
@@ -238,7 +260,8 @@ describe('KLCI seed + ingest ops', () => {
 
     seed = moduleRef.get(KlciSeedService);
     eod = moduleRef.get(EodIngestService);
-    jobBus = moduleRef.get(JobBus);
+    jobBus = moduleRef.get(BullMqJobBus);
+    market = moduleRef.get(MARKET_DATA_ADAPTER);
   });
 
   afterAll(async () => {
@@ -291,8 +314,9 @@ describe('KLCI seed + ingest ops', () => {
     const run = await dataSource.getRepository(IngestionRun).findOneOrFail({
       where: { id: result.runId },
     });
+    // The run is opened from the bound adapter's own declaration.
     expect(run.provenanceClass).toBe(ProvenanceClass.Real);
-    expect(run.adapter).toBe('YFinanceMarketDataAdapter');
+    expect(run.adapter).toBe('FakeKlciMarketAdapter');
 
     for (const row of SUBSET) {
       const instrument = await dataSource.getRepository(Instrument).findOneOrFail({
@@ -313,6 +337,42 @@ describe('KLCI seed + ingest ops', () => {
           where: { companyId: instrument.companyId },
         }),
       ).toBe(1);
+    }
+  });
+
+  it('ingest-klci records the fetch failures and stamps the failing run with the adapter name', async () => {
+    await seed.seedKlci();
+    const [failing, healthy] = SUBSET;
+    market.failingStockCodes = [failing.stockCode];
+    try {
+      const result = await eod.ingestKlci();
+
+      expect(result.failures).toEqual([`${failing.stockCode}: fake outage`]);
+      const run = await dataSource.getRepository(IngestionRun).findOneOrFail({
+        where: { id: result.runId },
+      });
+      expect(run.adapter).toBe('FakeKlciMarketAdapter');
+      expect(run.provenanceClass).toBe(ProvenanceClass.Real);
+
+      // Skip-and-continue: the healthy symbol re-landed into this run, the
+      // failing one kept its previous run's rows.
+      const instrumentOf = (code: string) =>
+        dataSource.getRepository(Instrument).findOneOrFail({ where: { stockCode: code } });
+      const healthyIndicator = await dataSource
+        .getRepository(IndicatorSnapshot)
+        .findOneOrFail({ where: { instrumentId: (await instrumentOf(healthy.stockCode)).id } });
+      expect(healthyIndicator.ingestionRunId).toBe(result.runId);
+      const failingBars = await dataSource.getRepository(PriceBar).find({
+        where: { instrumentId: (await instrumentOf(failing.stockCode)).id },
+      });
+      expect(failingBars.every((b) => b.ingestionRunId !== result.runId)).toBe(true);
+      // The vendor dividends on the fundamentals fetch fed DY (0.10 / latest close).
+      const snapshot = await dataSource
+        .getRepository(FundamentalsSnapshot)
+        .findOneOrFail({ where: { companyId: (await instrumentOf(healthy.stockCode)).companyId } });
+      expect(Number(snapshot.dividendYield)).toBeGreaterThan(0);
+    } finally {
+      market.failingStockCodes = [];
     }
   });
 });

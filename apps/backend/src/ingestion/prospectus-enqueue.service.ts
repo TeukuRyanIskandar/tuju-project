@@ -23,7 +23,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { JobEnvelope, ProspectusPayload } from '@tuju/contracts';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
-import { JobBus, prospectusBullJobId } from '../jobbus/job-bus.service';
+import { JobBus } from '../jobbus/job-bus.service';
 import { JobNames } from '../jobbus/job-names';
 import { isUuid } from '../stocks/filters';
 
@@ -101,24 +101,17 @@ export class ProspectusEnqueueService {
     }
 
     const result: ProspectusEnqueueResult = { enqueued: [], alreadyInFlight: [] };
-    const queue = this.jobBus.getQueue();
     for (const id of ids) {
-      // BullMQ silently ignores an `add` whose jobId still exists — including a
-      // retained COMPLETED (1h) or FAILED (24h) job, which would turn a
-      // legitimate retry/re-run into a no-op. Clear finished ones; leave a
-      // genuinely in-flight one to collapse (that dedup is intended).
-      const existing = await queue.getJob(prospectusBullJobId(id));
-      if (existing) {
-        const state = await existing.getState();
-        if (state === 'completed' || state === 'failed') {
-          await existing.remove();
-        } else {
-          result.alreadyInFlight.push(id);
-          continue;
-        }
-      }
-      await this.jobBus.enqueue(JobNames.prospectus, buildProspectusEnvelope(id));
-      result.enqueued.push(id);
+      // A retained COMPLETED (1h) or FAILED (24h) job would otherwise turn a
+      // legitimate retry/re-run into a silent no-op, so finished ones are
+      // replaced; a genuinely in-flight one collapses (that dedup is intended).
+      const { status } = await this.jobBus.enqueue(
+        JobNames.prospectus,
+        buildProspectusEnvelope(id),
+        { replaceFinished: true },
+      );
+      if (status === 'inFlight') result.alreadyInFlight.push(id);
+      else result.enqueued.push(id);
     }
     this.logger.log({ msg: 'enqueue-prospectus done', ...result });
     return result;

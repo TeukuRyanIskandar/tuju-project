@@ -32,7 +32,8 @@ import {
 
 import { ConfigModule } from '../config/config.module';
 import { RedisModule, REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService, SCREENER_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
+import { SCREENER_CACHE_PREFIX } from '../cache/cache-keys';
 import {
   AnalysisResult,
   Announcement,
@@ -72,7 +73,7 @@ import {
 } from './screener-query.interface';
 import { ScreenerController } from './screener.controller';
 import { ScreenerModule } from './screener.module';
-import { ScreenerService, screenerCacheKey } from './screener.service';
+import { ScreenerService } from './screener.service';
 
 jest.setTimeout(180_000);
 
@@ -182,7 +183,7 @@ describe('Screener endpoint (integration — testcontainers)', () => {
 
   let controller: ScreenerController;
   let service: ScreenerService;
-  let readCache: ReadCacheService;
+  let readCache: ReadModelCache;
   let screenSpy: jest.SpyInstance;
 
   /** Screen through the endpoint, returning stockCodes in page order. */
@@ -216,7 +217,7 @@ describe('Screener endpoint (integration — testcontainers)', () => {
     moduleRef = await bootModule();
     controller = moduleRef.get(ScreenerController);
     service = moduleRef.get(ScreenerService);
-    readCache = moduleRef.get(ReadCacheService);
+    readCache = moduleRef.get(ReadModelCache);
     redis = moduleRef.get<Redis>(REDIS_CLIENT);
     screenSpy = jest.spyOn(moduleRef.get<ScreenerQuery>(SCREENER_QUERY), 'screen');
   });
@@ -401,7 +402,7 @@ describe('Screener endpoint (integration — testcontainers)', () => {
     // Exactly one class-2 key, and it IS the canonical key (unit-pinned shape).
     const keys = await redis.keys(`${SCREENER_CACHE_PREFIX}*`);
     expect(keys).toEqual([
-      screenerCacheKey(parseScreenerQuery({ dyMin: '0.01', board: 'MAIN,ACE' })),
+      ReadModelReads.screen(parseScreenerQuery({ dyMin: '0.01', board: 'MAIN,ACE' })).key,
     ]);
   });
 
@@ -419,11 +420,10 @@ describe('Screener endpoint (integration — testcontainers)', () => {
     const first = await controller.screen({ volumeMin: '1500000' });
     const callsBefore = screenSpy.mock.calls.length; // includes the warm call
 
-    // The SAME prefix sweep the nightly ingest + purge perform post-commit
-    // (pinned end-to-end in ingestion.int.spec.ts): every cached screen
-    // lives under it, so clearing it must force the next call back to the seam.
-    const deleted = await readCache.invalidatePrefix(SCREENER_CACHE_PREFIX);
-    expect(deleted).toBeGreaterThan(0);
+    // The SAME change the nightly ingest announces post-commit (pinned
+    // end-to-end in ingestion.int-spec.ts): every cached screen must miss.
+    expect((await redis.keys(`${SCREENER_CACHE_PREFIX}*`)).length).toBeGreaterThan(0);
+    await readCache.changed({ kind: 'eodIngested' });
 
     const second = await controller.screen({ volumeMin: '1500000' });
     expect(screenSpy.mock.calls.length).toBe(callsBefore + 1);

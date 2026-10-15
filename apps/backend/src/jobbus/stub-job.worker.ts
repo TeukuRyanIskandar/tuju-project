@@ -7,8 +7,9 @@ import {
 } from '@nestjs/common';
 import { Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
-import type { JobEnvelope, JobProgress, JobResult } from '@tuju/contracts';
+import type { JobEnvelope, JobName, JobProgress, JobResult } from '@tuju/contracts';
 import { REDIS_CLIENT } from '../redis/redis.module';
+import { resultIdFor } from './job-identities';
 import { ANALYSIS_QUEUE } from './job-names';
 
 /**
@@ -48,7 +49,9 @@ export class StubJobWorker implements OnModuleInit, OnModuleDestroy {
 
         const result: JobResult = {
           correlationId: env.correlationId,
-          jobId: job.id ?? '',
+          // The worker's colon-form result id (not the BullMQ id), so the
+          // JobBus routes it to the job's family like a real worker result.
+          jobId: resultIdFor(job.name as JobName, env),
           pointer: {
             bucket: 'stub',
             key: `results/${job.id}.json`,

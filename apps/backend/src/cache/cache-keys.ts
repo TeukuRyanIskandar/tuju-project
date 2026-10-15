@@ -1,66 +1,37 @@
 /**
- * Class-2 read-through cache key prefixes (spec 02 ticket 01; ADR-0004).
+ * Class-2 read-model cache key prefixes (spec 02 ticket 01; ADR-0004).
+ * INTERNAL to the cache module: readers name a read via `ReadModelReads`,
+ * writers announce a `ReadModelChange`, and nothing outside `src/cache/`
+ * builds or sweeps a key (tests may import these to inspect Redis).
  *
  * Everything under `cache:` is a cold-rebuildable read-through copy of
- * Postgres-derived data — losing it is never data loss. The prefixes are the
- * invalidation units: the nightly ingest and the decision-B purge clear them
- * wholesale after new data commits, so no consumer ever pins an invalidation
- * key by hand.
+ * Postgres-derived data — losing it is never data loss. Which prefixes a
+ * change clears is decided in one table (`read-model-changes.ts`).
+ *
+ * The strings are byte-identical to the pre-ReadModelCache keys, so a deploy
+ * neither orphans nor mis-hits anything already in Redis.
  */
 
-/** Root prefix separating the read cache from BullMQ + the session store. */
+/** Root prefix separating the read cache from BullMQ, sessions and `intraday:` (class 3). */
 export const READ_CACHE_KEY_PREFIX = 'cache:';
 
-/** `/search` results — invalidated on roster change / nightly ingest. */
+/** `/search` results. */
 export const SEARCH_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}search:`;
 
-/** `/stocks/:code` pages + lists — invalidated on nightly ingest / purge. */
+/** `/stocks/:code` pages + lists. */
 export const STOCKS_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}stocks:`;
 
-/**
- * Spec-04 disclosure reads (market announcements feed, dealings view,
- * calendars, news feed) — invalidated on the disclosure/RSS ingest cadence
- * (the demo folds both into the nightly ingest) and on purge.
- */
+/** Spec-04 disclosure reads (announcements feed, dealings view, calendars, news). */
 export const DISCLOSURES_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}disclosures:`;
 
-/** Spec-03 screener screens — invalidated on the nightly ingest / purge. */
+/** Spec-03 screener screens + the fields advertisement. */
 export const SCREENER_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}screener:`;
 
-/**
- * Spec-05 market-overview reads (index panels, sector performance) —
- * invalidated on the nightly ingest (fresh `IndexLevel`s land) / purge.
- */
+/** Spec-05 market-overview reads (EOD movers fallback, index panels, series). */
 export const MARKET_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}market:`;
 
-/**
- * Every read-cache prefix — the wholesale invalidation set the nightly ingest
- * and the decision-B purge sweep after their commits. Adding a prefix here is
- * the whole wiring: no call site ever pins an invalidation key by hand.
- */
-export const READ_CACHE_PREFIXES = [
-  SEARCH_CACHE_PREFIX,
-  STOCKS_CACHE_PREFIX,
-  DISCLOSURES_CACHE_PREFIX,
-  SCREENER_CACHE_PREFIX,
-  MARKET_CACHE_PREFIX,
-] as const;
-
-/**
- * Spec-06 daily market-brief read (`GET /market-brief/latest`, ticket 02).
- * DELIBERATELY NOT in {@link READ_CACHE_PREFIXES}: that sweep fires after the
- * nightly-ingest/purge commit, which has nothing to do with brief freshness —
- * a fresh brief lands on its own async cadence (the JobBus result arriving),
- * so `MarketBriefStore` invalidates this one key itself, the moment it
- * persists a new brief.
- */
+/** Spec-06 daily market-brief read (`GET /market-brief/latest`). */
 export const BRIEF_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}brief:`;
 
-/**
- * Spec-06 prospectus at-a-glance reads (`GET /ipo/:prospectusId/at-a-glance`
- * and its proxied artifact, ticket 05). Same posture as
- * {@link BRIEF_CACHE_PREFIX}: DELIBERATELY NOT in {@link READ_CACHE_PREFIXES}
- * (a result lands on the JobBus's async cadence, not the nightly ingest), so
- * `ProspectusAnalysisStore` invalidates the affected keys itself on persist.
- */
+/** Spec-06 prospectus at-a-glance reads (+ proxied artifact). */
 export const PROSPECTUS_CACHE_PREFIX = `${READ_CACHE_KEY_PREFIX}prospectus:`;

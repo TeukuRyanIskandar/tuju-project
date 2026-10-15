@@ -27,7 +27,7 @@ import { NewsArticle } from '../data/entities/news-article.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ProvenanceClass } from '../data/entities/enums';
-import { ReadCacheService } from '../cache';
+import { ReadModelCache } from '../cache';
 
 /** Rows deleted per table (returned for logging / test assertions). */
 export interface PurgeResult {
@@ -58,7 +58,7 @@ export class PurgeService {
 
   constructor(
     private readonly dataSource: DataSource,
-    private readonly readCache: ReadCacheService,
+    private readonly readCache: ReadModelCache,
   ) {}
 
   /** Run the decision-B purge in a single transaction. */
@@ -70,7 +70,7 @@ export class PurgeService {
     // Class-2 cache invalidation AFTER the commit (ADR-0004): the purge just
     // changed what every cached read page would show — the whole point is
     // that no stale synthetic/aggregator page survives the licence crossing.
-    await this.readCache.invalidateReadCaches();
+    await this.readCache.changed({ kind: 'purged' });
     return result;
   }
 

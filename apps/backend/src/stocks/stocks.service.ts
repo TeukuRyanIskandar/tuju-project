@@ -15,35 +15,30 @@
  * — never a per-row column: identity/shariah resolve to `real`,
  * fundamentals/technicals to `synthetic`, disclosure items to `aggregator`.
  *
- * Caching is class-2 read-through (ADR-0004) via the ticket-01
- * `ReadCacheService`, keyed per code (+ page on the lists). A `NotFoundException`
- * for an unknown code is thrown THROUGH the loader — `remember` propagates
- * exceptions uncached — so a 404 never poisons a key and the hot path needs no
- * pre-flight existence query. Invalidation is NOT wired here: the nightly
- * ingest and the decision-B purge sweep the `cache:stocks:` prefix after commit
- * (ticket 01).
+ * Caching is class-2 read-through (ADR-0004) via `ReadModelCache`, one named
+ * read per code (+ page on the lists). A `NotFoundException` for an unknown
+ * code is thrown THROUGH the loader — `read` propagates exceptions uncached —
+ * so a 404 never poisons a key and the hot path needs no pre-flight existence
+ * query. Invalidation is NOT wired here: writers announce their changes
+ * (ingest, purge, announcement summaries) and the cache module decides.
  */
 
 import {
   BadRequestException,
-  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { In, MoreThanOrEqual, Repository } from 'typeorm';
-import { ReadCacheService, STOCKS_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
-import { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entity';
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { Instrument } from '../data/entities/instrument.entity';
 import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
-import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import {
   AnnouncementCategory,
   CorporateActionType,
@@ -51,17 +46,9 @@ import {
 } from '../data/entities/enums';
 import { isKlci30 } from '../ingestion/klci30-universe';
 import { seriesSinceDate } from '../market/index-params';
-import { S3_CLIENT } from '../s3/s3.module';
+import { StockAnalysis } from '../analysis/stock-analysis';
 import { pctChange, toNumber } from './serialisation';
-import {
-  isStockSeriesQuery,
-  omitArtifactCost,
-  pendingFundamentalAnalysis,
-  pendingTechnicalAnalysis,
-  STOCK_SERIES_RANGE_DAYS,
-  toFundamentalAnalysisResponse,
-  toTechnicalAnalysisResponse,
-} from './stock-analysis-read';
+import { isStockSeriesQuery, STOCK_SERIES_RANGE_DAYS } from './series-query';
 import { computeTechnicalEvents } from './technical-events';
 import { toAnalysisReference } from './analysis-reference';
 import type {
@@ -84,10 +71,6 @@ import type { AnalysisReferenceResponse } from './analysis-reference';
 @Injectable()
 export class StocksService {
   constructor(
-    @InjectRepository(TechnicalAnalysis)
-    private readonly technicalAnalysisRepo: Repository<TechnicalAnalysis>,
-    @InjectRepository(FundamentalAnalysis)
-    private readonly fundamentalAnalysisRepo: Repository<FundamentalAnalysis>,
     @InjectRepository(IndicatorSnapshot)
     private readonly indicatorSnapshotRepo: Repository<IndicatorSnapshot>,
     @InjectRepository(FundamentalsSnapshot)
@@ -104,15 +87,14 @@ export class StocksService {
     private readonly shariahStatusRepo: Repository<ShariahStatus>,
     @InjectRepository(Instrument)
     private readonly instrumentRepo: Repository<Instrument>,
-    private readonly readCache: ReadCacheService,
-    @Inject(S3_CLIENT) private readonly s3: S3Client,
+    private readonly readCache: ReadModelCache,
+    private readonly analyses: StockAnalysis,
   ) {}
 
   /** `GET /stocks/:code` — the class-2-cached core snapshot. */
   async getCore(stockCode: string): Promise<StockCorePayload> {
-    return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:core`,
-      () => this.loadCore(stockCode),
+    return this.readCache.read(ReadModelReads.stockCore(stockCode), () =>
+      this.loadCore(stockCode),
     );
   }
 
@@ -123,8 +105,8 @@ export class StocksService {
     limit: number,
     categories: readonly AnnouncementCategory[] = [],
   ): Promise<AnnouncementsPage> {
-    return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:announcements:${normaliseEnumKey(categories)}:${offset}:${limit}`,
+    return this.readCache.read(
+      ReadModelReads.stockAnnouncements(stockCode, categories, { offset, limit }),
       () => this.loadAnnouncements(stockCode, offset, limit, categories),
     );
   }
@@ -136,8 +118,8 @@ export class StocksService {
     limit: number,
     types: readonly CorporateActionType[] = [],
   ): Promise<CorporateActionsPage> {
-    return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:corporate-actions:${normaliseEnumKey(types)}:${offset}:${limit}`,
+    return this.readCache.read(
+      ReadModelReads.stockCorporateActions(stockCode, types, { offset, limit }),
       () => this.loadCorporateActions(stockCode, offset, limit, types),
     );
   }
@@ -156,48 +138,35 @@ export class StocksService {
     return this.loadSeries(stockCode);
   }
 
-  /** `GET /stocks/:code/analysis/technical` — thin envelope; pending when no row. */
+  /**
+   * `GET /stocks/:code/analysis/technical` — thin envelope; pending when no
+   * row, `stale` promoted at read time. Owned (and cached) by `StockAnalysis`.
+   */
   async getTechnicalAnalysis(
     stockCode: string,
   ): Promise<StockTechnicalAnalysisResponse> {
-    return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:technical-analysis`,
-      () => this.loadTechnicalAnalysis(stockCode),
-      3600,
-    );
+    return this.analyses.status(stockCode, 'technical');
   }
 
-  /** `GET /stocks/:code/analysis/fundamental` — thin envelope; pending when no row. */
+  /** `GET /stocks/:code/analysis/fundamental` — thin envelope (see above). */
   async getFundamentalAnalysis(
     stockCode: string,
   ): Promise<StockFundamentalAnalysisResponse> {
-    return this.readCache.remember(
-      `${STOCKS_CACHE_PREFIX}${stockCode}:fundamental-analysis`,
-      () => this.loadFundamentalAnalysis(stockCode),
-      3600,
-    );
+    return this.analyses.status(stockCode, 'fundamental');
   }
 
   /** Proxied TA artifact JSON with `cost` stripped (ADR-0014). */
   async getTechnicalArtifact(
     stockCode: string,
   ): Promise<Record<string, unknown>> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.technicalAnalysisRepo.findOne({
-      where: { instrumentId: instrument.id },
-    });
-    return this.loadArtifact(stockCode, row);
+    return this.analyses.artifact(stockCode, 'technical');
   }
 
   /** Proxied FA artifact JSON with `cost` stripped (ADR-0014). */
   async getFundamentalArtifact(
     stockCode: string,
   ): Promise<Record<string, unknown>> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.fundamentalAnalysisRepo.findOne({
-      where: { instrumentId: instrument.id },
-    });
-    return this.loadArtifact(stockCode, row);
+    return this.analyses.artifact(stockCode, 'fundamental');
   }
 
   /**
@@ -451,32 +420,6 @@ export class StocksService {
     return this.requireInstrument(stockCode);
   }
 
-  /** Private loader: fetch technical analysis data (3 sequential queries). */
-  private async loadTechnicalAnalysis(
-    stockCode: string,
-  ): Promise<StockTechnicalAnalysisResponse> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.technicalAnalysisRepo.findOne({
-      where: { instrumentId: instrument.id },
-    });
-    if (!row) return pendingTechnicalAnalysis(stockCode);
-    const latestEod = await this.latestEodCloseDay(instrument.id);
-    return toTechnicalAnalysisResponse(stockCode, row, latestEod);
-  }
-
-  /** Private loader: fetch fundamental analysis data (3 sequential queries). */
-  private async loadFundamentalAnalysis(
-    stockCode: string,
-  ): Promise<StockFundamentalAnalysisResponse> {
-    const instrument = await this.requireKlciInstrument(stockCode);
-    const row = await this.fundamentalAnalysisRepo.findOne({
-      where: { instrumentId: instrument.id },
-    });
-    if (!row) return pendingFundamentalAnalysis(stockCode);
-    const latestEod = await this.latestEodCloseDay(instrument.id);
-    return toFundamentalAnalysisResponse(stockCode, row, latestEod);
-  }
-
   private async loadSeries(stockCode: string): Promise<StockSeriesResponse> {
     const instrument = await this.instrumentRepo.findOne({
       where: { stockCode },
@@ -531,55 +474,4 @@ export class StocksService {
       demoLabel: 'private-demo',
     };
   }
-
-  private async latestEodCloseDay(instrumentId: string): Promise<string | null> {
-    const latest = await this.priceBarRepo.findOne({
-      where: { instrumentId },
-      order: { tradeDate: 'DESC' },
-    });
-    return latest?.tradeDate ?? null;
-  }
-
-  private async loadArtifact(
-    stockCode: string,
-    row:
-      | Pick<
-          TechnicalAnalysis,
-          'artifactBucket' | 'artifactKey'
-        >
-      | Pick<
-          FundamentalAnalysis,
-          'artifactBucket' | 'artifactKey'
-        >
-      | null,
-  ): Promise<Record<string, unknown>> {
-    if (!row?.artifactBucket || !row.artifactKey) {
-      throw new NotFoundException(
-        `No analysis artifact for stockCode=${stockCode}`,
-      );
-    }
-    const out = await this.s3.send(
-      new GetObjectCommand({
-        Bucket: row.artifactBucket,
-        Key: row.artifactKey,
-      }),
-    );
-    const body = await out.Body?.transformToString('utf-8');
-    if (!body) {
-      throw new NotFoundException(
-        `Analysis artifact body is empty for stockCode=${stockCode}`,
-      );
-    }
-    const parsed = JSON.parse(body) as Record<string, unknown>;
-    return omitArtifactCost(parsed);
-  }
-}
-
-/**
- * Deterministic cache-key fragment for an enum filter: order-insensitive
- * (sorted) so `?category=A,B` and `?category=B,A` share one entry; empty when
- * unfiltered.
- */
-function normaliseEnumKey<T extends string>(values: readonly T[]): string {
-  return [...values].sort().join(',');
 }

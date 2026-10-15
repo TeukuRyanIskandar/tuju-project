@@ -41,7 +41,10 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 
-import { ReadCacheService, MARKET_CACHE_PREFIX } from '../cache';
+import { ReadModelCache } from '../cache';
+import { MARKET_CACHE_PREFIX } from '../cache/cache-keys';
+import { DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { REDIS_CLIENT } from '../redis/redis.module';
 import {
   AnalysisResult,
@@ -72,7 +75,12 @@ import { ReIngestNaturalKeys1727800000000 } from '../data/migrations/17278000000
 import { DisclosureReadModel1727900000000 } from '../data/migrations/1727900000000-DisclosureReadModel';
 import { MarketIndexModel1728000000000 } from '../data/migrations/1728000000000-MarketIndexModel';
 import { AdaptersModule } from '../data/adapters/adapters.module';
-import { INDEX_ADAPTER, type IndexAdapter } from '../data/adapters/adapter.interfaces';
+import {
+  fetched,
+  INDEX_ADAPTER,
+  type IndexAdapter,
+  type SourceFetch,
+} from '../data/adapters/adapter.interfaces';
 import type { IndexLevelsDto } from '../data/adapters/dto';
 import { EodIngestService } from '../ingestion/eod-ingest.service';
 import { IngestionRunService } from '../ingestion/ingestion-run.service';
@@ -80,7 +88,8 @@ import { KlciEnqueueService } from '../ingestion/klci-enqueue.service';
 import { ReferenceDataService } from '../ingestion/reference-data.service';
 import { KlciSeedService } from '../ingestion/klci-seed.service';
 import { IntradayReplayService } from '../ingestion/intraday-replay.service';
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
+import { JOB_BUS_PROVIDERS } from '../jobbus/job-bus.module';
 import { REQUIRES_JOB_KEY } from '../auth/requires-job.decorator';
 import { pctChange } from '../stocks/serialisation';
 
@@ -88,6 +97,28 @@ import { MarketController } from './market.controller';
 import { MarketService, MARKET_CLOCK } from './market.service';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -162,7 +193,8 @@ describe('Indices + sectors endpoints (integration — testcontainers)', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: MARKET_CLOCK, useValue: () => clockNow },
-        ReadCacheService,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
         MarketService,
       ],
     }).compile();
@@ -408,9 +440,10 @@ describe('Indices + sectors endpoints (integration — testcontainers)', () => {
  * `SyntheticIndexAdapter` vs a licensed feed).
  */
 class FakeLicensedIndexAdapter implements IndexAdapter {
+  readonly adapterName = 'FakeLicensedIndexAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
-  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
-    return Promise.resolve([
+  fetchIndexLevels(): Promise<SourceFetch<IndexLevelsDto>> {
+    return Promise.resolve(fetched([
       {
         kind: MarketIndexKind.Headline,
         sectorName: null,
@@ -429,7 +462,7 @@ class FakeLicensedIndexAdapter implements IndexAdapter {
           { levelDate: '2026-01-06', level: 221.5 },
         ],
       },
-    ]);
+    ]));
   }
 }
 
@@ -468,7 +501,8 @@ describe('Adapter-swap posture: a fake LicensedIndexAdapter feeds the identical 
         { provide: DataSource, useValue: swapDataSource },
         { provide: REDIS_CLIENT, useValue: swapRedis },
         { provide: MARKET_CLOCK, useValue: () => OUTSIDE_HOURS },
-        ReadCacheService,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        ReadModelCache,
         MarketService,
       ],
     }).compile();
@@ -515,9 +549,9 @@ describe('Adapter-swap posture: a fake LicensedIndexAdapter feeds the identical 
  * Run the nightly ingest (`EodIngestService.runNightly`) against `ds`/`redisClient`
  * to populate `MarketIndex` + `IndexLevel` rows. `indexAdapterOverride` swaps the
  * `INDEX_ADAPTER` binding (adapter-swap posture); every other adapter stays the
- * `AdaptersModule` demo default. Mirrors `ingestion.int.spec.ts`'s harness — no
- * `ConfigModule`/`RedisModule` import (nothing here needs `APP_CONFIG`), DataSource
- * and REDIS_CLIENT are provided directly.
+ * `AdaptersModule` demo default. Mirrors `ingestion.int-spec.ts`'s harness — no
+ * `ConfigModule`/`RedisModule` import: DataSource, REDIS_CLIENT and a fake
+ * `APP_CONFIG` (ReadModelCache's TTL) are provided directly.
  */
 async function runNightlyIngest(
   ds: DataSource,
@@ -532,8 +566,9 @@ async function runNightlyIngest(
       IngestionRunService,
       ReferenceDataService,
       KlciSeedService,
-      ReadCacheService,
-      JobBus,
+      { provide: APP_CONFIG, useValue: fakeConfig() },
+      ReadModelCache,
+      ...JOB_BUS_PROVIDERS,
       EodIngestService,
       // Ticket-05 nightly follow-on seam: never fires on the synthetic demo
       // adapters (yfinance-only), so a no-op stub satisfies the constructor.

@@ -6,7 +6,7 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { APP_CONFIG, type AppConfig } from './config/config';
 import { applyCors } from './config/cors';
-import { JobBus } from './jobbus/job-bus.service';
+import { BullMqJobBus } from './jobbus/bullmq-job-bus';
 import { BULL_BOARD_PATH, createBullBoardRouter } from './jobbus/bull-board';
 
 async function bootstrap(): Promise<void> {
@@ -32,8 +32,9 @@ async function bootstrap(): Promise<void> {
   // Credentialed CORS for the allowlisted SPA origin(s) only (ADR-0005).
   applyCors(app, config.corsOrigins);
 
-  // Bull Board queue-introspection route (ADR-0010 §4).
-  const jobBus = app.get(JobBus);
+  // Bull Board queue-introspection route (ADR-0010 §4) — the one reach past
+  // the JobBus seam, so it asks for the BullMQ adapter by name.
+  const jobBus = app.get(BullMqJobBus);
   app.use(BULL_BOARD_PATH, createBullBoardRouter(jobBus.getQueue()));
 
   await app.listen(config.port);

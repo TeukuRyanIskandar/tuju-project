@@ -11,8 +11,9 @@
  * fundamentals *generation logic* is ticket 03 — {@link SyntheticMarketDataAdapter}
  * and {@link SyntheticFundamentalsAdapter} are thin placeholders here that will
  * later delegate to that generator. The aggregator / manual demo adapters return a
- * small static snapshot sufficient to exercise the seam. Every adapter declares the
- * {@link ProvenanceClass} it produces.
+ * small static snapshot sufficient to exercise the seam. Every adapter declares its
+ * own `adapterName` (stamped on its run — these names are existing lineage, keep
+ * them stable) and the {@link ProvenanceClass} it produces.
  */
 import { Injectable } from '@nestjs/common';
 import {
@@ -21,7 +22,7 @@ import {
   ProvenanceClass,
   ShariahComplianceStatus,
 } from '../entities/enums';
-import { generate } from '../synthetic';
+import { DEFAULT_PARAMS, generate } from '../synthetic';
 import {
   REFERENCE_UNIVERSE,
   SYNTHETIC_BASE_SEED,
@@ -29,14 +30,18 @@ import {
 } from '../../ingestion/reference-universe';
 import { mapAnnouncementLabel } from './announcement-labels';
 import { computeCapWeightedIndices } from './index-computation';
-import type {
-  DisclosureAdapter,
-  FundamentalsAdapter,
-  IndexAdapter,
-  IpoAdapter,
-  MarketDataAdapter,
-  NewsAdapter,
-  ShariahListAdapter,
+import {
+  fetched,
+  type DisclosureAdapter,
+  type FundamentalsAdapter,
+  type FundamentalsFetch,
+  type IndexAdapter,
+  type IpoAdapter,
+  type MarketDataAdapter,
+  type NewsAdapter,
+  type ShariahListAdapter,
+  type SourceFetch,
+  type SyntheticGeneration,
 } from './adapter.interfaces';
 import type {
   AnnouncementDto,
@@ -51,6 +56,15 @@ import type {
 } from './dto';
 
 /**
+ * The one seeded co-generation the synthetic market + fundamentals adapters
+ * share (A1): stamped on their {@link SyntheticRun} so the timeline regenerates.
+ */
+const SYNTHETIC_GENERATION: SyntheticGeneration = {
+  seed: SYNTHETIC_BASE_SEED,
+  params: { ...DEFAULT_PARAMS, baseSeed: SYNTHETIC_BASE_SEED },
+};
+
+/**
  * Demo market-data adapter (ticket 04 wires ticket 03's generator behind it).
  *
  * Declares `synthetic` provenance. For every company in the curated reference
@@ -61,9 +75,12 @@ import type {
  */
 @Injectable()
 export class SyntheticMarketDataAdapter implements MarketDataAdapter {
+  readonly adapterName = 'SyntheticMarketDataAdapter';
   readonly provenanceClass = ProvenanceClass.Synthetic;
+  readonly generation = SYNTHETIC_GENERATION;
+  readonly universe = 'reference';
 
-  fetchDailyBars(): Promise<PriceBarDto[]> {
+  fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
     const bars: PriceBarDto[] = [];
     for (const company of REFERENCE_UNIVERSE) {
       const seed = instrumentSeed(SYNTHETIC_BASE_SEED, company.stockCode);
@@ -80,7 +97,7 @@ export class SyntheticMarketDataAdapter implements MarketDataAdapter {
         });
       }
     }
-    return Promise.resolve(bars);
+    return Promise.resolve(fetched(bars));
   }
 }
 
@@ -93,9 +110,11 @@ export class SyntheticMarketDataAdapter implements MarketDataAdapter {
  */
 @Injectable()
 export class SyntheticFundamentalsAdapter implements FundamentalsAdapter {
+  readonly adapterName = 'SyntheticFundamentalsAdapter';
   readonly provenanceClass = ProvenanceClass.Synthetic;
+  readonly generation = SYNTHETIC_GENERATION;
 
-  fetchFundamentals(): Promise<FundamentalsDto[]> {
+  fetchFundamentals(): Promise<FundamentalsFetch> {
     const out: FundamentalsDto[] = [];
     for (const company of REFERENCE_UNIVERSE) {
       const seed = instrumentSeed(SYNTHETIC_BASE_SEED, company.stockCode);
@@ -121,7 +140,8 @@ export class SyntheticFundamentalsAdapter implements FundamentalsAdapter {
         quarters,
       });
     }
-    return Promise.resolve(out);
+    // No `dividends`: DY reads the corporate-action single source.
+    return Promise.resolve(fetched(out));
   }
 }
 
@@ -138,9 +158,10 @@ export class SyntheticFundamentalsAdapter implements FundamentalsAdapter {
  */
 @Injectable()
 export class SyntheticIndexAdapter implements IndexAdapter {
+  readonly adapterName = 'SyntheticIndexAdapter';
   readonly provenanceClass = ProvenanceClass.Synthetic;
 
-  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
+  fetchIndexLevels(): Promise<SourceFetch<IndexLevelsDto>> {
     const constituents = REFERENCE_UNIVERSE.map((company) => {
       const seed = instrumentSeed(SYNTHETIC_BASE_SEED, company.stockCode);
       const dataset = generate(seed);
@@ -154,7 +175,7 @@ export class SyntheticIndexAdapter implements IndexAdapter {
         })),
       };
     });
-    return Promise.resolve(computeCapWeightedIndices(constituents));
+    return Promise.resolve(fetched(computeCapWeightedIndices(constituents)));
   }
 }
 
@@ -183,9 +204,10 @@ export class SyntheticIndexAdapter implements IndexAdapter {
  */
 @Injectable()
 export class AggregatorDisclosureAdapter implements DisclosureAdapter {
+  readonly adapterName = 'AggregatorDisclosureAdapter';
   readonly provenanceClass = ProvenanceClass.Aggregator;
 
-  fetchAnnouncements(): Promise<AnnouncementDto[]> {
+  fetchAnnouncements(): Promise<SourceFetch<AnnouncementDto>> {
     const now = snapshotNow();
     const raw: RawDisclosureRow[] = [];
     for (const company of REFERENCE_UNIVERSE) {
@@ -216,10 +238,10 @@ export class AggregatorDisclosureAdapter implements DisclosureAdapter {
         });
       }
     }
-    return Promise.resolve(raw.map(mapDisclosureRow));
+    return Promise.resolve(fetched(raw.map(mapDisclosureRow)));
   }
 
-  fetchCorporateActions(): Promise<CorporateActionDto[]> {
+  fetchCorporateActions(): Promise<SourceFetch<CorporateActionDto>> {
     const now = snapshotNow();
     const out: CorporateActionDto[] = [];
     for (const company of REFERENCE_UNIVERSE) {
@@ -240,7 +262,7 @@ export class AggregatorDisclosureAdapter implements DisclosureAdapter {
         });
       }
     }
-    return Promise.resolve(out);
+    return Promise.resolve(fetched(out));
   }
 }
 
@@ -366,9 +388,10 @@ function snapshotNow(): Date {
  */
 @Injectable()
 export class RssNewsAdapter implements NewsAdapter {
+  readonly adapterName = 'RssNewsAdapter';
   readonly provenanceClass = ProvenanceClass.Aggregator;
 
-  fetchHeadlines(): Promise<NewsArticleDto[]> {
+  fetchHeadlines(): Promise<SourceFetch<NewsArticleDto>> {
     const now = snapshotNow();
     const out: NewsArticleDto[] = [];
     let hoursAgo = 1;
@@ -394,7 +417,7 @@ export class RssNewsAdapter implements NewsAdapter {
     // Market-level coverage — no company match by design.
     push('Bursa Malaysia closes higher on regional rally', 'Demo Wire');
     push('Ringgit strengthens against the US dollar', 'KL Market Beat');
-    return Promise.resolve(out);
+    return Promise.resolve(fetched(out));
   }
 }
 
@@ -405,9 +428,10 @@ export class RssNewsAdapter implements NewsAdapter {
  */
 @Injectable()
 export class ManualShariahListAdapter implements ShariahListAdapter {
+  readonly adapterName = 'ManualShariahListAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
 
-  fetchShariahStatuses(): Promise<ShariahStatusDto[]> {
+  fetchShariahStatuses(): Promise<SourceFetch<ShariahStatusDto>> {
     const out: ShariahStatusDto[] = REFERENCE_UNIVERSE.map((c) => ({
       stockCode: c.stockCode,
       // INARI (technology) compliant; banks non-compliant — plausible demo values.
@@ -417,7 +441,7 @@ export class ManualShariahListAdapter implements ShariahListAdapter {
           : ShariahComplianceStatus.Compliant,
       effectiveDate: '2025-05-30',
     }));
-    return Promise.resolve(out);
+    return Promise.resolve(fetched(out));
   }
 }
 
@@ -427,10 +451,11 @@ export class ManualShariahListAdapter implements ShariahListAdapter {
  */
 @Injectable()
 export class ManualIpoAdapter implements IpoAdapter {
+  readonly adapterName = 'ManualIpoAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
 
-  fetchIpoListings(): Promise<IpoListingDto[]> {
-    return Promise.resolve([
+  fetchIpoListings(): Promise<SourceFetch<IpoListingDto>> {
+    return Promise.resolve(fetched([
       {
         companyName: 'Demo Newco Berhad',
         board: ListingBoard.Ace,
@@ -438,6 +463,6 @@ export class ManualIpoAdapter implements IpoAdapter {
         offerPrice: 0.5,
         prospectusS3Key: null,
       },
-    ]);
+    ]));
   }
 }

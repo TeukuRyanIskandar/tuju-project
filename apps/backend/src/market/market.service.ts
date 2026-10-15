@@ -13,7 +13,7 @@
  *    endpoints slice / read them directly. Postgres is NEVER touched, even on
  *    a cold cache (see `loadLiveIndices` below) — unconditional, like movers.
  *  - **Outside market hours:** an EOD fallback built from the latest stored
- *    rows in Postgres, then cached via `ReadCacheService` (class 2,
+ *    rows in Postgres, then cached via `ReadModelCache` (class 2,
  *    `cache:market:` prefix) so subsequent hits are Redis reads too.
  *
  * "Now" is read through {@link MARKET_CLOCK} (a `() => Date` DI token, default
@@ -34,7 +34,7 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService, MARKET_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
 import {
   IntradayReplayService,
   type LiveIndexLevelTick,
@@ -65,28 +65,12 @@ import type {
 export const MARKET_CLOCK = Symbol('MARKET_CLOCK');
 export type MarketClock = () => Date;
 
-// ─── Cache keys ───────────────────────────────────────────────────────────────
-
-function moversEodCacheKey(type: string): string {
-  // Keyed on type only — the loader caches the WHOLE sorted board; `limit` is
-  // a read-time slice, so every limit for one type shares one cache entry.
-  return `${MARKET_CACHE_PREFIX}movers:eod:${type}`;
-}
-
-function indicesCacheKey(): string {
-  return `${MARKET_CACHE_PREFIX}indices`;
-}
-
-function seriesCacheKey(id: string, range: string): string {
-  return `${MARKET_CACHE_PREFIX}indices:${id}:series:${range}`;
-}
-
 @Injectable()
 export class MarketService {
   constructor(
     private readonly dataSource: DataSource,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
-    private readonly readCache: ReadCacheService,
+    private readonly readCache: ReadModelCache,
     @Inject(MARKET_CLOCK) private readonly clock: MarketClock,
   ) {}
 
@@ -110,7 +94,7 @@ export class MarketService {
 
     // Class 2: EOD fallback, read-through cache — the WHOLE sorted board is
     // cached once per type; `limit` only slices the already-cached result.
-    const board = await this.readCache.remember(moversEodCacheKey(type), () =>
+    const board = await this.readCache.read(ReadModelReads.moversEod(type), () =>
       this.loadEodBoard(type),
     );
     return { type, limit, rows: board.slice(0, limit) };
@@ -220,7 +204,7 @@ export class MarketService {
       const indices = await this.loadLiveIndices();
       return { indices };
     }
-    const indices = await this.readCache.remember(indicesCacheKey(), () =>
+    const indices = await this.readCache.read(ReadModelReads.indices(), () =>
       this.loadStoredIndices(),
     );
     return { indices };
@@ -241,10 +225,10 @@ export class MarketService {
    * cold catalog at market open is a rare edge, not the steady state.
    */
   private async loadLiveIndices(): Promise<IndexEntry[]> {
-    // `indicesCacheKey()` caches exactly `loadStoredIndices`'s return value —
+    // `ReadModelReads.indices()` caches exactly `loadStoredIndices`'s return value —
     // an `IndexEntry[]`, not an `IndicesResponse` — so the peek reads the same
     // shape back.
-    const lastKnown = await this.readCache.get<IndexEntry[]>(indicesCacheKey());
+    const lastKnown = await this.readCache.peek<IndexEntry[]>(ReadModelReads.indices());
     if (!lastKnown) return [];
 
     const entries: IndexEntry[] = [];
@@ -314,7 +298,7 @@ export class MarketService {
     const { range, days } = resolveSeriesRange(rawRange);
     // The 404 path is NOT cached (thrown through the loader, stocks-service
     // precedent) — a bad id never poisons a cache key.
-    return this.readCache.remember(seriesCacheKey(id, range), () =>
+    return this.readCache.read(ReadModelReads.indexSeries(id, range), () =>
       this.loadIndexSeries(id, range, days),
     );
   }

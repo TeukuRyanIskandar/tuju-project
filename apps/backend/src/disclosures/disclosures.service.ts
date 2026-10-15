@@ -12,10 +12,10 @@
  * in-house) — the primary decision-B purge target; the read-time
  * "illustrative" label is the per-row lineage join, never a per-row column.
  *
- * Caching is class-2 read-through (ADR-0004) under the
- * `cache:disclosures:` prefix, keyed by normalised params; the nightly
- * ingest (the demo disclosure/RSS cadence) and the decision-B purge sweep
- * the prefix after commit (ticket 01).
+ * Caching is class-2 read-through (ADR-0004) via `ReadModelCache`, one named
+ * read per normalised query. The nightly ingest (the demo disclosure/RSS
+ * cadence), the decision-B purge and `AnnouncementSummaryStore` announce
+ * their changes; the cache module decides which reads go stale.
  *
  * Unknown `companyCode` in a filter position is filter semantics, not a
  * resource lookup → an empty page (only the per-company spec-02 routes and
@@ -35,7 +35,7 @@ import {
   LessThanOrEqual,
   MoreThanOrEqual,
 } from 'typeorm';
-import { ReadCacheService, DISCLOSURES_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { Instrument } from '../data/entities/instrument.entity';
@@ -95,7 +95,7 @@ export interface NewsQuery {
 export class DisclosuresService {
   constructor(
     private readonly dataSource: DataSource,
-    private readonly readCache: ReadCacheService,
+    private readonly readCache: ReadModelCache,
   ) {}
 
   /** `GET /announcements` — market-wide feed, `filedAt` desc, class-2 page cache. */
@@ -103,8 +103,8 @@ export class DisclosuresService {
     query: AnnouncementsFeedQuery,
     categories: readonly AnnouncementCategory[] = [],
   ): Promise<MarketAnnouncementsPage> {
-    return this.readCache.remember(
-      this.key('announcements', categories, query),
+    return this.readCache.read(
+      ReadModelReads.marketAnnouncements(categories, query),
       () => this.loadAnnouncementsFeed(query, categories),
     );
   }
@@ -115,8 +115,8 @@ export class DisclosuresService {
    * `SHAREHOLDING_CHANGE` (spec 04 §4 — a view, not a new entity).
    */
   async getDealings(query: AnnouncementsFeedQuery): Promise<MarketAnnouncementsPage> {
-    return this.readCache.remember(
-      this.key('dealings', [AnnouncementCategory.ShareholdingChange], query),
+    return this.readCache.read(
+      ReadModelReads.dealings([AnnouncementCategory.ShareholdingChange], query),
       () =>
         this.loadAnnouncementsFeed(
           query,
@@ -130,8 +130,8 @@ export class DisclosuresService {
     query: CorporateActionCalendarQuery,
   ): Promise<CorporateActionCalendarWindow> {
     const window = resolveCalendarWindow(query.rawFrom, query.rawTo);
-    return this.readCache.remember(
-      `${DISCLOSURES_CACHE_PREFIX}calendar:corporate-actions:${window.from}:${window.to}:${query.types.slice().sort().join(',')}:${query.companyCode ?? ''}`,
+    return this.readCache.read(
+      ReadModelReads.corporateActionCalendar(window, query.types, query.companyCode),
       () => this.loadCorporateActionCalendar(query, window),
     );
   }
@@ -140,16 +140,16 @@ export class DisclosuresService {
   async getResultsCalendar(
     query: ResultsCalendarQuery,
   ): Promise<ResultsCalendarWindow> {
-    return this.readCache.remember(
-      `${DISCLOSURES_CACHE_PREFIX}calendar:results:${isoDay(query.from) ?? ''}:${isoDay(query.to) ?? ''}:${query.companyCode ?? ''}`,
+    return this.readCache.read(
+      ReadModelReads.resultsCalendar(query),
       () => this.loadResultsCalendar(query),
     );
   }
 
   /** `GET /news` — company-tagged feed; `companyCode` omitted = market-level news. */
   async getNews(query: NewsQuery): Promise<NewsPage> {
-    return this.readCache.remember(
-      `${DISCLOSURES_CACHE_PREFIX}news:${query.companyCode ?? 'market'}:${query.offset}:${query.limit}`,
+    return this.readCache.read(
+      ReadModelReads.news(query),
       () => this.loadNews(query),
     );
   }
@@ -430,18 +430,9 @@ export class DisclosuresService {
     }
     return map;
   }
-
-  /** Class-2 cache key for a feed query: normalised categories + filters + page. */
-  private key(
-    name: string,
-    categories: readonly string[],
-    query: AnnouncementsFeedQuery,
-  ): string {
-    return `${DISCLOSURES_CACHE_PREFIX}${name}:${categories.slice().sort().join(',')}:${query.companyCode ?? ''}:${isoDay(query.from) ?? ''}:${isoDay(query.to) ?? ''}:${query.offset}:${query.limit}`;
-  }
 }
 
-/** ISO `YYYY-MM-DD` of a UTC-midnight date; null → null (cache-key fragment). */
+/** ISO `YYYY-MM-DD` of a UTC-midnight date; null → null. */
 function isoDay(date: Date | null): string | null {
   return date === null ? null : date.toISOString().slice(0, 10);
 }

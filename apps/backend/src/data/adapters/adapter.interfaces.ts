@@ -7,16 +7,21 @@
  * swaps behind the same interface by rebinding one DI provider — with no consumer
  * change.
  *
- * Every adapter declares the {@link ProvenanceClass} it produces so the worker opens
- * the correct {@link IngestionRun} (the licence-boundary axis that drives the
- * decision-B purge and the read-time "illustrative" label). Each interface has a
- * matching injection token (adapters have no runtime type at DI time), and the demo
- * implementations are bound to those tokens in `adapters.module.ts`.
+ * Every adapter self-reports its own name and the {@link ProvenanceClass} it
+ * produces, so the Ingestion run module (`IngestionRunService.run`) opens the
+ * correct {@link IngestionRun} from the adapter itself (the licence-boundary axis
+ * that drives the decision-B purge and the read-time "illustrative" label) — the
+ * worker never names or branches on a producer. Every fetch returns its rows AND
+ * its per-item failures as data ({@link SourceFetch}); nothing is read back off
+ * the adapter afterwards. Each interface has a matching injection token (adapters
+ * have no runtime type at DI time), and the demo implementations are bound to
+ * those tokens in `adapters.module.ts`.
  */
 import type { ProvenanceClass } from '../entities/enums';
 import type {
   AnnouncementDto,
   CorporateActionDto,
+  DividendDto,
   FundamentalsDto,
   IndexLevelsDto,
   IpoListingDto,
@@ -26,21 +31,63 @@ import type {
 } from './dto';
 
 /**
- * Common contract every source adapter satisfies: it declares which
- * {@link ProvenanceClass} its rows carry so the worker opens the right run.
+ * The seed + generation params of a seeded co-generation (decision A1). An
+ * adapter that declares one gets a {@link SyntheticRun} (seed + params stamped)
+ * instead of a standard run, so its rows are one regenerable, purgeable unit.
+ */
+export interface SyntheticGeneration {
+  readonly seed: number;
+  readonly params: Record<string, unknown>;
+}
+
+/**
+ * Common contract every source adapter satisfies: it self-reports who it is and
+ * which {@link ProvenanceClass} its rows carry, so the run that lineage-stamps
+ * those rows is opened from the adapter's own declaration.
  */
 export interface SourceAdapter {
+  /** Stamped on `IngestionRun.adapter` (e.g. `SyntheticMarketDataAdapter`). Stable across releases: it is lineage. */
+  readonly adapterName: string;
   /** The provenance class this adapter's rows belong to. */
   readonly provenanceClass: ProvenanceClass;
+  /** Set only by a seeded co-generator; its run becomes a {@link SyntheticRun}. */
+  readonly generation?: SyntheticGeneration;
 }
+
+/**
+ * What one fetch returned: the rows to persist plus the ops-visible per-item
+ * failures (`"1155: timeout"`) of a skip-and-continue source. `failures` is empty
+ * when every item landed; a fetch that cannot produce anything throws instead.
+ */
+export interface SourceFetch<Row> {
+  readonly rows: Row[];
+  readonly failures: readonly string[];
+}
+
+/** A {@link SourceFetch} with no failures (every demo/static source). */
+export function fetched<Row>(
+  rows: Row[],
+  failures: readonly string[] = [],
+): SourceFetch<Row> {
+  return { rows, failures };
+}
+
+/**
+ * The analysed universe a market adapter serves (CONTEXT "Analysed universe").
+ * `reference` is the curated demo set the synthetic generator covers;
+ * `klci30` is the FBM KLCI 30 the PoC pulls (and fans TA/FA out over).
+ */
+export type MarketUniverse = 'reference' | 'klci30';
 
 /**
  * EOD price bars for the analysed universe. Demo impl `SyntheticMarketDataAdapter`
  * (`synthetic`); production `EodhdMarketDataAdapter` (`real`).
  */
 export interface MarketDataAdapter extends SourceAdapter {
+  /** Which instruments the bars cover; the nightly ensures + materialises exactly these. */
+  readonly universe: MarketUniverse;
   /** Fetch the daily EOD price bars to persist this run. */
-  fetchDailyBars(): Promise<PriceBarDto[]>;
+  fetchDailyBars(): Promise<SourceFetch<PriceBarDto>>;
 }
 export const MARKET_DATA_ADAPTER = Symbol('MarketDataAdapter');
 
@@ -50,7 +97,21 @@ export const MARKET_DATA_ADAPTER = Symbol('MarketDataAdapter');
  */
 export interface FundamentalsAdapter extends SourceAdapter {
   /** Fetch the per-company fundamentals (shares + quarterly timeline). */
-  fetchFundamentals(): Promise<FundamentalsDto[]>;
+  fetchFundamentals(): Promise<FundamentalsFetch>;
+}
+
+/**
+ * A fundamentals fetch, optionally with the vendor's own dividend history.
+ *
+ * `dividends` absent → DY reads the dividend {@link CorporateActionDto}s (the
+ * CONTEXT single source). Present (yfinance, even if empty) → DY reads these
+ * instead. That is a known deviation from the single source, kept pending a
+ * product decision (architecture-deepening ticket 05 Comments): the vendor
+ * dividends are not persisted as corporate actions, so the calendar and DY
+ * disagree on the yfinance path.
+ */
+export interface FundamentalsFetch extends SourceFetch<FundamentalsDto> {
+  readonly dividends?: readonly DividendDto[];
 }
 export const FUNDAMENTALS_ADAPTER = Symbol('FundamentalsAdapter');
 
@@ -60,9 +121,9 @@ export const FUNDAMENTALS_ADAPTER = Symbol('FundamentalsAdapter');
  */
 export interface DisclosureAdapter extends SourceAdapter {
   /** Fetch the disclosure snapshot to persist. */
-  fetchAnnouncements(): Promise<AnnouncementDto[]>;
+  fetchAnnouncements(): Promise<SourceFetch<AnnouncementDto>>;
   /** Fetch corporate actions (single source for the calendar + DY ratio). */
-  fetchCorporateActions(): Promise<CorporateActionDto[]>;
+  fetchCorporateActions(): Promise<SourceFetch<CorporateActionDto>>;
 }
 export const DISCLOSURE_ADAPTER = Symbol('DisclosureAdapter');
 
@@ -72,7 +133,7 @@ export const DISCLOSURE_ADAPTER = Symbol('DisclosureAdapter');
  */
 export interface NewsAdapter extends SourceAdapter {
   /** Fetch the latest news headlines (no bodies). */
-  fetchHeadlines(): Promise<NewsArticleDto[]>;
+  fetchHeadlines(): Promise<SourceFetch<NewsArticleDto>>;
 }
 export const NEWS_ADAPTER = Symbol('NewsAdapter');
 
@@ -83,7 +144,7 @@ export const NEWS_ADAPTER = Symbol('NewsAdapter');
  */
 export interface ShariahListAdapter extends SourceAdapter {
   /** Fetch the current Shariah-status history rows. */
-  fetchShariahStatuses(): Promise<ShariahStatusDto[]>;
+  fetchShariahStatuses(): Promise<SourceFetch<ShariahStatusDto>>;
 }
 export const SHARIAH_LIST_ADAPTER = Symbol('ShariahListAdapter');
 
@@ -93,7 +154,7 @@ export const SHARIAH_LIST_ADAPTER = Symbol('ShariahListAdapter');
  */
 export interface IpoAdapter extends SourceAdapter {
   /** Fetch the curated IPO calendar rows. */
-  fetchIpoListings(): Promise<IpoListingDto[]>;
+  fetchIpoListings(): Promise<SourceFetch<IpoListingDto>>;
 }
 export const IPO_ADAPTER = Symbol('IpoAdapter');
 
@@ -107,6 +168,6 @@ export const IPO_ADAPTER = Symbol('IpoAdapter');
  */
 export interface IndexAdapter extends SourceAdapter {
   /** Fetch the index series to persist this run (one per index, with levels). */
-  fetchIndexLevels(): Promise<IndexLevelsDto[]>;
+  fetchIndexLevels(): Promise<SourceFetch<IndexLevelsDto>>;
 }
 export const INDEX_ADAPTER = Symbol('IndexAdapter');

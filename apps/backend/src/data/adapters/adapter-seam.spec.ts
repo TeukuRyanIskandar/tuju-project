@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { MarketIndexKind, ProvenanceClass } from '../entities/enums';
 import {
+  fetched,
   INDEX_ADAPTER,
   MARKET_DATA_ADAPTER,
   type IndexAdapter,
   type MarketDataAdapter,
+  type SourceFetch,
 } from './adapter.interfaces';
 import type { IndexLevelsDto, PriceBarDto } from './dto';
 
@@ -31,7 +33,7 @@ class BarCountingConsumer {
 
   async closesForDate(): Promise<number[]> {
     const bars = await this.market.fetchDailyBars();
-    return bars.map((b) => b.close);
+    return bars.rows.map((b) => b.close);
   }
 }
 
@@ -39,22 +41,26 @@ const CONSUMER = Symbol('BarCountingConsumer');
 
 /** First fake: two bars. */
 class FakeMarketDataAdapterA implements MarketDataAdapter {
+  readonly adapterName = 'FakeMarketDataAdapterA';
   readonly provenanceClass = ProvenanceClass.Synthetic;
-  fetchDailyBars(): Promise<PriceBarDto[]> {
-    return Promise.resolve([
+  readonly universe = 'reference';
+  fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
+    return Promise.resolve(fetched([
       { stockCode: '1155', tradeDate: '2024-01-02', open: 1, high: 2, low: 1, close: 1.5, volume: 100 },
       { stockCode: '1155', tradeDate: '2024-01-03', open: 1.5, high: 2.5, low: 1.4, close: 2, volume: 200 },
-    ]);
+    ]));
   }
 }
 
 /** Second fake: different data, same interface — stands in for the licensed swap. */
 class FakeMarketDataAdapterB implements MarketDataAdapter {
+  readonly adapterName = 'FakeMarketDataAdapterB';
   readonly provenanceClass = ProvenanceClass.Real;
-  fetchDailyBars(): Promise<PriceBarDto[]> {
-    return Promise.resolve([
+  readonly universe = 'klci30';
+  fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
+    return Promise.resolve(fetched([
       { stockCode: '5347', tradeDate: '2024-02-01', open: 8, high: 9, low: 7.9, close: 8.8, volume: 5000 },
-    ]);
+    ]));
   }
 }
 
@@ -81,7 +87,7 @@ class LevelReadingConsumer {
 
   async headlineSeriesLevels(): Promise<number[]> {
     const series = await this.index.fetchIndexLevels();
-    const headline = series.find((s) => s.kind === MarketIndexKind.Headline);
+    const headline = series.rows.find((s) => s.kind === MarketIndexKind.Headline);
     return (headline?.levels ?? []).map((l) => l.level);
   }
 }
@@ -90,9 +96,10 @@ const INDEX_CONSUMER = Symbol('LevelReadingConsumer');
 
 /** First fake: the demo synthetic adapter — computed cap-weighted levels. */
 class FakeSyntheticIndexAdapter implements IndexAdapter {
+  readonly adapterName = 'FakeSyntheticIndexAdapter';
   readonly provenanceClass = ProvenanceClass.Synthetic;
-  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
-    return Promise.resolve([
+  fetchIndexLevels(): Promise<SourceFetch<IndexLevelsDto>> {
+    return Promise.resolve(fetched([
       {
         kind: MarketIndexKind.Headline,
         sectorName: null,
@@ -102,7 +109,7 @@ class FakeSyntheticIndexAdapter implements IndexAdapter {
           { levelDate: '2026-01-06', level: 101.5 },
         ],
       },
-    ]);
+    ]));
   }
 }
 
@@ -112,9 +119,10 @@ class FakeSyntheticIndexAdapter implements IndexAdapter {
  * numbers, IDENTICAL interface and consumers.
  */
 class FakeLicensedIndexAdapter implements IndexAdapter {
+  readonly adapterName = 'FakeLicensedIndexAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
-  fetchIndexLevels(): Promise<IndexLevelsDto[]> {
-    return Promise.resolve([
+  fetchIndexLevels(): Promise<SourceFetch<IndexLevelsDto>> {
+    return Promise.resolve(fetched([
       {
         kind: MarketIndexKind.Headline,
         sectorName: null,
@@ -124,7 +132,7 @@ class FakeLicensedIndexAdapter implements IndexAdapter {
           { levelDate: '2026-01-06', level: 1595.1 },
         ],
       },
-    ]);
+    ]));
   }
 }
 

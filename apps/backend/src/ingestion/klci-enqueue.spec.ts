@@ -1,19 +1,16 @@
 import type { DataSource, Repository } from 'typeorm';
-import type { Queue } from 'bullmq';
 import { StockAnalysisStatus } from '../data/entities/enums';
 import type { Instrument } from '../data/entities/instrument.entity';
 import type { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
 import type { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entity';
-import type { JobBus } from '../jobbus/job-bus.service';
+import { InMemoryJobBus } from '../jobbus/in-memory-job-bus';
 import { JobNames } from '../jobbus/job-names';
-import type { TechnicalAnalysisStore } from '../analysis/technical-analysis.store';
-import type { FundamentalAnalysisStore } from '../analysis/fundamental-analysis.store';
+import type { StockAnalysis } from '../analysis/stock-analysis';
 import {
   buildFundamentalEnvelope,
   buildTechnicalEnvelope,
   KlciEnqueueService,
   shouldSkipSameDayAnalysis,
-  taFaBullJobId,
 } from './klci-enqueue.service';
 
 const NOW = new Date('2026-10-09T15:00:00.000Z');
@@ -39,15 +36,6 @@ describe('klci enqueue helpers', () => {
       });
     },
   );
-
-  it('derives ta/fa BullMQ ids matching hour-bucket form', () => {
-    expect(taFaBullJobId('ta', '1155', '1D', '2026-10-09T15:00:00.000Z')).toBe(
-      'ta:1155:1D:2026-10-09T15',
-    );
-    expect(
-      taFaBullJobId('fa', '1155', 'quarterly', '2026-10-09T15:00:00.000Z'),
-    ).toBe('fa:1155:quarterly:2026-10-09T15');
-  });
 
   it('skips ready/facts_only same UTC day unless force', () => {
     const readyToday = {
@@ -88,11 +76,13 @@ describe('klci enqueue helpers', () => {
 });
 
 describe('KlciEnqueueService', () => {
+  const TA_ID = 'ta-1155-1D-2026-10-09T15';
+  const FA_ID = 'fa-1155-quarterly-2026-10-09T15';
+
   function setup(opts?: {
     taRow?: TechnicalAnalysis | null;
     faRow?: FundamentalAnalysis | null;
     hasInstrument?: boolean;
-    jobState?: string | null;
   }) {
     const hasInstrument = opts?.hasInstrument !== false;
     const instruments = {
@@ -106,72 +96,34 @@ describe('KlciEnqueueService', () => {
       getRepository: () => instruments,
     } as unknown as DataSource;
 
-    const taUpserts: unknown[] = [];
-    const faUpserts: unknown[] = [];
-    const technical = {
-      findByInstrumentId: async () => opts?.taRow ?? null,
-      upsert: async (input: unknown) => {
-        taUpserts.push(input);
+    const pending: Array<{ jobName: string; instrumentId: string; jobId: string }> = [];
+    const analyses = {
+      findByInstrumentId: async (jobName: string) =>
+        (jobName === JobNames.technical ? opts?.taRow : opts?.faRow) ?? null,
+      markPending: async (
+        jobName: string,
+        instrument: { id: string },
+        job: { jobId: string },
+      ) => {
+        pending.push({ jobName, instrumentId: instrument.id, jobId: job.jobId });
       },
-    } as unknown as TechnicalAnalysisStore;
-    const fundamental = {
-      findByInstrumentId: async () => opts?.faRow ?? null,
-      upsert: async (input: unknown) => {
-        faUpserts.push(input);
-      },
-    } as unknown as FundamentalAnalysisStore;
+    } as unknown as StockAnalysis;
 
-    const enqueued: Array<{ jobName: string; env: unknown }> = [];
-    let existingJob: {
-      getState: () => Promise<string>;
-      remove: () => Promise<void>;
-    } | null = null;
-    if (opts?.jobState) {
-      existingJob = {
-        getState: async () => opts.jobState!,
-        remove: async () => {
-          existingJob = null;
-        },
-      };
-    }
-
-    const queue = {
-      getJob: async () => existingJob,
-    } as unknown as Queue;
-
-    const jobBus = {
-      getQueue: () => queue,
-      enqueue: async (jobName: string, env: unknown) => {
-        enqueued.push({ jobName, env });
-        const payload = (env as { payload: { symbol: string }; asOf: string });
-        const prefix = jobName === JobNames.technical ? 'ta' : 'fa';
-        const disc =
-          jobName === JobNames.technical ? '1D' : 'quarterly';
-        return {
-          jobId: taFaBullJobId(prefix, payload.payload.symbol, disc, payload.asOf),
-        };
-      },
-    } as unknown as JobBus;
-
-    const service = new KlciEnqueueService(
-      dataSource,
-      jobBus,
-      technical,
-      fundamental,
-    );
-
-    return { service, enqueued, taUpserts, faUpserts };
+    const bus = new InMemoryJobBus();
+    const service = new KlciEnqueueService(dataSource, bus, analyses);
+    return { service, bus, pending };
   }
 
+  const readyToday = {
+    status: StockAnalysisStatus.Ready,
+    asOf: new Date('2026-10-09T01:00:00.000Z'),
+    updatedAt: new Date('2026-10-09T01:00:00.000Z'),
+  } as TechnicalAnalysis;
+
   it('skips same-day ready for both job types', async () => {
-    const ready = {
-      status: StockAnalysisStatus.Ready,
-      asOf: new Date('2026-10-09T01:00:00.000Z'),
-      updatedAt: new Date('2026-10-09T01:00:00.000Z'),
-    } as TechnicalAnalysis;
-    const { service, enqueued, taUpserts, faUpserts } = setup({
-      taRow: ready,
-      faRow: ready as unknown as FundamentalAnalysis,
+    const { service, bus, pending } = setup({
+      taRow: readyToday,
+      faRow: readyToday as unknown as FundamentalAnalysis,
     });
 
     const result = await service.enqueue({ stockCode: '1155', now: NOW });
@@ -180,63 +132,40 @@ describe('KlciEnqueueService', () => {
       '1155:analyze-fundamental',
     ]);
     expect(result.enqueued).toEqual([]);
-    expect(enqueued).toHaveLength(0);
-    expect(taUpserts).toHaveLength(0);
-    expect(faUpserts).toHaveLength(0);
+    expect(bus.added).toHaveLength(0);
+    expect(pending).toHaveLength(0);
   });
 
-  it('--force re-enqueues despite ready today and upserts pending', async () => {
-    const ready = {
-      status: StockAnalysisStatus.Ready,
-      asOf: new Date('2026-10-09T01:00:00.000Z'),
-      updatedAt: new Date('2026-10-09T01:00:00.000Z'),
-    } as TechnicalAnalysis;
-    const { service, enqueued, taUpserts, faUpserts } = setup({
-      taRow: ready,
-      faRow: ready as unknown as FundamentalAnalysis,
+  it('--force re-enqueues despite ready today and marks pending with the bull id', async () => {
+    const { service, bus, pending } = setup({
+      taRow: readyToday,
+      faRow: readyToday as unknown as FundamentalAnalysis,
     });
 
-    const result = await service.enqueue({
-      stockCode: '1155',
-      force: true,
-      now: NOW,
-    });
+    const result = await service.enqueue({ stockCode: '1155', force: true, now: NOW });
     expect(result.enqueued).toEqual([
       '1155:analyze-technical',
       '1155:analyze-fundamental',
     ]);
-    expect(enqueued.map((e) => e.jobName)).toEqual([
-      JobNames.technical,
-      JobNames.fundamental,
+    expect(bus.added.map((j) => [j.name, j.id])).toEqual([
+      [JobNames.technical, TA_ID],
+      [JobNames.fundamental, FA_ID],
     ]);
-    expect(taUpserts).toEqual([
-      expect.objectContaining({
-        instrumentId: INST_ID,
-        status: StockAnalysisStatus.Pending,
-        headline: null,
-        errorMessage: null,
-      }),
-    ]);
-    expect(faUpserts).toEqual([
-      expect.objectContaining({
-        instrumentId: INST_ID,
-        status: StockAnalysisStatus.Pending,
-      }),
+    expect(pending).toEqual([
+      { jobName: JobNames.technical, instrumentId: INST_ID, jobId: TA_ID },
+      { jobName: JobNames.fundamental, instrumentId: INST_ID, jobId: FA_ID },
     ]);
   });
 
-  it('single-code fans out exactly two jobs and upserts pending', async () => {
-    const { service, enqueued, taUpserts, faUpserts } = setup();
+  it('single-code fans out exactly two system jobs', async () => {
+    const { service, bus } = setup();
     const result = await service.enqueue({ stockCode: '1155', now: NOW });
     expect(result.enqueued).toHaveLength(2);
-    expect(enqueued).toHaveLength(2);
-    expect(taUpserts).toHaveLength(1);
-    expect(faUpserts).toHaveLength(1);
-    expect(enqueued[0]!.env).toMatchObject({
+    expect(bus.added[0]!.data).toMatchObject({
       trigger: 'system',
       payload: { symbol: '1155', timeframe: '1D' },
     });
-    expect(enqueued[1]!.env).toMatchObject({
+    expect(bus.added[1]!.data).toMatchObject({
       payload: { symbol: '1155', period: 'quarterly' },
     });
   });
@@ -248,13 +177,31 @@ describe('KlciEnqueueService', () => {
     ).rejects.toThrow(/not in the KLCI 30/);
   });
 
-  it('treats waiting BullMQ job as alreadyInFlight', async () => {
-    const { service, enqueued } = setup({ jobState: 'waiting' });
+  it('reports a missing instrument as failed', async () => {
+    const { service, bus } = setup({ hasInstrument: false });
     const result = await service.enqueue({ stockCode: '1155', now: NOW });
-    expect(result.alreadyInFlight).toEqual([
+    expect(result.failed).toEqual(['1155:missing-instrument']);
+    expect(bus.added).toHaveLength(0);
+  });
+
+  it('a waiting job is alreadyInFlight (no pending reset); a finished one is replaced', async () => {
+    const { service, bus, pending } = setup();
+    await service.enqueue({ stockCode: '1155', now: NOW });
+    pending.length = 0;
+
+    const again = await service.enqueue({ stockCode: '1155', force: true, now: NOW });
+    expect(again.alreadyInFlight).toEqual([
       '1155:analyze-technical',
       '1155:analyze-fundamental',
     ]);
-    expect(enqueued).toHaveLength(0);
+    expect(pending).toHaveLength(0);
+    expect(bus.added).toHaveLength(2);
+
+    bus.setState(TA_ID, 'completed');
+    bus.setState(FA_ID, 'failed');
+    const rerun = await service.enqueue({ stockCode: '1155', force: true, now: NOW });
+    expect(rerun.enqueued).toHaveLength(2);
+    expect(bus.added).toHaveLength(4);
+    expect(bus.job(TA_ID)?.state).toBe('waiting');
   });
 });

@@ -40,6 +40,7 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import IORedis, { type Redis } from 'ioredis';
 import { DataSource } from 'typeorm';
 import { Test } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import {
   PostgreSqlContainer,
@@ -47,7 +48,8 @@ import {
 } from '@testcontainers/postgresql';
 
 import { REDIS_CLIENT } from '../redis/redis.module';
-import { ReadCacheService } from '../cache/read-cache.service';
+import { ReadModelCache, DEFAULT_READ_CACHE_TTL_SECONDS } from '../cache/read-model-cache';
+import { APP_CONFIG, type AppConfig } from '../config/config';
 import { STOCKS_CACHE_PREFIX } from '../cache/cache-keys';
 import {
   Announcement,
@@ -88,12 +90,38 @@ import {
   type ReferenceCompany,
 } from '../ingestion/reference-universe';
 import { S3_CLIENT } from '../s3/s3.module';
+import { AnalysisResultStore } from '../analysis/analysis-result.store';
+import { StockAnalysis } from '../analysis/stock-analysis';
+import { JobBus } from '../jobbus/job-bus.service';
+import { InMemoryJobBus } from '../jobbus/in-memory-job-bus';
 
 import { StocksController } from './stocks.controller';
 import { StocksService } from './stocks.service';
 import { MAX_PAGE_LIMIT } from './pagination';
 
 jest.setTimeout(180_000);
+
+/** Minimal AppConfig for testing (ReadModelCache reads the class-2 TTL from it). */
+function fakeConfig(readTtlSeconds = DEFAULT_READ_CACHE_TTL_SECONDS): AppConfig {
+  return {
+    nodeEnv: 'test',
+    port: 3000,
+    databaseUrl: 'postgres://test',
+    redisUrl: 'redis://test',
+    sessionSecret: 'test-secret',
+    corsOrigins: [],
+    dataSource: 'synthetic',
+    cookie: {
+      domain: undefined,
+      secure: false,
+      sameSite: 'lax',
+      maxAgeSeconds: 604800,
+    },
+    cache: {
+      readTtlSeconds,
+    },
+  };
+}
 
 const ALL_ENTITIES = [
   AnalysisResult,
@@ -233,6 +261,7 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
 
   let controller: StocksController;
   let service: StocksService;
+  let readCache: ReadModelCache;
 
   // Lineage runs of each provenance class (seeded directly, not via the ingest).
   let realRefRun: IngestionRun;
@@ -282,13 +311,36 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
         { provide: DataSource, useValue: dataSource },
         { provide: REDIS_CLIENT, useValue: redis },
         { provide: S3_CLIENT, useValue: fakeS3 },
-        ReadCacheService,
+        { provide: APP_CONFIG, useValue: fakeConfig() },
+        { provide: JobBus, useValue: new InMemoryJobBus() },
+        // StocksService / StockAnalysis inject per-entity repositories
+        // (TypeOrmModule.forFeature); bind each token to the container DataSource.
+        ...[
+          AnalysisResult,
+          TechnicalAnalysis,
+          FundamentalAnalysis,
+          IndicatorSnapshot,
+          FundamentalsSnapshot,
+          QuarterlyFinancials,
+          PriceBar,
+          Announcement,
+          CorporateAction,
+          ShariahStatus,
+          Instrument,
+        ].map((entity) => ({
+          provide: getRepositoryToken(entity),
+          useValue: dataSource.getRepository(entity),
+        })),
+        ReadModelCache,
+        AnalysisResultStore,
+        StockAnalysis,
         StocksService,
       ],
     }).compile();
 
     controller = moduleRef.get(StocksController);
     service = moduleRef.get(StocksService);
+    readCache = moduleRef.get(ReadModelCache);
 
     await seedFixtures();
   });
@@ -699,6 +751,14 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
         jobId: `analyze-technical:1D:${MAYBANK.stockCode}:2026-09-28`,
       }),
     );
+
+    // Written behind the module's back, so announce it (the module's own
+    // writes do; see analysis/stock-analysis.int-spec.ts).
+    await readCache.changed({
+      kind: 'stockAnalysisChanged',
+      stockCode: MAYBANK.stockCode,
+      analysis: 'technical',
+    });
 
     const thin = await service.getTechnicalAnalysis(MAYBANK.stockCode);
     parseOrThrow(StockTechnicalAnalysisResponse, JSON.parse(JSON.stringify(thin)));

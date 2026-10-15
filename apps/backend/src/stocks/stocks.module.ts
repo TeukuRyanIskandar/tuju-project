@@ -1,23 +1,20 @@
 /**
  * Stock-page module (spec 02; ticket 03; PoC Phase A ticket 06).
  *
- * Wires the anonymous browse reads (core / disclosures) plus PoC series +
- * analysis thin reads and cost-stripped artifact proxies. `DataModule`
- * supplies the `DataSource`; `CacheModule` the class-2 `ReadCacheService`;
- * `S3Module` the claim-check artifact fetch. No invalidation hooks live here:
- * the nightly ingest and the decision-B purge sweep the `cache:stocks:`
- * prefix after commit (ticket 01).
+ * Wires the anonymous browse reads (core / disclosures) plus PoC series.
+ * The TA/FA envelope reads and their artifact proxies are delegated to
+ * `StockAnalysis` (`AnalysisModule`). `DataModule` supplies the `DataSource`;
+ * `CacheModule` the class-2 `ReadModelCache`. No invalidation hooks live here:
+ * writers announce their changes and the cache module decides what goes stale.
  */
 
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CacheModule } from '../cache/cache.module';
 import { DataModule } from '../data/data.module';
-import { S3Module } from '../s3/s3.module';
+import { AnalysisModule } from '../analysis/analysis.module';
 import { StocksController } from './stocks.controller';
 import { StocksService } from './stocks.service';
-import { TechnicalAnalysis } from '../data/entities/technical-analysis.entity';
-import { FundamentalAnalysis } from '../data/entities/fundamental-analysis.entity';
 import { IndicatorSnapshot } from '../data/entities/indicator-snapshot.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
@@ -31,10 +28,8 @@ import { Instrument } from '../data/entities/instrument.entity';
   imports: [
     DataModule,
     CacheModule,
-    S3Module,
+    AnalysisModule,
     TypeOrmModule.forFeature([
-      TechnicalAnalysis,
-      FundamentalAnalysis,
       IndicatorSnapshot,
       FundamentalsSnapshot,
       QuarterlyFinancials,

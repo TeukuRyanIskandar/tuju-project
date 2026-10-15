@@ -2,11 +2,16 @@
  * Nightly EOD + indicator ingest (spec 01 cadences; ticket 04).
  *
  * The join point of the whole ticket: it reads the source-adapter seam (never
- * knowing the producer), opens the correct {@link IngestionRun}/{@link SyntheticRun}
- * lineage for each provenance class, persists the adapter output onto Postgres with
- * every sourced row FK'd to its run, then — **ordered strictly after** the EOD
- * price/fundamentals land — materialises per-company ratios and per-instrument
- * indicator snapshots.
+ * knowing the producer), lands each adapter's output through the Ingestion run
+ * module ({@link IngestionRunService.run}), which opens the run from the
+ * adapter's own `adapterName` + provenance, so every sourced row is FK'd to the
+ * right lineage, then — **ordered strictly after** the EOD price/fundamentals
+ * land — materialises per-company ratios and per-instrument indicator snapshots.
+ *
+ * The nightly is an ordered list of steps with no provenance branching: what
+ * varies by bound adapter is declared BY the adapter (its name, provenance,
+ * seeded generation, analysed universe, failures and vendor dividends returned
+ * from its fetch). Swapping an adapter needs no change here.
  *
  * ADR-0004 sole-writer holds: this runs in the second NestJS process but is the
  * same Postgres writer. All writes are wrapped in one transaction so a failed
@@ -37,13 +42,24 @@ import {
   SHARIAH_LIST_ADAPTER,
   type DisclosureAdapter,
   type FundamentalsAdapter,
+  type FundamentalsFetch,
   type IndexAdapter,
   type IpoAdapter,
   type MarketDataAdapter,
   type NewsAdapter,
   type ShariahListAdapter,
 } from '../data/adapters';
-import type { IndexLevelsDto, PriceBarDto } from '../data/adapters/dto';
+import type {
+  AnnouncementDto,
+  CorporateActionDto,
+  DividendDto,
+  FundamentalsDto,
+  IndexLevelsDto,
+  IpoListingDto,
+  NewsArticleDto,
+  PriceBarDto,
+  ShariahStatusDto,
+} from '../data/adapters/dto';
 import { Announcement } from '../data/entities/announcement.entity';
 import { CorporateAction } from '../data/entities/corporate-action.entity';
 import { FundamentalsSnapshot } from '../data/entities/fundamentals-snapshot.entity';
@@ -58,17 +74,15 @@ import { PriceBar } from '../data/entities/price-bar.entity';
 import { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
 import { Sector } from '../data/entities/sector.entity';
-import { ProvenanceClass } from '../data/entities/enums';
-import { IngestionRunService } from './ingestion-run.service';
+import { CorporateActionType } from '../data/entities/enums';
+import { IngestionRunService, type RunOutcome } from './ingestion-run.service';
 import { ReferenceDataService, type ReferenceIds } from './reference-data.service';
 import { KlciSeedService } from './klci-seed.service';
 import { KlciEnqueueService } from './klci-enqueue.service';
 import { KLCI30_UNIVERSE } from './klci30-universe';
 import { materialiseSnapshot } from './fundamentals-materialiser';
 import { computeIndicators, WEEK52_WINDOW } from './indicators';
-import { SYNTHETIC_BASE_SEED } from './reference-universe';
-import { DEFAULT_PARAMS } from '../data/synthetic';
-import { ReadCacheService } from '../cache';
+import { ReadModelCache } from '../cache';
 import { matchCompanyTags, type TaggableCompany } from './news-tagging';
 
 /** Summary of what a nightly ingest landed (returned for tests / logging). */
@@ -88,7 +102,7 @@ export interface NightlyIngestResult {
   marketIndices: number;
   /** IndexLevel series rows upserted (one per index per day, spec 05). */
   indexLevels: number;
-  /** Ops-visible per-symbol failures from market/fundamentals adapters (if any). */
+  /** Ops-visible per-item failures every adapter fetch reported (if any). */
   failures: string[];
 }
 
@@ -100,6 +114,23 @@ export interface KlciIngestResult {
   indicatorSnapshots: number;
   failures: string[];
   runId: string;
+}
+
+/** What the EOD step landed, carried to the ordered-after materialise step. */
+interface EodLanded {
+  readonly bars: PriceBarDto[];
+  readonly fundamentals: FundamentalsFetch;
+  readonly priceBars: number;
+  readonly quarterlyRows: number;
+}
+
+/** What the disclosure step landed; corporate actions feed DY (single source). */
+interface DisclosuresLanded {
+  readonly announcements: number;
+  /** Not-yet-summarised announcement ids, enqueued after commit. */
+  readonly announcementIdsToSummarize: string[];
+  readonly corporateActions: number;
+  readonly corporateActionRows: CorporateActionDto[];
 }
 
 @Injectable()
@@ -118,32 +149,47 @@ export class EodIngestService {
     @Inject(SHARIAH_LIST_ADAPTER) private readonly shariah: ShariahListAdapter,
     @Inject(IPO_ADAPTER) private readonly ipo: IpoAdapter,
     @Inject(INDEX_ADAPTER) private readonly index: IndexAdapter,
-    private readonly readCache: ReadCacheService,
+    private readonly readCache: ReadModelCache,
     private readonly jobBus: JobBus,
     private readonly klciEnqueue: KlciEnqueueService,
   ) {}
 
   /**
    * Pull bars + fundamentals and materialise snapshots/indicators for the KLCI 30.
-   * Requires `seed-klci` first. Opens an {@link IngestionRun} whose provenance
-   * matches the bound market adapter (`real` when yfinance).
+   * Requires `seed-klci` first. The run is opened from the bound market
+   * adapter's own name + provenance (`YFinanceMarketDataAdapter`/`real` when
+   * yfinance). No disclosure fetch here, so DY reads only the fundamentals
+   * fetch's vendor dividends (none → DY 0).
    */
   async ingestKlci(): Promise<KlciIngestResult> {
     const result = await this.dataSource.transaction(async (manager) => {
-      const ref = await this.resolveKlciReferenceIds(manager);
-      return this.pullAndMaterialiseKlci(manager, ref);
+      const ids = await this.resolveKlciReferenceIds(manager);
+      const eod = await this.landEod(manager, ids);
+      const materialised = await this.materialise(manager, ids, eod, []);
+      const result: KlciIngestResult = {
+        priceBars: eod.value.priceBars,
+        quarterlyRows: eod.value.quarterlyRows,
+        ...materialised,
+        failures: eod.failures,
+        runId: eod.runId,
+      };
+      this.logger.log(
+        { correlationId: eod.runId, msg: 'klci-ingest.complete', ...result },
+        'klci-ingest.complete',
+      );
+      return result;
     });
-    await this.readCache.invalidateReadCaches();
+    await this.readCache.changed({ kind: 'eodIngested' });
     return result;
   }
 
   /**
-   * Run one nightly ingest end-to-end inside a single transaction.
-   * Order: reference → EOD prices + fundamentals → disclosures/news/shariah/ipo →
-   * (ordered after) ratio materialisation → indicator snapshots.
-   * When market/fundamentals are yfinance-bound (`provenanceClass = real`), the
-   * price/fundamentals path is the same KLCI-30 pull/materialise as `ingest-klci`
-   * (real {@link IngestionRun}, not a hardcoded synthetic run).
+   * Run one nightly ingest end-to-end inside a single transaction, as ordered
+   * steps: reference → the market adapter's analysed universe → EOD prices +
+   * fundamentals (one run) → disclosures / news / Shariah / IPO (one run each)
+   * → (ordered after) ratio + indicator materialisation → index levels. Then,
+   * after commit: one cache invalidation, the announcement-summary enqueue, and
+   * the universe's follow-on (TA/FA fan-out for the KLCI 30).
    */
   async runNightly(): Promise<NightlyIngestResult> {
     // Escapes the transaction closure below so the showcase enqueue (spec 06,
@@ -153,192 +199,89 @@ export class EodIngestService {
 
     const result = await this.dataSource.transaction(async (manager) => {
       const ref = await this.reference.ensureReferenceData(manager);
-      const useKlciPath = this.market.provenanceClass === ProvenanceClass.Real;
+      const universe = await this.ensureMarketUniverse(manager, ref);
 
-      let priceBars = 0;
-      let quarterlyRows = 0;
-      let fundamentalsSnapshots = 0;
-      let indicatorSnapshots = 0;
-      let failures: string[] = [];
-      let marketRunId = '';
-      let bars: PriceBarDto[] = [];
-      let fundamentals: Awaited<
-        ReturnType<FundamentalsAdapter['fetchFundamentals']>
-      > = [];
-      let corporateActionsDto: Awaited<
-        ReturnType<DisclosureAdapter['fetchCorporateActions']>
-      > = [];
+      const eod = await this.landEod(manager, universe);
 
-      if (useKlciPath) {
-        const klciRef = await this.klciSeed.upsertKlciUniverse(manager);
-        const klci = await this.pullAndMaterialiseKlci(manager, klciRef);
-        priceBars = klci.priceBars;
-        quarterlyRows = klci.quarterlyRows;
-        fundamentalsSnapshots = klci.fundamentalsSnapshots;
-        indicatorSnapshots = klci.indicatorSnapshots;
-        failures = [...klci.failures];
-        marketRunId = klci.runId;
-        bars = [];
-        fundamentals = [];
-        corporateActionsDto = await this.disclosure.fetchCorporateActions();
-      } else {
-        // --- Synthetic price + fundamentals lineage (one SyntheticRun) ---
-        const syntheticRun = await this.runs.openSyntheticRun(
-          manager,
-          'SyntheticMarketDataAdapter',
-          SYNTHETIC_BASE_SEED,
-          { ...DEFAULT_PARAMS, baseSeed: SYNTHETIC_BASE_SEED },
-        );
-        marketRunId = syntheticRun.id;
-
-        bars = await this.market.fetchDailyBars();
-        priceBars = await this.persistPriceBars(
-          manager,
-          bars,
-          ref.instrumentByStockCode,
-          marketRunId,
-        );
-
-        fundamentals = await this.fundamentals.fetchFundamentals();
-        quarterlyRows = await this.persistQuarterly(
-          manager,
-          fundamentals,
-          ref.companyByStockCode,
-          marketRunId,
-        );
-      }
-
-      // --- Aggregator disclosures + news (one aggregator run each) ---
-      const disclosureRun = await this.runs.openRun(
-        manager,
-        'AggregatorDisclosureAdapter',
-        this.disclosure.provenanceClass,
+      const disclosures = await this.runs.run(manager, this.disclosure, (runId) =>
+        this.landDisclosures(manager, ref, runId),
       );
-      const announcementsDto = await this.disclosure.fetchAnnouncements();
-      const { count: announcements, ids: announcementIds } =
-        await this.persistAnnouncements(
-          manager,
-          announcementsDto,
-          ref.companyByStockCode,
-          disclosureRun.id,
-        );
-      announcementIdsToSummarize = announcementIds;
-      if (!useKlciPath) {
-        corporateActionsDto = await this.disclosure.fetchCorporateActions();
-      }
-      const corporateActions = await this.persistCorporateActions(
+      announcementIdsToSummarize = disclosures.value.announcementIdsToSummarize;
+
+      const news = await this.runs.run(manager, this.news, async (runId) => {
+        const headlines = await this.news.fetchHeadlines();
+        const newsArticles = await this.persistNews(manager, headlines.rows, runId);
+        // Deterministic ticker-tagging (spec 04 §2): a step inside the RSS ingest
+        // cadence — not an AI job, not a separate run.
+        const newsArticleTags = await this.tagNews(manager, headlines.rows);
+        return {
+          value: { newsArticles, newsArticleTags },
+          failures: headlines.failures,
+        };
+      });
+
+      const shariah = await this.runs.run(manager, this.shariah, async (runId) => {
+        const statuses = await this.shariah.fetchShariahStatuses();
+        return {
+          value: await this.persistShariah(
+            manager,
+            statuses.rows,
+            ref.companyByStockCode,
+            runId,
+          ),
+          failures: statuses.failures,
+        };
+      });
+
+      const ipo = await this.runs.run(manager, this.ipo, async (runId) => {
+        const listings = await this.ipo.fetchIpoListings();
+        return {
+          value: await this.persistIpos(manager, listings.rows, runId),
+          failures: listings.failures,
+        };
+      });
+
+      // --- Ordered AFTER EOD + disclosures: ratios (DY needs the dividend
+      // corporate actions) + indicator snapshots, lineage = the market run ---
+      const materialised = await this.materialise(
         manager,
-        corporateActionsDto,
-        ref.companyByStockCode,
-        disclosureRun.id,
+        universe,
+        eod,
+        disclosures.value.corporateActionRows,
       );
-
-      const newsRun = await this.runs.openRun(
-        manager,
-        'RssNewsAdapter',
-        this.news.provenanceClass,
-      );
-      const headlines = await this.news.fetchHeadlines();
-      const newsArticles = await this.persistNews(manager, headlines, newsRun.id);
-      // Deterministic ticker-tagging (spec 04 §2): a step inside the RSS ingest
-      // cadence — not an AI job, not a separate run.
-      const newsArticleTags = await this.tagNews(manager, headlines);
-
-      // --- Manual reference (real) Shariah + IPO ---
-      const shariahRun = await this.runs.openRun(
-        manager,
-        'ManualShariahListAdapter',
-        this.shariah.provenanceClass,
-      );
-      const shariahDto = await this.shariah.fetchShariahStatuses();
-      const shariahStatuses = await this.persistShariah(
-        manager,
-        shariahDto,
-        ref.companyByStockCode,
-        shariahRun.id,
-      );
-
-      const ipoRun = await this.runs.openRun(
-        manager,
-        'ManualIpoAdapter',
-        this.ipo.provenanceClass,
-      );
-      const ipoDto = await this.ipo.fetchIpoListings();
-      const ipoListings = await this.persistIpos(manager, ipoDto, ipoRun.id);
-
-      if (!useKlciPath) {
-        // --- Ordered AFTER EOD: ratio materialisation + indicator snapshots ---
-        const barsByStockCode = groupBy(bars, (b) => b.stockCode);
-        const dividendsByStockCode = groupBy(
-          corporateActionsDto,
-          (a) => a.stockCode,
-        );
-
-        fundamentalsSnapshots = 0;
-        for (const fund of fundamentals) {
-          const companyId = ref.companyByStockCode.get(fund.stockCode);
-          const companyBars = barsByStockCode.get(fund.stockCode) ?? [];
-          if (!companyId || companyBars.length === 0) continue;
-          const dividends = (dividendsByStockCode.get(fund.stockCode) ?? []).map(
-            (a) => ({ exDate: a.exDate, amount: a.amount }),
-          );
-          const snap = materialiseSnapshot(fund, companyBars, dividends);
-          const snapshotRepo = manager.getRepository(FundamentalsSnapshot);
-          await snapshotRepo.upsert(
-            snapshotRepo.create({
-              companyId,
-              ...snap,
-              ingestionRunId: marketRunId,
-            }),
-            ['companyId'],
-          );
-          fundamentalsSnapshots++;
-        }
-
-        indicatorSnapshots = await this.materialiseIndicators(
-          manager,
-          ref.instrumentByStockCode,
-          marketRunId,
-        );
-      }
 
       // --- Ordered AFTER EOD: cap-weighted index levels (spec 05, ticket 02) ---
       // The index adapter reads the seam (the demo impl cap-weights the same
       // co-generated constituent bars; production ingests a licensed published
       // level), and the worker upserts the reference index rows + one
       // IndexLevel per index per day, lineage-stamped like every sourced row.
-      const indexRun = await this.runs.openRun(
-        manager,
-        'SyntheticIndexAdapter',
-        this.index.provenanceClass,
-      );
-      const indexSeries = await this.index.fetchIndexLevels();
-      const { marketIndices, indexLevels } = await this.persistIndexLevels(
-        manager,
-        indexSeries,
-        indexRun.id,
-      );
+      const index = await this.runs.run(manager, this.index, async (runId) => {
+        const series = await this.index.fetchIndexLevels();
+        return {
+          value: await this.persistIndexLevels(manager, series.rows, runId),
+          failures: series.failures,
+        };
+      });
 
       const result: NightlyIngestResult = {
-        priceBars,
-        quarterlyRows,
-        fundamentalsSnapshots,
-        indicatorSnapshots,
-        announcements,
-        corporateActions,
-        newsArticles,
-        newsArticleTags,
-        shariahStatuses,
-        ipoListings,
-        marketIndices,
-        indexLevels,
-        failures,
+        priceBars: eod.value.priceBars,
+        quarterlyRows: eod.value.quarterlyRows,
+        ...materialised,
+        announcements: disclosures.value.announcements,
+        corporateActions: disclosures.value.corporateActions,
+        ...news.value,
+        shariahStatuses: shariah.value,
+        ipoListings: ipo.value,
+        ...index.value,
+        failures: [eod, disclosures, news, shariah, ipo, index].flatMap(
+          (run) => run.failures,
+        ),
       };
       // ADR-0010: every log line carries a correlationId.  The nightly ingest is
       // not a JobBus job so there is no envelope id; the market run id is the
       // per-run stitch key that ties every persisted row back to this ingest.
       this.logger.log(
-        { correlationId: marketRunId, msg: 'nightly-eod-ingest.complete', ...result },
+        { correlationId: eod.runId, msg: 'nightly-eod-ingest.complete', ...result },
         'nightly-eod-ingest.complete',
       );
       return result;
@@ -349,7 +292,7 @@ export class EodIngestService {
     // transaction, so one post-commit sweep covers the EOD-derived AND
     // disclosure/news-derived caches. A failure here fails the ingest loudly —
     // a stale page shown after new data committed is worse than a retried ingest.
-    await this.readCache.invalidateReadCaches();
+    await this.readCache.changed({ kind: 'eodIngested' });
 
     // Spec-06 ticket 03: enqueue a `summarize-announcement` job per NOT-YET-
     // SUMMARIZED announcement (persistAnnouncements already narrowed the list
@@ -368,13 +311,161 @@ export class EodIngestService {
       await this.jobBus.enqueue(JobNames.announcementSummary, envelope);
     }
 
-    // PoC Phase A ticket 05: when yfinance is bound, follow successful nightly
-    // ingest with the same KLCI TA/FA enqueue path (same-day skip, no force).
-    if (this.market.provenanceClass === ProvenanceClass.Real) {
-      await this.klciEnqueue.enqueue();
-    }
+    await this.afterMarketUniverseIngested();
 
     return result;
+  }
+
+  /**
+   * The instruments the bound market adapter's bars belong to (its declared
+   * {@link MarketDataAdapter.universe}). `reference` is the curated demo set
+   * `ensureReferenceData` already upserted; `klci30` upserts the KLCI 30 (PoC
+   * Phase A ticket 03: the nightly needs no prior `seed-klci`).
+   */
+  private async ensureMarketUniverse(
+    manager: EntityManager,
+    ref: ReferenceIds,
+  ): Promise<ReferenceIds> {
+    switch (this.market.universe) {
+      case 'reference':
+        return ref;
+      case 'klci30':
+        return this.klciSeed.upsertKlciUniverse(manager);
+    }
+  }
+
+  /**
+   * The universe's post-commit follow-on. PoC Phase A ticket 05: the KLCI 30
+   * gets the same TA/FA enqueue as `enqueue-klci` (same-day skip, no force);
+   * the curated demo set has none (no AI spend on the demo nightly).
+   */
+  private async afterMarketUniverseIngested(): Promise<void> {
+    switch (this.market.universe) {
+      case 'reference':
+        return;
+      case 'klci30':
+        await this.klciEnqueue.enqueue();
+        return;
+    }
+  }
+
+  /**
+   * EOD step: bars + fundamentals into ONE run opened from the market adapter
+   * (the A1 co-generation unit on the synthetic path; the KLCI pull on
+   * yfinance). Fundamentals land in the market's run, so both adapters must
+   * declare the same provenance class.
+   */
+  private landEod(
+    manager: EntityManager,
+    ids: ReferenceIds,
+  ): Promise<RunOutcome<EodLanded>> {
+    if (this.fundamentals.provenanceClass !== this.market.provenanceClass) {
+      throw new Error(
+        `EOD step: ${this.fundamentals.adapterName} (${this.fundamentals.provenanceClass}) cannot land in ` +
+          `${this.market.adapterName}'s ${this.market.provenanceClass} run`,
+      );
+    }
+    return this.runs.run(manager, this.market, async (runId) => {
+      const bars = await this.market.fetchDailyBars();
+      const priceBars = await this.persistPriceBars(
+        manager,
+        bars.rows,
+        ids.instrumentByStockCode,
+        runId,
+      );
+      const fundamentals = await this.fundamentals.fetchFundamentals();
+      const quarterlyRows = await this.persistQuarterly(
+        manager,
+        fundamentals.rows,
+        ids.companyByStockCode,
+        runId,
+      );
+      return {
+        value: { bars: bars.rows, fundamentals, priceBars, quarterlyRows },
+        failures: [...bars.failures, ...fundamentals.failures],
+      };
+    });
+  }
+
+  /** Disclosure step: announcements + corporate actions into one run. */
+  private async landDisclosures(
+    manager: EntityManager,
+    ref: ReferenceIds,
+    runId: string,
+  ): Promise<{ value: DisclosuresLanded; failures: readonly string[] }> {
+    const announcementsFetch = await this.disclosure.fetchAnnouncements();
+    const { count: announcements, ids: announcementIdsToSummarize } =
+      await this.persistAnnouncements(
+        manager,
+        announcementsFetch.rows,
+        ref.companyByStockCode,
+        runId,
+      );
+    const actionsFetch = await this.disclosure.fetchCorporateActions();
+    const corporateActions = await this.persistCorporateActions(
+      manager,
+      actionsFetch.rows,
+      ref.companyByStockCode,
+      runId,
+    );
+    return {
+      value: {
+        announcements,
+        announcementIdsToSummarize,
+        corporateActions,
+        corporateActionRows: actionsFetch.rows,
+      },
+      failures: [...announcementsFetch.failures, ...actionsFetch.failures],
+    };
+  }
+
+  /**
+   * Materialise step (ordered AFTER the EOD land): one {@link FundamentalsSnapshot}
+   * per company with bars, then one {@link IndicatorSnapshot} per instrument,
+   * both stamped with the EOD (market) run.
+   *
+   * DY's dividends: the fundamentals fetch's vendor `dividends` when it carries
+   * them (yfinance), else the dividend corporate actions (the CONTEXT single
+   * source). See `FundamentalsFetch.dividends` for why yfinance still deviates.
+   */
+  private async materialise(
+    manager: EntityManager,
+    ids: ReferenceIds,
+    eod: RunOutcome<EodLanded>,
+    corporateActions: readonly CorporateActionDto[],
+  ): Promise<{ fundamentalsSnapshots: number; indicatorSnapshots: number }> {
+    const { bars, fundamentals } = eod.value;
+    const barsByStockCode = groupBy(bars, (b) => b.stockCode);
+    const dividendsByStockCode = groupBy(
+      fundamentals.dividends ?? dividendCorporateActions(corporateActions),
+      (d) => d.stockCode,
+    );
+
+    const snapshotRepo = manager.getRepository(FundamentalsSnapshot);
+    let fundamentalsSnapshots = 0;
+    for (const fund of fundamentals.rows) {
+      const companyId = ids.companyByStockCode.get(fund.stockCode);
+      const companyBars = barsByStockCode.get(fund.stockCode) ?? [];
+      if (!companyId || companyBars.length === 0) continue;
+      const dividends = dividendsByStockCode.get(fund.stockCode) ?? [];
+      const snap = materialiseSnapshot(fund, companyBars, dividends);
+      await snapshotRepo.upsert(
+        snapshotRepo.create({
+          companyId,
+          ...snap,
+          ingestionRunId: eod.runId,
+        }),
+        ['companyId'],
+      );
+      fundamentalsSnapshots++;
+    }
+
+    const indicatorSnapshots = await this.materialiseIndicators(
+      manager,
+      ids.instrumentByStockCode,
+      eod.runId,
+    );
+    return { fundamentalsSnapshots, indicatorSnapshots };
   }
 
   private async resolveKlciReferenceIds(
@@ -403,104 +494,9 @@ export class EodIngestService {
     return { instrumentByStockCode, companyByStockCode };
   }
 
-  private async pullAndMaterialiseKlci(
-    manager: EntityManager,
-    ref: ReferenceIds,
-  ): Promise<KlciIngestResult> {
-    const adapterName =
-      this.market.provenanceClass === ProvenanceClass.Real
-        ? 'YFinanceMarketDataAdapter'
-        : 'SyntheticMarketDataAdapter';
-    const run =
-      this.market.provenanceClass === ProvenanceClass.Synthetic
-        ? await this.runs.openSyntheticRun(
-            manager,
-            adapterName,
-            SYNTHETIC_BASE_SEED,
-            { ...DEFAULT_PARAMS, baseSeed: SYNTHETIC_BASE_SEED },
-          )
-        : await this.runs.openRun(
-            manager,
-            adapterName,
-            this.market.provenanceClass,
-          );
-
-    const bars = await this.market.fetchDailyBars();
-    const marketFailures = collectFailureSummary(this.market);
-    const priceBars = await this.persistPriceBars(
-      manager,
-      bars,
-      ref.instrumentByStockCode,
-      run.id,
-    );
-
-    const fundamentals = await this.fundamentals.fetchFundamentals();
-    const fundFailures = collectFailureSummary(this.fundamentals);
-    const quarterlyRows = await this.persistQuarterly(
-      manager,
-      fundamentals,
-      ref.companyByStockCode,
-      run.id,
-    );
-
-    const barsByStockCode = groupBy(bars, (b) => b.stockCode);
-    const dividendMap = readAdapterDividends(this.fundamentals);
-
-    let fundamentalsSnapshots = 0;
-    const snapshotRepo = manager.getRepository(FundamentalsSnapshot);
-    for (const fund of fundamentals) {
-      const companyId = ref.companyByStockCode.get(fund.stockCode);
-      const companyBars = barsByStockCode.get(fund.stockCode) ?? [];
-      if (!companyId || companyBars.length === 0) continue;
-      const dividends = dividendMap.get(fund.stockCode) ?? [];
-      const snap = materialiseSnapshot(fund, companyBars, dividends);
-      await snapshotRepo.upsert(
-        snapshotRepo.create({
-          companyId,
-          ...snap,
-          ingestionRunId: run.id,
-        }),
-        ['companyId'],
-      );
-      fundamentalsSnapshots++;
-    }
-
-    const indicatorSnapshots = await this.materialiseIndicators(
-      manager,
-      ref.instrumentByStockCode,
-      run.id,
-    );
-
-    const failures = [...marketFailures, ...fundFailures];
-    if (failures.length > 0) {
-      this.logger.warn(
-        {
-          correlationId: run.id,
-          failures,
-          msg: 'klci-ingest.failure-summary',
-        },
-        `klci-ingest failure summary (${failures.length}): ${failures.join('; ')}`,
-      );
-    }
-
-    const result: KlciIngestResult = {
-      priceBars,
-      quarterlyRows,
-      fundamentalsSnapshots,
-      indicatorSnapshots,
-      failures,
-      runId: run.id,
-    };
-    this.logger.log(
-      { correlationId: run.id, msg: 'klci-ingest.complete', ...result },
-      'klci-ingest.complete',
-    );
-    return result;
-  }
-
   private async persistPriceBars(
     manager: EntityManager,
-    bars: PriceBarDto[],
+    bars: readonly PriceBarDto[],
     instrumentByStockCode: Map<string, string>,
     runId: string,
   ): Promise<number> {
@@ -532,7 +528,7 @@ export class EodIngestService {
 
   private async persistQuarterly(
     manager: EntityManager,
-    fundamentals: Awaited<ReturnType<FundamentalsAdapter['fetchFundamentals']>>,
+    fundamentals: readonly FundamentalsDto[],
     companyByStockCode: Map<string, string>,
     runId: string,
   ): Promise<number> {
@@ -583,7 +579,7 @@ export class EodIngestService {
    */
   private async persistAnnouncements(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<DisclosureAdapter['fetchAnnouncements']>>,
+    dtos: readonly AnnouncementDto[],
     companyByStockCode: Map<string, string>,
     runId: string,
   ): Promise<{ count: number; ids: string[] }> {
@@ -623,7 +619,7 @@ export class EodIngestService {
 
   private async persistCorporateActions(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<DisclosureAdapter['fetchCorporateActions']>>,
+    dtos: readonly CorporateActionDto[],
     companyByStockCode: Map<string, string>,
     runId: string,
   ): Promise<number> {
@@ -650,7 +646,7 @@ export class EodIngestService {
 
   private async persistNews(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<NewsAdapter['fetchHeadlines']>>,
+    dtos: readonly NewsArticleDto[],
     runId: string,
   ): Promise<number> {
     const repo = manager.getRepository(NewsArticle);
@@ -682,7 +678,7 @@ export class EodIngestService {
    */
   private async tagNews(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<NewsAdapter['fetchHeadlines']>>,
+    dtos: readonly NewsArticleDto[],
   ): Promise<number> {
     if (dtos.length === 0) return 0;
     const companies = await this.loadTaggableCompanies(manager);
@@ -742,7 +738,7 @@ export class EodIngestService {
 
   private async persistShariah(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<ShariahListAdapter['fetchShariahStatuses']>>,
+    dtos: readonly ShariahStatusDto[],
     companyByStockCode: Map<string, string>,
     runId: string,
   ): Promise<number> {
@@ -769,7 +765,7 @@ export class EodIngestService {
 
   private async persistIpos(
     manager: EntityManager,
-    dtos: Awaited<ReturnType<IpoAdapter['fetchIpoListings']>>,
+    dtos: readonly IpoListingDto[],
     runId: string,
   ): Promise<number> {
     const repo = manager.getRepository(IpoListing);
@@ -802,7 +798,7 @@ export class EodIngestService {
    */
   private async persistIndexLevels(
     manager: EntityManager,
-    series: IndexLevelsDto[],
+    series: readonly IndexLevelsDto[],
     runId: string,
   ): Promise<{ marketIndices: number; indexLevels: number }> {
     const indexRepo = manager.getRepository(MarketIndex);
@@ -945,40 +941,18 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
   return out;
 }
 
-function collectFailureSummary(adapter: unknown): string[] {
-  if (
-    adapter !== null &&
-    typeof adapter === 'object' &&
-    'getFailureSummary' in adapter &&
-    typeof (adapter as { getFailureSummary: unknown }).getFailureSummary ===
-      'function'
-  ) {
-    return [
-      ...(adapter as { getFailureSummary: () => readonly string[] }).getFailureSummary(),
-    ];
+/**
+ * The dividend corporate actions as DY inputs (CONTEXT: DY = trailing-12-month
+ * DIVIDEND corporate actions). Other action types never feed DY, even when
+ * they carry a cash amount (rights).
+ */
+function dividendCorporateActions(
+  actions: readonly CorporateActionDto[],
+): DividendDto[] {
+  const out: DividendDto[] = [];
+  for (const a of actions) {
+    if (a.type !== CorporateActionType.Dividend || a.amount === null) continue;
+    out.push({ stockCode: a.stockCode, exDate: a.exDate, amount: a.amount });
   }
-  return [];
-}
-
-function readAdapterDividends(
-  adapter: unknown,
-): Map<string, readonly { readonly exDate: string; readonly amount: number }[]> {
-  if (
-    adapter !== null &&
-    typeof adapter === 'object' &&
-    'getDividendsByStockCode' in adapter &&
-    typeof (adapter as { getDividendsByStockCode: unknown })
-      .getDividendsByStockCode === 'function'
-  ) {
-    const map = (
-      adapter as {
-        getDividendsByStockCode: () => ReadonlyMap<
-          string,
-          readonly { readonly exDate: string; readonly amount: number }[]
-        >;
-      }
-    ).getDividendsByStockCode();
-    return new Map(map);
-  }
-  return new Map();
+  return out;
 }

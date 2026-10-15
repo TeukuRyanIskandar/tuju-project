@@ -1,12 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import type { S3Client } from '@aws-sdk/client-s3';
 import { Repository } from 'typeorm';
 import type { ProspectusArtifact } from '@tuju/contracts';
 import { Company } from '../data/entities/company.entity';
 import { IpoListing } from '../data/entities/ipo-listing.entity';
 import { ProspectusAnalysis } from '../data/entities/prospectus-analysis.entity';
 import { ShariahStatus } from '../data/entities/shariah-status.entity';
+import { readArtifactJson } from '../s3/artifact-proxy';
 import { S3_CLIENT } from '../s3/s3.module';
 import { isUuid } from '../stocks/filters';
 import {
@@ -70,29 +71,16 @@ export class IpoService {
   }
 
   /**
-   * Proxied read of the rich artifact JSON from S3 (ADR-0004 §4: NestJS
-   * streams the object; no presigned URLs). The pointer is the one NestJS
-   * itself persisted from the JobResult, never caller-supplied.
-   */
-  /**
-   * The stored artifact, typed as the contract. Not re-validated here: the AI
-   * worker validates against `ProspectusArtifact` before writing to S3 (ADR-0014).
+   * Proxied read of the rich artifact JSON (shared `readArtifactJson`), typed
+   * as the contract. Unlike the stock-analysis artifacts, `cost` is kept.
    */
   async getArtifact(prospectusId: string): Promise<ProspectusArtifact> {
     const { analysis } = await this.findAnalysed(prospectusId);
-    const out = await this.s3.send(
-      new GetObjectCommand({
-        Bucket: analysis.artifactBucket,
-        Key: analysis.artifactKey,
-      }),
-    );
-    const body = await out.Body?.transformToString('utf-8');
-    if (!body) {
-      throw new NotFoundException(
-        `Prospectus artifact body is empty for id=${prospectusId}`,
-      );
-    }
-    return JSON.parse(body) as ProspectusArtifact;
+    return (await readArtifactJson(
+      this.s3,
+      { bucket: analysis.artifactBucket, key: analysis.artifactKey },
+      `Prospectus artifact body is empty for id=${prospectusId}`,
+    )) as unknown as ProspectusArtifact;
   }
 
   private findListing(prospectusId: string): Promise<IpoListing | null> {

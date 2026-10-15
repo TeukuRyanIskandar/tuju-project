@@ -1,13 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  type OnModuleDestroy,
-  type OnModuleInit,
-} from '@nestjs/common';
-import { Queue, QueueEvents } from 'bullmq';
-import type { Redis } from 'ioredis';
-import { randomUUID } from 'crypto';
+import { Logger } from '@nestjs/common';
 import type {
   JobEnvelope,
   JobFailure,
@@ -15,116 +6,71 @@ import type {
   JobProgress,
   JobResult,
 } from '@tuju/contracts';
-import { REDIS_CLIENT } from '../redis/redis.module';
-import { ANALYSIS_QUEUE, JobNames } from './job-names';
-
-/**
- * BullMQ dedup id for an `analyze-prospectus` job (hyphen form; BullMQ forbids
- * `:` in custom ids). Shared by `JobBus.deriveJobId` and the ops enqueue
- * service's in-flight check so both agree on one string.
- */
-export function prospectusBullJobId(prospectusId: string): string {
-  return `prospectus-${prospectusId}`;
-}
+import type {
+  EnqueueOptions,
+  EnqueueOutcome,
+  JobFamily,
+  JobIdentity,
+} from './job-family';
+import { JOB_IDENTITIES, resolveResultId } from './job-identities';
 
 /**
  * The `JobBus` seam (ADR-0001 guardrail, signatures pinned in ADR-0007 §8).
  *
  * App code talks to `JobBus`, never to BullMQ directly — this contains a future
- * broker migration (e.g. RabbitMQ) to this file. The NestJS producer surface:
+ * broker migration (e.g. RabbitMQ) to one adapter. Two adapters sit at this
+ * seam: `BullMqJobBus` (production, Redis) and `InMemoryJobBus` (unit tests).
+ * Nest injects this abstract class as the token.
  *
- *   enqueue<P>(jobName, env): Promise<{ jobId }>
+ *   enqueue<P>(jobName, env, opts?): Promise<{ jobId, status }>
+ *   register(family): void
  *   onProgress(handler): void
- *   onResult(handler): void
- *   onFailure(handler): void
+ *   onResult(handler) / onFailure(handler): observe only
  *
- * Retention + retry/backoff (ADR-0007 §6/§7) are configured on enqueue.
+ * Routing (architecture-deepening ticket 01): each result goes to exactly one
+ * registered job family, chosen by its result id (`resolveResultId`); each
+ * final failure goes to the family of the BullMQ job's name. Families land
+ * writes; `onResult`/`onFailure` remain as the ADR-0007 §8 observer hooks and
+ * must not be used to land data.
  */
-@Injectable()
-export class JobBus implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(JobBus.name);
-  private readonly queue: Queue;
-  private readonly events: QueueEvents;
+export abstract class JobBus {
+  protected readonly logger = new Logger(this.constructor.name);
 
+  private readonly families = new Map<JobName, JobFamily>();
   private readonly progressHandlers: Array<
     (p: JobProgress & { jobId: string }) => void
   > = [];
-  private readonly resultHandlers: Array<(r: JobResult) => void> = [];
-  private readonly failureHandlers: Array<(f: JobFailure) => void> = [];
-
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {
-    this.queue = new Queue(ANALYSIS_QUEUE, { connection: this.redis });
-    this.events = new QueueEvents(ANALYSIS_QUEUE, { connection: this.redis });
-  }
-
-  async onModuleInit(): Promise<void> {
-    await this.events.waitUntilReady();
-
-    // BullMQ native progress → QueueEvents 'progress' (ADR-0001/0007 §4).
-    this.events.on('progress', ({ jobId, data }) => {
-      const progress = data as JobProgress;
-      for (const handler of this.progressHandlers) {
-        handler({ ...progress, jobId });
-      }
-    });
-
-    // Result hand-off via job.returnvalue on 'completed' (ADR-0007 §7).
-    this.events.on('completed', ({ returnvalue }) => {
-      if (!returnvalue) return;
-      const result =
-        typeof returnvalue === 'string'
-          ? (JSON.parse(returnvalue) as JobResult)
-          : (returnvalue as unknown as JobResult);
-      for (const handler of this.resultHandlers) handler(result);
-    });
-
-    // Final failure (retries exhausted or terminal) → UI-facing event (§6).
-    this.events.on('failed', async ({ jobId, failedReason }) => {
-      const job = await this.queue.getJob(jobId);
-      const correlationId =
-        ((job?.data as JobEnvelope<unknown>)?.correlationId ?? randomUUID());
-      const isTerminal = failedReason?.startsWith('UnrecoverableError') ?? false;
-      const failure: JobFailure = {
-        correlationId,
-        jobId: jobId ?? '',
-        failureClass: isTerminal ? 'terminal' : 'transient_exhausted',
-        retryable: !isTerminal,
-        userMessage: failedReason ?? 'Job failed.',
-        at: new Date().toISOString(),
-      };
-      for (const handler of this.failureHandlers) handler(failure);
-    });
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.queue.close();
-    await this.events.close();
-  }
+  private readonly resultObservers: Array<(r: JobResult) => void> = [];
+  private readonly failureObservers: Array<(f: JobFailure) => void> = [];
 
   /**
-   * Enqueue a job (ADR-0007 §8). The BullMQ job id is content-derived for
-   * idempotency (ADR-0007 §2) so a user-click and a system price-move for the
-   * same analysis in the same window collapse to one job.
+   * Enqueue a job (ADR-0007 §8). The BullMQ job id is content-derived by the
+   * job's family (ADR-0007 §2), so duplicate requests collapse onto one job:
+   * an in-flight job is never duplicated, and a retained finished job is
+   * replaced only when `replaceFinished` is set.
    */
-  async enqueue<P>(
+  abstract enqueue<P>(
     jobName: JobName,
     env: JobEnvelope<P>,
-  ): Promise<{ jobId: string }> {
-    const jobId = this.deriveJobId(jobName, env);
-    await this.queue.add(jobName, env, {
-      jobId,
-      attempts: 3,
-      backoff: { type: 'fixed', delay: 5000 },
-      removeOnComplete: { age: 60 * 60 }, // 1h (ADR-0007 §7)
-      removeOnFail: { age: 60 * 60 * 24 }, // 24h — kept longer for debugging
-    });
-    this.logger.log({
-      msg: 'job enqueued',
-      jobName,
-      jobId,
-      correlationId: env.correlationId,
-    });
-    return { jobId };
+    opts?: EnqueueOptions,
+  ): Promise<EnqueueOutcome>;
+
+  /**
+   * Register the landing for one job family. Call from the family's
+   * `onModuleInit`. Throws if a job name already has a family (exactly one
+   * lander per job) or if the family carries an identity other than the one
+   * in `JOB_IDENTITIES`.
+   */
+  register<N extends JobName, K>(family: JobFamily<N, K>): void {
+    for (const jobName of family.identity.jobNames) {
+      if (this.families.has(jobName)) {
+        throw new Error(`JobBus: ${jobName} already has a job family registered`);
+      }
+      if ((JOB_IDENTITIES[jobName] as JobIdentity) !== (family.identity as JobIdentity)) {
+        throw new Error(`JobBus: ${jobName} family must use JOB_IDENTITIES['${jobName}']`);
+      }
+      this.families.set(jobName, family as unknown as JobFamily);
+    }
   }
 
   onProgress(handler: (p: JobProgress & { jobId: string }) => void): void {
@@ -132,63 +78,88 @@ export class JobBus implements OnModuleInit, OnModuleDestroy {
   }
 
   onResult(handler: (r: JobResult) => void): void {
-    this.resultHandlers.push(handler);
+    this.resultObservers.push(handler);
   }
 
   onFailure(handler: (f: JobFailure) => void): void {
-    this.failureHandlers.push(handler);
+    this.failureObservers.push(handler);
   }
 
-  /** Introspection surface for Bull Board / health (ADR-0010 §4). */
-  getQueue(): Queue {
-    return this.queue;
+  protected emitProgress(progress: JobProgress & { jobId: string }): void {
+    for (const handler of this.progressHandlers) handler(progress);
+  }
+
+  /** Route a worker result to the one family that owns its result id. */
+  protected async deliverResult(result: JobResult): Promise<void> {
+    if (typeof result?.jobId !== 'string') {
+      this.logger.warn({ msg: 'completed job returned no JobResult; dropped' });
+      return;
+    }
+    for (const observer of this.resultObservers) observer(result);
+
+    const ref = resolveResultId(result.jobId);
+    if (!ref) {
+      this.logger.warn({
+        msg: 'result id belongs to no job family; dropped',
+        correlationId: result.correlationId,
+        jobId: result.jobId,
+      });
+      return;
+    }
+    const family = this.families.get(ref.jobName);
+    if (!family) return; // this process does not land this job (e.g. the ingestion worker)
+
+    try {
+      await family.land(result, ref);
+    } catch (err) {
+      this.logger.error({
+        msg: 'job family failed to land result',
+        jobName: ref.jobName,
+        correlationId: result.correlationId,
+        jobId: result.jobId,
+        error: (err as Error).message,
+      });
+    }
   }
 
   /**
-   * Content-derived, idempotent job id (ADR-0007 §2).
-    * e.g. `ta:${symbol}:${...}:${asOfBucket}`. The scaffold derives a stable id from
-    * the job name + payload + asOf so BullMQ dedupes duplicate concurrent requests.
-    * Each job family picks its own discriminating fields (TA/FA: symbol +
-    * timeframe/period, hour-bucketed; the spec-06 showcase jobs: date-bucketed
-    * for the market brief, the announcement id alone for the summary, the
-    * prospectus id alone for the at-a-glance — see each branch below).
-    *
-    * NB: All job ids now use colon-delimited format for consistency with Python side.
-    * This aligns with JobResult ids output by the worker (technical:..., fundamental:...).
-    */
-  private deriveJobId<P>(jobName: JobName, env: JobEnvelope<P>): string {
-    const payload = env.payload as Record<string, unknown>;
-    const asOfBucket = env.asOf.slice(0, 13); // hour bucket, e.g. 2026-09-29T05
+   * Route a final failure to the family of the failed BullMQ job. The job's
+   * name and envelope (not the id string) pick the family and key, so no
+   * BullMQ id is ever parsed. `job` is undefined when BullMQ has already
+   * dropped it; the failure is then only logged.
+   */
+  protected async deliverFailure(
+    failure: JobFailure,
+    job: { name: string; data: JobEnvelope<unknown> } | undefined,
+  ): Promise<void> {
+    for (const observer of this.failureObservers) observer(failure);
 
-    switch (jobName) {
-      case JobNames.marketBrief: {
-        // Date-bucketed (not hour): re-enqueuing the same day collapses to the
-        // existing job (ticket 02 acceptance criteria).
-        const dayBucket = env.asOf.slice(0, 10); // e.g. 2026-09-29
-        return `brief-${dayBucket}`;
-      }
-      case JobNames.announcementSummary: {
-        // One job per announcement, independent of asOf: a legitimate
-        // re-summarize overwrites the same row rather than needing distinct
-        // job history (ticket 03 acceptance criteria).
-        const announcementId = String(payload.announcementId ?? 'unknown');
-        return `ann-${announcementId}`;
-      }
-      case JobNames.prospectus: {
-        // One job per prospectus, independent of asOf (ticket 05): a re-run of
-        // the same curated IPO overwrites the same thin row. Hyphen form —
-        // the Python worker's own `JobResult.jobId` is the colon form
-        // `prospectus:{id}` (see `prospectusBullJobId`).
-        return prospectusBullJobId(String(payload.prospectusId ?? 'unknown'));
-      }
-      default: {
-        const symbol = String(payload.symbol ?? 'unknown');
-        const discriminator = String(
-          payload.timeframe ?? payload.period ?? 'default',
-        );
-        const prefix = jobName === 'analyze-technical' ? 'ta' : 'fa';
-        return [prefix, symbol, discriminator, asOfBucket].join(':');
-      }
+    const identity = job ? JOB_IDENTITIES[job.name as JobName] : undefined;
+    if (!job || !identity) {
+      this.logger.warn({
+        msg: 'failed job not routable to a job family',
+        jobId: failure.jobId,
+        jobName: job?.name,
+        reason: failure.userMessage,
+      });
+      return;
+    }
+    const jobName = job.name as JobName;
+    const family = this.families.get(jobName);
+    if (!family) return;
+
+    try {
+      await family.fail(failure, {
+        jobName,
+        key: (identity as JobIdentity).key(jobName, job.data),
+      });
+    } catch (err) {
+      this.logger.error({
+        msg: 'job family failed to record failure',
+        jobName,
+        jobId: failure.jobId,
+        error: (err as Error).message,
+      });
     }
   }
 }

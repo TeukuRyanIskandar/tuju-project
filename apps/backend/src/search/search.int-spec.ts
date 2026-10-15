@@ -38,7 +38,7 @@ import {
 
 import { ConfigModule } from '../config/config.module';
 import { RedisModule, REDIS_CLIENT } from '../redis/redis.module';
-import { SEARCH_CACHE_PREFIX } from '../cache';
+import { SEARCH_CACHE_PREFIX } from '../cache/cache-keys';
 import {
   AnalysisResult,
   Announcement,

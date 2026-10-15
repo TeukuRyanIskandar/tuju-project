@@ -1,4 +1,4 @@
-import type { JobName } from '@tuju/contracts';
+import type { JobName, JobQueue } from '@tuju/contracts';
 
 /**
  * BullMQ queue + job name constants (ADR-0007 §1).
@@ -8,9 +8,10 @@ import type { JobName } from '@tuju/contracts';
  * package is ESM and the backend is CommonJS, so importing runtime values would
  * cross the ESM/CJS boundary. The literal values below are checked against the
  * contract's `JobName` union by the compiler (`satisfies`), so any drift from the
- * contract is a build error, not a silent divergence.
+ * contract is a build error, not a silent divergence. The queue name is typed by
+ * the contract's job registry (`JOBS`, ticket 07) the same way.
  */
-export const ANALYSIS_QUEUE = 'analysis';
+export const ANALYSIS_QUEUE: JobQueue = 'analysis';
 
 export const JobNames = {
   technical: 'analyze-technical',

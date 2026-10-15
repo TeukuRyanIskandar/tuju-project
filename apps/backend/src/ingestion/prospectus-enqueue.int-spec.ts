@@ -35,7 +35,7 @@ import { DisclosureReadModel1727900000000 } from '../data/migrations/17279000000
 import { MarketIndexModel1728000000000 } from '../data/migrations/1728000000000-MarketIndexModel';
 import { ShowcaseJobsModel1728100000000 } from '../data/migrations/1728100000000-ShowcaseJobsModel';
 import { ProspectusAnalysis1728200000000 } from '../data/migrations/1728200000000-ProspectusAnalysis';
-import { JobBus } from '../jobbus/job-bus.service';
+import { BullMqJobBus } from '../jobbus/bullmq-job-bus';
 import { ANALYSIS_QUEUE } from '../jobbus/job-names';
 import { ProspectusEnqueueService } from './prospectus-enqueue.service';
 
@@ -58,7 +58,7 @@ describe('enqueue-prospectus (integration — testcontainers)', () => {
   let redisC: StartedRedisContainer;
   let dataSource: DataSource;
   let redis: Redis;
-  let jobBus: JobBus;
+  let jobBus: BullMqJobBus;
   let service: ProspectusEnqueueService;
 
   let aId: string; // curated, un-analysed
@@ -90,7 +90,7 @@ describe('enqueue-prospectus (integration — testcontainers)', () => {
     await dataSource.runMigrations();
 
     redis = new IORedis(redisC.getConnectionUrl(), { maxRetriesPerRequest: null });
-    jobBus = new JobBus(redis);
+    jobBus = new BullMqJobBus(redis);
     await jobBus.onModuleInit();
     service = new ProspectusEnqueueService(dataSource, jobBus);
 

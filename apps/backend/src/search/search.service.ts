@@ -4,9 +4,9 @@
  * Owns the endpoint behaviours AROUND the {@link InstrumentSearch} seam: query
  * normalisation (trim + collapse internal whitespace, once, before ranking),
  * limit clamping (default 20, hard max 100 — clamped, never an error), and
- * the ADR-0004 class-2 read-through cache (`cache:search:` prefix, TTL from
- * the service default; the nightly ingest + purge already invalidate the
- * prefix, so no invalidation hooks live here). The rank bands themselves
+ * the ADR-0004 class-2 read-through cache (`ReadModelReads.search`, TTL from
+ * config; the nightly ingest + purge changes already invalidate it, so no
+ * invalidation hooks live here). The rank bands themselves
  * live behind the seam (instrument-search.pg.ts).
  *
  * Empty / whitespace-only queries return an empty result (200, not 400) — an
@@ -15,7 +15,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import type { SearchResponse } from '@tuju/contracts';
-import { ReadCacheService, SEARCH_CACHE_PREFIX } from '../cache';
+import { ReadModelCache, ReadModelReads } from '../cache';
 import {
   INSTRUMENT_SEARCH,
   type InstrumentSearch,
@@ -58,7 +58,7 @@ export class SearchService {
   constructor(
     @Inject(INSTRUMENT_SEARCH)
     private readonly instrumentSearch: InstrumentSearch,
-    private readonly readCache: ReadCacheService,
+    private readonly readCache: ReadModelCache,
   ) {}
 
   async search(
@@ -69,8 +69,7 @@ export class SearchService {
     if (query === '') return { query, items: [] };
 
     const limit = clampSearchLimit(rawLimit);
-    const cacheKey = `${SEARCH_CACHE_PREFIX}${query.toLowerCase()}:${limit}`;
-    const items = await this.readCache.remember(cacheKey, () =>
+    const items = await this.readCache.read(ReadModelReads.search(query, limit), () =>
       this.instrumentSearch.search(query, limit),
     );
     return { query, items };

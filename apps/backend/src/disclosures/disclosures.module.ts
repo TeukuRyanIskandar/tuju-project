@@ -3,11 +3,10 @@
  *
  * Wires the five anonymous market-wide read endpoints. `DataModule` supplies
  * the `DataSource` (TypeORM 0.3, sole-writer ADR-0004) and `CacheModule` the
- * class-2 `ReadCacheService` — imported explicitly (the cache module is
+ * class-2 `ReadModelCache` — imported explicitly (the cache module is
  * deliberately not `@Global`) so this module's read-cache dependency stays
- * visible. No invalidation hooks live here: the nightly ingest (the demo
- * disclosure/RSS cadence) and the decision-B purge sweep the
- * `cache:disclosures:` prefix after commit (ticket 01).
+ * visible. The reads never invalidate: the nightly ingest, the decision-B
+ * purge and `AnnouncementSummaryStore` announce their changes to the cache.
  *
  * The per-company feeds (spec 04's "spec-02's per-company feed") are the
  * spec-02 `StocksModule` routes, extended with the category/type filters —

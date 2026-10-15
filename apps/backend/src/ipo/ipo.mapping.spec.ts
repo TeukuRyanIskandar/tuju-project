@@ -1,24 +1,11 @@
 import { ShariahComplianceStatus } from '../data/entities/enums';
 import {
   mapShariahStatus,
-  prospectusIdFromJobId,
   toAtAGlance,
   toReference,
 } from './ipo.mapping';
 
 const ID = '5f3c1a2e-9b7d-4e1a-8c3f-2d6b7a9e0f41';
-
-describe('prospectusIdFromJobId', () => {
-  it('recovers the id from the worker colon-form jobId', () => {
-    expect(prospectusIdFromJobId(`prospectus:${ID}`)).toBe(ID);
-  });
-  it('ignores other job families and the BullMQ hyphen form', () => {
-    expect(prospectusIdFromJobId('brief:2026-10-07')).toBeNull();
-    expect(prospectusIdFromJobId('ann:abc')).toBeNull();
-    expect(prospectusIdFromJobId(`prospectus-${ID}`)).toBeNull();
-    expect(prospectusIdFromJobId('prospectus:')).toBeNull();
-  });
-});
 
 describe('mapShariahStatus', () => {
   it('maps the entity enum onto the worker vocabulary', () => {

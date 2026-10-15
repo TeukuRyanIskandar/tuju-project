@@ -4,6 +4,7 @@ import { AdaptersModule } from './adapters.module';
 import {
   DISCLOSURE_ADAPTER,
   FUNDAMENTALS_ADAPTER,
+  INDEX_ADAPTER,
   IPO_ADAPTER,
   MARKET_DATA_ADAPTER,
   NEWS_ADAPTER,
@@ -38,5 +39,38 @@ describe('demo adapter provenance declarations', () => {
   ])('%s declares provenance %s', (_name, token, expected) => {
     const adapter = moduleRef.get<SourceAdapter>(token);
     expect(adapter.provenanceClass).toBe(expected);
+  });
+
+  // The self-reported names are stamped on `IngestionRun.adapter`: they are
+  // existing lineage (the names the nightly hardcoded before ticket 05), so a
+  // rename would split one source's runs across two names.
+  it.each([
+    ['MarketDataAdapter', MARKET_DATA_ADAPTER, 'SyntheticMarketDataAdapter'],
+    ['FundamentalsAdapter', FUNDAMENTALS_ADAPTER, 'SyntheticFundamentalsAdapter'],
+    ['DisclosureAdapter', DISCLOSURE_ADAPTER, 'AggregatorDisclosureAdapter'],
+    ['NewsAdapter', NEWS_ADAPTER, 'RssNewsAdapter'],
+    ['ShariahListAdapter', SHARIAH_LIST_ADAPTER, 'ManualShariahListAdapter'],
+    ['IpoAdapter', IPO_ADAPTER, 'ManualIpoAdapter'],
+    ['IndexAdapter', INDEX_ADAPTER, 'SyntheticIndexAdapter'],
+  ])('%s self-reports adapterName %s', (_name, token, expected) => {
+    expect(moduleRef.get<SourceAdapter>(token).adapterName).toBe(expected);
+  });
+
+  it('only the co-generated market + fundamentals adapters declare a seeded generation (SyntheticRun)', () => {
+    const generationOf = (token: symbol) =>
+      moduleRef.get<SourceAdapter>(token).generation;
+    expect(generationOf(MARKET_DATA_ADAPTER)).toEqual(
+      generationOf(FUNDAMENTALS_ADAPTER),
+    );
+    expect(generationOf(MARKET_DATA_ADAPTER)?.seed).toEqual(expect.any(Number));
+    for (const token of [
+      DISCLOSURE_ADAPTER,
+      NEWS_ADAPTER,
+      SHARIAH_LIST_ADAPTER,
+      IPO_ADAPTER,
+      INDEX_ADAPTER,
+    ]) {
+      expect(generationOf(token)).toBeUndefined();
+    }
   });
 });

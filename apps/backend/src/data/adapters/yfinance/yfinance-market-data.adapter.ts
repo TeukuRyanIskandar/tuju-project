@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { KLCI30_UNIVERSE } from '../../../ingestion/klci30-universe';
 import { ProvenanceClass } from '../../entities/enums';
-import type { MarketDataAdapter } from '../adapter.interfaces';
+import type { MarketDataAdapter, SourceFetch } from '../adapter.interfaces';
 import type { PriceBarDto } from '../dto';
 import type { YahooFinanceClient, YahooHistoricalBar } from './yfinance-client';
 import { YFinanceThrottle } from './yfinance-throttle';
@@ -25,9 +25,10 @@ function toIsoDate(date: Date | string): string {
 }
 
 export class YFinanceMarketDataAdapter implements MarketDataAdapter {
+  readonly adapterName = 'YFinanceMarketDataAdapter';
   readonly provenanceClass = ProvenanceClass.Real;
+  readonly universe = 'klci30';
   private readonly logger = new Logger(YFinanceMarketDataAdapter.name);
-  private failures: string[] = [];
 
   constructor(
     private readonly client: YahooFinanceClient,
@@ -35,12 +36,8 @@ export class YFinanceMarketDataAdapter implements MarketDataAdapter {
     private readonly throttle: YFinanceThrottle,
   ) {}
 
-  getFailureSummary(): readonly string[] {
-    return this.failures;
-  }
-
-  async fetchDailyBars(): Promise<PriceBarDto[]> {
-    this.failures = [];
+  async fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
+    const failures: string[] = [];
     const bars: PriceBarDto[] = [];
     const period1Date = new Date();
     period1Date.setUTCFullYear(period1Date.getUTCFullYear() - 3);
@@ -96,19 +93,19 @@ export class YFinanceMarketDataAdapter implements MarketDataAdapter {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : String(error);
-        this.failures.push(`${company.stockCode}: ${message}`);
+        failures.push(`${company.stockCode}: ${message}`);
         this.logger.warn(
           `yfinance bars skip ${company.stockCode} (${company.yahooSymbol}): ${message}`,
         );
       }
     }
 
-    if (this.failures.length > 0) {
+    if (failures.length > 0) {
       this.logger.warn(
-        `yfinance bars failure summary (${this.failures.length}): ${this.failures.join('; ')}`,
+        `yfinance bars failure summary (${failures.length}): ${failures.join('; ')}`,
       );
     }
 
-    return bars;
+    return { rows: bars, failures };
   }
 }
