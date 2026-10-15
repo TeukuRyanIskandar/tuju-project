@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Architecture review — tuju-project</title>
+<script src="https://cdn.tailwindcss.com/3.4.16"></script>
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.esm.min.mjs";
+  mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose", flowchart: { curve: "basis" } });
+</script>
+<style>
+  .seam { border-style: dashed !important; }
+  .deep { background: linear-gradient(135deg, #0f172a, #1e293b); color: #e2e8f0; }
+  .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
+  .mermaid { display:flex; justify-content:center; }
+  .faded { opacity: .55; }
+</style>
+</head>
+<body class="bg-stone-50 text-slate-900 font-sans">
+<main class="max-w-6xl mx-auto px-4 sm:px-6 py-12 space-y-14">
+
+<header class="space-y-4">
+  <p class="lbl text-slate-500">Architecture review · 2026-10-12 · main @ 8967498</p>
+  <h1 class="font-serif text-4xl">tuju-project: deepening opportunities</h1>
+  <p class="text-slate-600 max-w-3xl">Scope came from commit churn since August. The hottest areas were <code>apps/backend/src/ingestion</code>, <code>data/*</code>, <code>stocks</code>, <code>jobbus</code>, <code>services/ai/src/tuju_ai</code> (handlers, <code>prospectus/</code>, <code>llm/</code>) and <code>packages/contracts</code>. The frontend <code>apiGet(path, schema)</code> seam is already deep, so it is not covered here.</p>
+  <div class="flex flex-wrap gap-4 text-xs text-slate-600 pt-2">
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 border-2 border-slate-400 bg-white"></span>module</span>
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-0 border-t-2 border-dashed border-slate-500"></span>seam</span>
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-0 border-t-2 border-red-600"></span>leak</span>
+    <span class="flex items-center gap-2"><span class="inline-block w-6 h-4 deep rounded-sm"></span>deep module</span>
+  </div>
+</header>
+
+<!-- Bugs found -->
+<section class="rounded-xl border-2 border-red-200 bg-red-50 p-6 space-y-3">
+  <h2 class="font-serif text-2xl text-red-900">Bugs found along the way</h2>
+  <p class="text-sm text-red-900/80">I verified each one against the source. They also show where shallow modules let bugs collect in the code that calls them.</p>
+  <ul class="text-sm space-y-2 list-disc pl-5 text-red-950">
+    <li><b>TA/FA enqueue throws.</b> <code>JobBus.deriveJobId</code> builds <code>ta:SYM:1D:2026-09-29T05</code>, which has 4 colon parts. BullMQ 5's <code>validateOptions</code> throws <i>"Custom Id cannot contain :"</i> on any id that contains <code>:</code> and doesn't have exactly 3 parts. As a result, <code>POST /analysis</code> and every KLCI enqueue fail. <span class="font-mono text-xs">apps/backend/src/jobbus/job-bus.service.ts:189</span></li>
+    <li><b>Integration tests run in the wrong lane.</b> 9 testcontainer specs named <code>*.int.spec.ts</code> (about 4.7k lines) match the unit regex <code>.*\.spec\.ts$</code> and never match <code>test:int</code>'s <code>.int-spec.ts</code>. <span class="font-mono text-xs">apps/backend/jest.config.cjs:12</span></li>
+    <li><b>AI summaries stay invisible for about 24h.</b> <code>AnnouncementSummaryStore</code> writes <code>aiSummary</code> but invalidates no cache. Its jobs are enqueued <i>after</i> the nightly sweep, so readers keep getting the 24h-TTL cached copy.</li>
+    <li><b>Wrong <code>derivedFrom</code>.</b> <code>whatToWatch.derivedFrom</code> lists 4 sections, but the reduce step is fed 6, including lock-up and related-party. <span class="font-mono text-xs">services/ai/src/tuju_ai/prospectus/analysis.py:447</span></li>
+    <li><b>TA/FA ignore LLM config.</b> They read <code>os.environ</code> directly, hardcode <code>ceiling_usd=0.10</code>, and include a production branch <code>if api_key == "test-key-for-testing"</code>. <span class="font-mono text-xs">ta_fa_analysis.py:276–284, 432, 565</span></li>
+  </ul>
+</section>
+
+<section id="candidates" class="space-y-16">
+
+<!-- ============ 1 ============ -->
+<article id="c1" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">01 · backend</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Strong</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">local-substitutable</span>
+  </div>
+  <h2 class="font-serif text-3xl">Collapse job identity and result landing into one Job family module</h2>
+  <div class="font-mono text-sm text-slate-600 leading-6">
+    jobbus/job-bus.service.ts (deriveJobId) · jobbus/job-id-formats.ts · jobbus/job-result-helpers.ts · analysis/stock-analysis.upsert.ts · ipo/ipo.mapping.ts<br/>
+    analysis/{technical,fundamental}-analysis.store.ts · analysis/analysis-result.store.ts · disclosures/announcement-summary.store.ts · brief/market-brief.store.ts · ipo/prospectus-analysis.store.ts<br/>
+    ingestion/{klci,prospectus}-enqueue.service.ts (getQueue() leak)
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: every result goes to all 6 stores; ids defined in 4 places</p>
+      <pre class="mermaid">
+flowchart LR
+  W([Python worker]) -->|JobResult| JB[JobBus.onResult]
+  JB --> TA[TA store]
+  JB --> FA[FA store]
+  JB --> AR[analysis-result store]
+  JB --> AN[ann-summary store]
+  JB --> BR[brief store]
+  JB --> PR[prospectus store]
+  TA -.prefix sniff.-> IDF[job-id-formats x6 regex]
+  FA -.-> IDF
+  PR -.-> IPM[ipo.mapping]
+  DJ[deriveJobId switch] -.ta:SYM:1D:T05 ✗.-> BQ[(BullMQ)]
+  KE[klci-enqueue] -->|getQueue| BQ
+  PE[prospectus-enqueue] -->|getQueue| BQ
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class DJ,KE,PE leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After: one registry, one family per job name</p>
+      <div class="relative h-[300px] flex flex-col items-center justify-center gap-3">
+        <div class="text-xs text-slate-500">enqueue(job, env, {replaceFinished}) · onResult · onFailure</div>
+        <div class="w-full border-t-2 border-dashed border-slate-400"></div>
+        <div class="deep rounded-xl w-full p-4 space-y-3 border-4 border-slate-900">
+          <div class="lbl text-slate-300">JobFamily registry</div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded border border-slate-600 p-2">StockAnalysisFamily<br/><span class="text-slate-400">kind: ta | fa</span></div>
+            <div class="rounded border border-slate-600 p-2">ProspectusFamily</div>
+            <div class="rounded border border-slate-600 p-2">BriefFamily</div>
+            <div class="rounded border border-slate-600 p-2">AnnouncementSummaryFamily</div>
+          </div>
+          <div class="text-[11px] text-slate-400">each family: bullId(env) · parseResultId(id) · land(result, tx) · fail(f)</div>
+        </div>
+        <div class="w-full border-t-2 border-dashed border-slate-400"></div>
+        <div class="flex gap-3 text-xs"><span class="px-2 py-1 border rounded bg-white">BullMQ adapter</span><span class="px-2 py-1 border rounded bg-white">InMemoryJobBus adapter</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> A job family's identity (bull id, result id, store prefix, Python prefix) is spread across about 9 shallow modules. The broken TA/FA bull id stayed hidden because the parsers are tested on their own while the call site is not.</p>
+  <p><b>Solution.</b> Add one <code>JobFamily</code> per job name that owns its id formats, result landing and failure. JobBus dispatches each result to exactly one family, and TA and FA merge into one parameterised family.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>Locality: one place per job identity</li>
+    <li>About 950 lines down to about 450</li>
+    <li>Delete 2 pass-through modules</li>
+    <li>Second adapter makes the JobBus seam real</li>
+    <li>Tests: id passes BullMQ validation and round-trips</li>
+    <li><code>getQueue()</code> leak removed from ingestion</li>
+  </ul>
+</article>
+
+<!-- ============ 2 ============ -->
+<article id="c2" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">02 · AI worker</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Strong</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">in-process</span>
+  </div>
+  <h2 class="font-serif text-3xl">One job pipeline module; Handlers become specs</h2>
+  <div class="font-mono text-sm text-slate-600">services/ai/src/tuju_ai/handler.py (581) · ta_fa_analysis.py (623) · graph.py (dead, 80)</div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-3">Before: the same 9-step sequence written out by hand 5 times (6 counting the dead stub)</p>
+      <div class="grid grid-cols-5 gap-1 text-[10px] text-center">
+        <div class="lbl text-slate-500">brief</div><div class="lbl text-slate-500">ann</div><div class="lbl text-slate-500">prosp</div><div class="lbl text-slate-500">TA</div><div class="lbl text-slate-500">FA</div>
+      </div>
+      <div class="grid grid-cols-5 gap-1 text-[9px] leading-tight">
+        <div class="space-y-1">
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">validate</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">log+bucket</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">jobId</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">progress</div>
+          <div class="h-12 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center font-semibold">work</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">put S3</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">JobResult</div>
+        </div>
+        <div class="space-y-1">
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">validate</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">log+bucket</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">jobId</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">progress</div>
+          <div class="h-12 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center font-semibold">work</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">put S3</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">JobResult</div>
+        </div>
+        <div class="space-y-1">
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">validate</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">log+bucket</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">jobId</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">progress</div>
+          <div class="h-12 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center font-semibold">work</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">put S3</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">JobResult</div>
+        </div>
+        <div class="space-y-1">
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">validate</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">log+bucket</div>
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">"technical:"</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">progress</div>
+          <div class="h-12 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center font-semibold">work</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">put S3</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">JobResult</div>
+        </div>
+        <div class="space-y-1">
+          <div class="h-6 rounded bg-red-100 border border-red-300 flex items-center justify-center">validate</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">log+bucket</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">jobId</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">progress</div>
+          <div class="h-12 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center font-semibold">work</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">put S3</div>
+          <div class="h-6 rounded bg-slate-200 flex items-center justify-center">JobResult</div>
+        </div>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-3">Also: a circular import (<code>ta_fa_analysis</code> ↔ <code>handler</code>), schema versions written as literals, and copies of the "404 → Terminal" mapping.</p>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-3">After: run_job(spec, raw, deps)</p>
+      <div class="deep rounded-xl p-4 border-4 border-slate-900">
+        <div class="lbl text-slate-300 mb-2">jobs/pipeline · run_job</div>
+        <div class="space-y-1 text-[10px] text-slate-400">
+          <div class="rounded border border-slate-600 px-2 py-1">validate envelope → TerminalJobError</div>
+          <div class="rounded border border-slate-600 px-2 py-1">progress plan from spec.phases (monotonic, ends "done")</div>
+          <div class="rounded border border-slate-600 px-2 py-1">artifact contract check before write</div>
+          <div class="rounded border border-slate-600 px-2 py-1">claim-check + JobResult + error mapping</div>
+        </div>
+      </div>
+      <div class="border-t-2 border-dashed border-slate-400 my-3"></div>
+      <div class="grid grid-cols-5 gap-1 text-[10px] text-center">
+        <div class="h-14 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center">brief<br/>spec</div>
+        <div class="h-14 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center">ann<br/>spec</div>
+        <div class="h-14 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center">prosp<br/>spec</div>
+        <div class="h-14 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center">TA<br/>spec</div>
+        <div class="h-14 rounded bg-emerald-200 border border-emerald-400 flex items-center justify-center">FA<br/>spec</div>
+      </div>
+      <p class="text-[11px] text-slate-500 mt-2">A JobSpec has: envelope_model · job_id · phases · work() · artifact_model · key</p>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> Every Handler re-implements validate → work → Claim-check → <code>JobResult</code> → progress, and the copies have already drifted (job id prefixes, schema versions, <code>_now</code>/<code>_progress</code> defined twice).</p>
+  <p><b>Solution.</b> Move that sequence into one pipeline module. Each Handler becomes a <code>JobSpec</code> whose only job-specific code is <code>work()</code>.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>Leverage: next job type = one spec</li>
+    <li>Pipeline invariants tested once</li>
+    <li>Net about −500 lines</li>
+    <li>Delete dead <code>graph.py</code> and stub</li>
+    <li>Circular import goes away</li>
+    <li>Duplicated tests across 3 files collapse</li>
+  </ul>
+  <div class="rounded-md bg-amber-50 border border-amber-300 text-amber-900 text-sm px-3 py-2">ADR-0003 describes a "LangGraph stub", but nothing uses it any more. Deleting <code>graph.py</code> only needs a <code>CONTEXT.md</code> edit, not an ADR reversal.</div>
+</article>
+
+<!-- ============ 3 ============ -->
+<article id="c3" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">03 · AI worker</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">Strong</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">ports &amp; adapters</span>
+  </div>
+  <h2 class="font-serif text-3xl">One LLM runtime and one structured-call module</h2>
+  <div class="font-mono text-sm text-slate-600">ta_fa_analysis.py (_get_llm_client, _narrate_with_grounding_retry, check_grounding) · prospectus/analysis.py (_complete_validated, extract_json) · prospectus/job.py (ProspectusRuntime) · llm/cost.py · worker.py · tests/conftest.py</div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: two retry loops, two ways to build the LLM client</p>
+      <pre class="mermaid">
+flowchart TB
+  S[Settings] --> WK[worker.run]
+  WK --> PRT[ProspectusRuntime]
+  PRT --> CV["_complete_validated<br/>fences ok · tiered retries"]
+  ENV[(os.environ)] -.direct read.-> GLC[_get_llm_client]
+  GLC -.test-key branch.-> FK[FakeLLMClient]
+  GLC --> NG["_narrate_with_grounding_retry<br/>bare json.loads · 2 tries · grounding"]
+  CF[conftest autouse] -.monkeypatch private.-> GLC
+  CV --> P1[[LLMClient]]
+  NG --> P1
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class ENV,GLC,CF leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After</p>
+      <div class="h-[300px] flex flex-col justify-center gap-3">
+        <div class="text-xs text-slate-500 text-center">ask(runtime, step, messages, schema, validators=[grounded(facts), no_advice()])</div>
+        <div class="border-t-2 border-dashed border-slate-400"></div>
+        <div class="deep rounded-xl p-4 border-4 border-slate-900">
+          <div class="lbl text-slate-300 mb-2">llm/structured + LLMRuntime</div>
+          <div class="grid grid-cols-2 gap-1 text-[10px] text-slate-400">
+            <div class="rounded border border-slate-600 px-2 py-1">JSON extraction (fences)</div>
+            <div class="rounded border border-slate-600 px-2 py-1">corrective retry + echo</div>
+            <div class="rounded border border-slate-600 px-2 py-1">validator chain</div>
+            <div class="rounded border border-slate-600 px-2 py-1">cost ceiling per job kind</div>
+          </div>
+        </div>
+        <div class="border-t-2 border-dashed border-slate-400"></div>
+        <div class="flex justify-center gap-3 text-xs"><span class="px-2 py-1 border rounded bg-white">OpenRouterClient</span><span class="px-2 py-1 border rounded bg-white">FakeLLMClient</span></div>
+        <div class="text-[11px] text-slate-500 text-center">Built once in worker.run() and passed in through deps</div>
+      </div>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> The prospectus and TA/FA flows each have their own "LLM call with corrective retry", and they disagree on JSON tolerance, retry policy, grounding and cost behaviour. TA/FA also skip the configured runtime entirely, which is why a test-only branch sits in production code.</p>
+  <p><b>Solution.</b> Build one <code>LLMRuntime</code> from Settings and add one <code>ask()</code> that owns extraction, retry and validation. Grounding becomes a validator any job can opt into.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>The LLM seam already has two real adapters</li>
+    <li>Prospectus can opt into grounding</li>
+    <li>Delete the test-key branch</li>
+    <li>No autouse monkeypatch or env leaks</li>
+    <li>Tests: <code>ask()</code> plus Fake garbage replies</li>
+    <li>Also removes <code>ProspectusRuntime</code></li>
+  </ul>
+</article>
+
+<!-- ============ 4 ============ -->
+<article id="c4" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">04 · backend</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">local-substitutable</span>
+  </div>
+  <h2 class="font-serif text-3xl">Give read-cache keys and invalidation one owner</h2>
+  <div class="font-mono text-sm text-slate-600">cache/cache-keys.ts · cache/read-cache.service.ts · keys built by hand in stocks, disclosures, market, search, screener (×2), brief, ipo · ingestion/eod-ingest.service.ts · ingestion/purge.service.ts</div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: about 20 key templates in 8 files; writers invalidate (or don't) on their own</p>
+      <div class="relative h-[280px]">
+        <svg viewBox="0 0 400 280" class="w-full h-full">
+          <defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#dc2626"/></marker>
+          <marker id="ag" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#64748b"/></marker></defs>
+          <rect x="150" y="110" width="100" height="50" rx="6" fill="#fff" stroke="#94a3b8" stroke-width="2"/>
+          <text x="200" y="133" text-anchor="middle" font-size="11" fill="#334155">Redis</text>
+          <text x="200" y="148" text-anchor="middle" font-size="9" fill="#64748b">cache:*</text>
+          <g font-size="9" fill="#334155">
+            <rect x="5" y="10" width="80" height="22" fill="#fff" stroke="#cbd5e1"/><text x="45" y="25" text-anchor="middle">stocks ×5</text>
+            <rect x="5" y="60" width="80" height="22" fill="#fff" stroke="#cbd5e1"/><text x="45" y="75" text-anchor="middle">disclosures ×6</text>
+            <rect x="5" y="110" width="80" height="22" fill="#fff" stroke="#cbd5e1"/><text x="45" y="125" text-anchor="middle">market ×3</text>
+            <rect x="5" y="160" width="80" height="22" fill="#fff" stroke="#cbd5e1"/><text x="45" y="175" text-anchor="middle">screener ×2</text>
+            <rect x="5" y="210" width="80" height="22" fill="#fff" stroke="#cbd5e1"/><text x="45" y="225" text-anchor="middle">search</text>
+            <rect x="310" y="20" width="85" height="22" fill="#fff" stroke="#cbd5e1"/><text x="352" y="35" text-anchor="middle">eod sweep</text>
+            <rect x="310" y="80" width="85" height="22" fill="#fff" stroke="#cbd5e1"/><text x="352" y="95" text-anchor="middle">purge</text>
+            <rect x="310" y="140" width="85" height="22" fill="#fee2e2" stroke="#dc2626"/><text x="352" y="155" text-anchor="middle">ann-summary ✗</text>
+            <rect x="310" y="200" width="85" height="22" fill="#fee2e2" stroke="#dc2626"/><text x="352" y="215" text-anchor="middle">TA/FA store ✗</text>
+          </g>
+          <g stroke="#64748b" stroke-width="1" marker-end="url(#ag)">
+            <line x1="85" y1="21" x2="150" y2="115"/><line x1="85" y1="71" x2="150" y2="125"/><line x1="85" y1="121" x2="150" y2="135"/><line x1="85" y1="171" x2="150" y2="145"/><line x1="85" y1="221" x2="150" y2="155"/>
+            <line x1="310" y1="31" x2="250" y2="115"/><line x1="310" y1="91" x2="250" y2="125"/>
+          </g>
+          <g stroke="#dc2626" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#ar)">
+            <line x1="310" y1="151" x2="250" y2="140"/><line x1="310" y1="211" x2="250" y2="152"/>
+          </g>
+          <text x="200" y="270" text-anchor="middle" font-size="9" fill="#dc2626">red = writes data but leaves the cached read stale</text>
+        </svg>
+      </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After: callers name domain reads and domain changes, never key strings</p>
+      <div class="h-[280px] flex flex-col justify-center gap-3">
+        <div class="grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+          <div class="px-2 py-1 border rounded bg-white text-center">readers: remember(domainKey)</div>
+          <div class="px-2 py-1 border rounded bg-white text-center">writers: onDataChanged(event)</div>
+        </div>
+        <div class="border-t-2 border-dashed border-slate-400"></div>
+        <div class="deep rounded-xl p-4 border-4 border-slate-900">
+          <div class="lbl text-slate-300 mb-2">ReadModelCache</div>
+          <div class="text-[10px] text-slate-400 font-mono leading-5">announcementSummarised → disclosures:*, stocks:{code}:announcements:*<br/>stockAnalysisLanded → stocks:{code}:technical-analysis<br/>eodIngested → sweepAll</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p><b>Problem.</b> Key formats and the rules for what to invalidate are spread across every reader and writer. The async result writers miss their own keys, so fresh AI output sits behind a stale cache for 1–24h.</p>
+  <p><b>Solution.</b> Add one module that maps domain reads to keys and domain change events to invalidations.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>Locality: freshness rules live in one table</li>
+    <li>Test once: "after event X, Y misses"</li>
+    <li>Pairs with Job family <code>land()</code></li>
+    <li>Delete per-service key specs</li>
+  </ul>
+</article>
+
+<!-- ============ 5 ============ -->
+<article id="c5" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">05 · backend</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">ports &amp; adapters</span>
+  </div>
+  <h2 class="font-serif text-3xl">Source adapters report their own provenance; the Ingestion run module stops branching on it</h2>
+  <div class="font-mono text-sm text-slate-600">ingestion/eod-ingest.service.ts (984 lines, 15 deps) · data/adapters/adapter.interfaces.ts · demo-adapters.ts · yfinance/* · ingestion/ingestion-run.service.ts</div>
+
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: runNightly sees through the Source adapter seam</p>
+      <div class="space-y-1 text-xs">
+        <div class="h-9 border-l-4 border-slate-400 bg-white pl-2 flex items-center">runNightly (lines 148–378)</div>
+        <div class="h-9 border-l-4 border-red-500 bg-red-50 pl-2 flex items-center">if market.provenanceClass === Real ×4</div>
+        <div class="h-9 border-l-4 border-red-500 bg-red-50 pl-2 flex items-center">'YFinanceMarketDataAdapter' : 'Synthetic…' ternary</div>
+        <div class="h-9 border-l-4 border-red-500 bg-red-50 pl-2 flex items-center">collectFailureSummary(adapter: unknown)</div>
+        <div class="h-9 border-l-4 border-red-500 bg-red-50 pl-2 flex items-center">readAdapterDividends(adapter: unknown), only valid after fetchFundamentals()</div>
+        <div class="h-9 border-l-4 border-slate-400 bg-white pl-2 flex items-center">snapshot materialise loop ×2</div>
+        <div class="h-9 border-l-4 border-slate-400 bg-white pl-2 flex items-center">run names hardcoded: 'RssNewsAdapter' …</div>
+      </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After</p>
+      <div class="space-y-2 text-xs">
+        <div class="h-9 border-l-4 border-slate-400 bg-white pl-2 flex items-center">EodIngest = ordered list of steps</div>
+        <div class="deep rounded-lg p-3 border-4 border-slate-900">
+          <div class="lbl text-slate-300">Ingestion run · run(manager, adapter, persist)</div>
+          <div class="text-[10px] text-slate-400 mt-1">opens the run under the adapter's own name and provenance · persists · collects failures</div>
+        </div>
+        <div class="border-t-2 border-dashed border-slate-400"></div>
+        <div class="text-[11px] text-slate-600">adapter.fetch() → { adapterName, provenance, rows, failures, dividends? }</div>
+        <div class="flex flex-wrap gap-2 text-[11px]"><span class="px-2 py-1 border rounded bg-white">Synthetic*</span><span class="px-2 py-1 border rounded bg-white">YFinance*</span><span class="px-2 py-1 border rounded bg-white faded">Licensed* (future)</span></div>
+      </div>
+    </div>
+  </div>
+  <p><b>Problem.</b> CONTEXT.md promises that swapping a Source adapter needs "no consumer change", but the ingestion code branches on provenance and duck-types yfinance internals. It also records hardcoded adapter names, so Ingestion run provenance will be wrong after any swap.</p>
+  <p><b>Solution.</b> Each adapter returns its own name, provenance and failures. A small Ingestion run module opens the run from those values and persists.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>Market and Fundamentals seams are already real (2 adapters each)</li>
+    <li>Provenance comes from the adapter, not a hardcoded string</li>
+    <li>Removes the hidden fetch ordering</li>
+    <li>Restores DY's single dividend source</li>
+  </ul>
+</article>
+
+<!-- ============ 6 ============ -->
+<article id="c6" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">06 · AI worker</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">local-substitutable + ports &amp; adapters</span>
+  </div>
+  <h2 class="font-serif text-3xl">Make At-a-glance analysis one deep module with its steps declared once</h2>
+  <div class="font-mono text-sm text-slate-600">handler.py (_handle_prospectus, _PROSPECTUS_STEPS, _STEP_INDEX, about 230 lines) · prospectus/analysis.py (458) · llm/fake.py (_CANNED) · prospectus/analysis_models.py · contracts/src/artifact.ts</div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: one step's identity lives in 4 places</p>
+      <pre class="mermaid">
+flowchart LR
+  STEP((new insight<br/>e.g. lock-up)) --> A[analysis.py<br/>STEP_* / LLM_STEPS]
+  STEP --> B[handler.py<br/>_PROSPECTUS_STEPS<br/>_STEP_INDEX]
+  STEP --> C[llm/fake.py<br/>_CANNED]
+  STEP --> D[analysis_models.py]
+  A -.forgot.-> E[derivedFrom list]
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#991b1b;
+  class E leak
+      </pre>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After</p>
+      <div class="h-[260px] flex flex-col justify-center gap-3">
+        <div class="text-xs text-slate-500 text-center">prospectus.analyze(reference, pdf, deps, on_progress) → ProspectusArtifact</div>
+        <div class="border-t-2 border-dashed border-slate-400"></div>
+        <div class="deep rounded-xl p-4 border-4 border-slate-900">
+          <div class="lbl text-slate-300 mb-2">At-a-glance analysis</div>
+          <div class="font-mono text-[10px] text-slate-400">STEPS = [Step(id, section|context_fn, model, label, phase), …]</div>
+          <div class="text-[10px] text-slate-400 mt-2">derived: progress plan · LLM_STEPS · derivedFrom · fake coverage check</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p><b>Problem.</b> The prospectus flow passes back and forth between handler and analysis, and the handler mutates the returned artifact. Adding a step means editing four lists by hand, and one of them has already drifted.</p>
+  <p><b>Solution.</b> One <code>analyze()</code> owns parse reuse, routing, steps, metadata and validation, driven by a single declarative step list.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>New insight = one Step entry</li>
+    <li>Parametrised test over STEPS</li>
+    <li>No monkeypatching <code>analyze_prospectus</code></li>
+    <li>Builds on #2 and #3</li>
+  </ul>
+</article>
+
+<!-- ============ 7 ============ -->
+<article id="c7" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">07 · contracts</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">Worth exploring</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">in-process (codegen)</span>
+  </div>
+  <h2 class="font-serif text-3xl">Generate job metadata across the contract seam, not just schemas</h2>
+  <div class="font-mono text-sm text-slate-600">packages/contracts/src/enums.ts · scripts/generate.mjs · services/ai/src/tuju_ai/config.py:13–33 · apps/backend/src/ipo/ipo.mapping.ts:17 · contracts_generated/models.py</div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before</p>
+      <div class="grid grid-cols-3 gap-2 text-[11px] text-center h-[180px] items-center">
+        <div class="border rounded bg-white p-2">enums.ts<br/>JobName</div>
+        <div class="border-2 border-red-400 rounded bg-red-50 p-2">config.py<br/>"mirror…" by hand</div>
+        <div class="border-2 border-red-400 rounded bg-red-50 p-2">backend<br/>'prospectus:' literal</div>
+        <div class="col-span-3 text-slate-500">Python <code>JobProgress.phase</code> = union of every phase, so a TA job may emit <code>'parsing-document'</code> and still pass validation (ADR-0007 §4 is not enforced)</div>
+      </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After</p>
+      <div class="h-[180px] flex flex-col justify-center gap-2 text-[11px]">
+        <div class="deep rounded-lg p-3 border-4 border-slate-900 text-center">JOBS registry {name, envelope, phaseEnum, resultIdPrefix, schemaVersion}</div>
+        <div class="grid grid-cols-2 gap-2 text-center"><div class="border rounded bg-white p-1">job_registry.py (generated)</div><div class="border rounded bg-white p-1">backend imports</div></div>
+      </div>
+    </div>
+  </div>
+  <p><b>Problem.</b> Job names and result-id prefixes are kept in step by hand across both worlds. The generator already emits <code>schema_versions.py</code> but stops short of these.</p>
+  <p><b>Solution.</b> Add one registry in <code>@tuju/contracts</code> and generate it for Python. The <code>contracts check</code> drift gate then covers job metadata as well. (This follows ADR-0014, it doesn't conflict with it.)</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>Drift becomes a CI failure</li>
+    <li>Per-job phase sets get enforced</li>
+    <li>Feeds #1 and #2 their ids</li>
+  </ul>
+</article>
+
+<!-- ============ 8 ============ -->
+<article id="c8" class="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 sm:p-8 space-y-6">
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="lbl text-slate-400">08 · backend</span>
+    <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-200 text-slate-700">Speculative</span>
+    <span class="px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">local-substitutable + mock S3</span>
+  </div>
+  <h2 class="font-serif text-3xl">A Stock analysis module that owns write, read and artifact proxying</h2>
+  <div class="font-mono text-sm text-slate-600">stocks/stocks.service.ts (585; 9+ repos) · stocks/stock-analysis-read.ts (140) · analysis/*-analysis.store.ts · ipo/ipo.service.ts:84 (second S3 proxy)</div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">Before: mass diagram (interface vs implementation)</p>
+      <div class="flex items-end gap-6 h-[180px] justify-center">
+        <div class="text-center text-[10px]"><div class="w-16 h-24 bg-red-200 border border-red-400"></div><div class="w-16 h-28 bg-slate-300 -mt-px"></div>StocksService</div>
+        <div class="text-center text-[10px]"><div class="w-16 h-14 bg-red-200 border border-red-400"></div><div class="w-16 h-16 bg-slate-300 -mt-px"></div>analysis-read</div>
+        <div class="text-center text-[10px]"><div class="w-16 h-10 bg-red-200 border border-red-400"></div><div class="w-16 h-12 bg-slate-300 -mt-px"></div>TA/FA store</div>
+      </div>
+    </div>
+    <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+      <p class="lbl text-slate-500 mb-2">After</p>
+      <div class="flex items-end justify-center h-[180px]">
+        <div class="text-center text-[10px]"><div class="w-28 h-6 bg-emerald-200 border border-emerald-500">status · artifact · markPending</div><div class="w-28 h-36 deep -mt-px"></div>StockAnalysis</div>
+      </div>
+    </div>
+  </div>
+  <p><b>Problem.</b> <code>StocksService</code> reads the TA/FA repositories directly and bypasses the stores. Stale promotion happens inside a 1h cache, so a stale result is itself cached as fresh.</p>
+  <p><b>Solution.</b> One module owns pending, ready, stale and failed for both writes and reads, plus the S3 artifact proxy shared with IPO.</p>
+  <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc pl-5">
+    <li>About 150 lines out of <code>StocksService</code></li>
+    <li>One proxy for both artifact kinds</li>
+    <li>Mostly comes for free after #1 and #4</li>
+  </ul>
+</article>
+</section>
+
+<section id="top-recommendation" class="rounded-2xl deep p-8 space-y-3">
+  <p class="lbl text-emerald-300">Top recommendation</p>
+  <h2 class="font-serif text-3xl text-white"><a href="#c1" class="underline decoration-emerald-400">01: the Job family module</a></h2>
+  <p class="text-slate-300 max-w-3xl">This is where the most churn and the only production-breaking bug meet: TA/FA enqueue is broken today because job identity is spread across 9 shallow modules and the call site is never tested. A Job family module fixes the bug where it lives, makes the JobBus seam real with a second adapter, and gives #4 (cache) and #8 (Stock analysis) a single <code>land()</code> to hook into. Before you start, rename the 9 <code>*.int.spec.ts</code> files so the integration tests that would catch this kind of bug actually run.</p>
+</section>
+
+</main>
+</body>
+</html>
