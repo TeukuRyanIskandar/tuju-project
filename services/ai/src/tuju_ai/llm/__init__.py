@@ -1,4 +1,10 @@
-"""LLM seam for the prospectus analysis (spec 06, ticket 05)."""
+"""LLM seam (spec 06 ticket 05; architecture-deepening ticket 03).
+
+* :class:`LLMRuntime` — built once per worker; opens a metered
+  :class:`LLMSession` per job run.
+* :func:`ask` — the one structured call (JSON + schema + validators +
+  bounded corrective retry + cost guard).
+"""
 
 from .base import (
     LLMClient,
@@ -13,6 +19,14 @@ from .base import (
 from .cost import CostCeilingExceeded, CostTracker, load_price_table
 from .fake import FakeLLMClient
 from .openrouter import OpenRouterClient
+from .runtime import LLMRuntime, LLMSession
+from .structured import (
+    MalformedModelOutput,
+    OutputRejected,
+    StructuredCallFailed,
+    ask,
+    extract_json,
+)
 
 __all__ = [
     "CostCeilingExceeded",
@@ -23,9 +37,16 @@ __all__ = [
     "LLMError",
     "LLMPermanentError",
     "LLMResponse",
+    "LLMRuntime",
+    "LLMSession",
     "LLMTransientError",
+    "MalformedModelOutput",
     "Message",
     "OpenRouterClient",
+    "OutputRejected",
+    "StructuredCallFailed",
     "Usage",
+    "ask",
+    "extract_json",
     "load_price_table",
 ]

@@ -10,28 +10,28 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
-# Queue + job names — mirror packages/contracts/src/enums.ts (ADR-0007 §1).
-QUEUE_ANALYSIS = "analysis"
-JOB_ANALYZE_TECHNICAL = "analyze-technical"
-JOB_ANALYZE_FUNDAMENTAL = "analyze-fundamental"
-# Spec-06 system-triggered showcase jobs (free-tier-ai-showcase, tickets 02/03).
-JOB_GENERATE_MARKET_BRIEF = "generate-market-brief"
-JOB_SUMMARIZE_ANNOUNCEMENT = "summarize-announcement"
-# Flagship prospectus at-a-glance (ticket 05).
-JOB_ANALYZE_PROSPECTUS = "analyze-prospectus"
+# Queue + job names, and the `JobResult.jobId` prefixes the worker mints
+# (ADR-0007 §1, §2) — generated from packages/contracts/src/job-registry.ts
+# (architecture-deepening ticket 07). Re-exported under the historical names so
+# call sites keep importing from here.
+#
+# The BullMQ dedup id is a separate hyphen form (`prospectus-{id}`, `brief-…`)
+# minted TS-side by each job family; only the colon form lives in the registry.
+from .contracts_generated.job_registry import (
+    JOB_ANALYZE_FUNDAMENTAL,
+    JOB_ANALYZE_PROSPECTUS,
+    JOB_ANALYZE_TECHNICAL,
+    JOB_GENERATE_MARKET_BRIEF,
+    JOB_SUMMARIZE_ANNOUNCEMENT,
+    JOBS,
+    QUEUE_ANALYSIS,
+)
 
-# `JobResult.jobId` prefixes the worker mints (ADR-0007 §2).
-# Mirrors stock-analysis.upsert.ts for PoC TA/FA analysis jobs.
-TECHNICAL_JOB_RESULT_PREFIX = "technical:"
-FUNDAMENTAL_JOB_RESULT_PREFIX = "fundamental:"
-# Spec-06 showcase jobs (tickets 02/03).
-MARKET_BRIEF_JOB_ID_PREFIX = "brief:"
-ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = "ann:"
-# Prospectus at-a-glance (ticket 05): `prospectus:{IpoListing.id}`. The BullMQ
-# dedup id is the hyphen form `prospectus-{id}` minted TS-side
-# (`JobBus.deriveJobId`) — same intentional split as `brief-`/`brief:` above;
-# the TS half is NOT implemented here.
-PROSPECTUS_JOB_ID_PREFIX = "prospectus:"
+TECHNICAL_JOB_RESULT_PREFIX = JOBS[JOB_ANALYZE_TECHNICAL].result_id_prefix
+FUNDAMENTAL_JOB_RESULT_PREFIX = JOBS[JOB_ANALYZE_FUNDAMENTAL].result_id_prefix
+MARKET_BRIEF_JOB_ID_PREFIX = JOBS[JOB_GENERATE_MARKET_BRIEF].result_id_prefix
+ANNOUNCEMENT_SUMMARY_JOB_ID_PREFIX = JOBS[JOB_SUMMARIZE_ANNOUNCEMENT].result_id_prefix
+PROSPECTUS_JOB_ID_PREFIX = JOBS[JOB_ANALYZE_PROSPECTUS].result_id_prefix
 
 # --- LLM defaults (ticket 05) ------------------------------------------------
 # OpenRouter's free-tier router (prospectus-v2 T04): $0/call, ~200K context,
@@ -41,6 +41,9 @@ DEFAULT_LLM_BASE_URL = "https://openrouter.ai/api/v1"
 # Per-document spend ceiling (spec 06: ~$2/doc). A run that would cross it is
 # aborted as a terminal failure (see tuju_ai.llm.cost).
 DEFAULT_COST_CEILING_USD = 2.0
+# Per-job spend ceiling for one TA/FA narration (poc-phase-a-worker ticket 06).
+# Crossing it degrades the run to facts-only rather than failing it.
+DEFAULT_NARRATION_COST_CEILING_USD = 0.10
 # BullMQ lock duration for the worker. analyze-prospectus runs for minutes
 # (sequential LLM calls; free-tier models are slow); the handler runs in a
 # thread so the lock-renewal task keeps ticking (renewed every lockDuration/2),
@@ -78,6 +81,7 @@ class Settings:
     # {"vendor/model": {"input": <USD/Mtok>, "output": <USD/Mtok>, "cachedInput": <USD/Mtok>}}
     llm_price_table_json: str | None = None
     cost_ceiling_usd: float = DEFAULT_COST_CEILING_USD
+    narration_cost_ceiling_usd: float = DEFAULT_NARRATION_COST_CEILING_USD
     worker_lock_duration_ms: int = DEFAULT_WORKER_LOCK_DURATION_MS
 
     @staticmethod
@@ -101,6 +105,10 @@ class Settings:
             llm_price_table_json=os.environ.get("LLM_PRICE_TABLE_JSON") or None,
             cost_ceiling_usd=float(
                 os.environ.get("LLM_COST_CEILING_USD") or DEFAULT_COST_CEILING_USD
+            ),
+            narration_cost_ceiling_usd=float(
+                os.environ.get("LLM_NARRATION_COST_CEILING_USD")
+                or DEFAULT_NARRATION_COST_CEILING_USD
             ),
             worker_lock_duration_ms=int(
                 os.environ.get("WORKER_LOCK_DURATION_MS")

@@ -3,7 +3,7 @@
 NEVER touches the network. Recognises the analysis step from the ``[step:<id>]``
 marker the prompts carry and returns canned, schema-valid JSON. The what-to-watch
 reduce is derived from the section outputs embedded in its prompt, so tests can
-prove the reduce really consumed the other four sections.
+prove the reduce really consumed the section outputs it was handed.
 
 Knobs for failure-mode tests:
 
