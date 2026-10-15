@@ -1,18 +1,23 @@
-"""Prospectus at-a-glance LLM analysis (spec 06, ticket 05).
+"""Prospectus at-a-glance analysis: one deep module (spec 06 ticket 05;
+architecture-deepening ticket 06).
 
-Input: ticket 04's routed sections (+ the parse, for cornerstone excerpts) and
-the IPO reference row. Output: ONE rich JSON artifact (opaque to the wire
-contract) holding the five sections and the two Bursa insights:
+:func:`analyze` takes the IPO reference row and the PDF bytes and returns the
+complete artifact (opaque to the queue; validated against the generated
+``ProspectusArtifact`` by the job pipeline before the S3 write). It owns parse
+reuse (:func:`~.store.ensure_parse`), routing, every LLM step, and the
+metadata (routing records, parse/timing info, provenance, cost).
 
-1. ``offer``        — shares / price range / use of proceeds      (LLM, section)
-2. ``business``     — the business in 3 lines                     (LLM, section)
-3. ``financials``   — key financials trend                       (LLM, section)
-4. ``riskFactors``  — risks ranked + themed                       (LLM, section)
-5. ``whatToWatch``  — a REDUCE over 1-4's structured outputs      (LLM, no doc)
+Every step's identity lives in ONE declarative list, :data:`STEPS`: its
+``[step:<id>]`` marker, progress label and phase, output model, where it lands
+in the artifact, which routed section it reads, and whether the what-to-watch
+reduce consumes it. The progress plan (:data:`PROGRESS_STEPS`),
+:data:`LLM_STEPS` and ``whatToWatch.derivedFrom`` are derived from it.
 
-Insights: ``shariah`` (NestJS ``ShariahStatus`` data; absent/unknown tolerated),
-``cornerstone`` (LLM-extracted from the prospectus text itself), and
-``lockup`` / ``relatedParty`` (LLM, routed sections like 1-4; prospectus-v2 T05).
+Sections: ``offer``, ``business``, ``financials``, ``riskFactors`` (LLM, routed
+section) and ``whatToWatch`` (LLM REDUCE over the structured outputs, not the
+document). Insights: ``shariah`` (NestJS ``ShariahStatus`` data; absent/unknown
+tolerated), ``cornerstone`` (LLM over cornerstone excerpts of the text), and
+``lockup`` / ``relatedParty`` (LLM, routed sections; prospectus-v2 T05).
 
 Design points
 -------------
@@ -22,28 +27,31 @@ Design points
 * Message order is shared-prefix-first (system → document context → task) so
   prompt caching (explicit ``cache_control`` or provider-implicit) applies to
   the long prefix, including on the bounded retry.
-* Every LLM reply is validated with pydantic; a malformed reply gets ONE
-  bounded retry (with the validation error fed back), then a clear
-  :class:`MalformedModelOutput` (terminal, ADR-0007 "worker-rejected bad
-  generation"). On a $0 model the bound is :data:`MAX_RETRIES_FREE` instead:
-  a retry costs nothing, and ``openrouter/free`` routes each call to a
-  possibly different model, so a bad reply is often not repeated.
+* Every LLM step is a :func:`tuju_ai.llm.structured.ask`: the reply is
+  validated with pydantic, a malformed reply gets the bounded corrective retry
+  (one on a paid model, more on a $0 one), then a clear
+  :class:`~tuju_ai.llm.structured.MalformedModelOutput` (terminal, ADR-0007
+  "worker-rejected bad generation"). Every call is metered by the session's
+  cost tracker, so the per-document ceiling is enforced mid-run.
 * The prospectus text is untrusted data: the system prompt instructs the
   model to ignore instructions inside it.
-* Every call goes through the :class:`~tuju_ai.llm.cost.CostTracker` so the
-  per-document ceiling is enforced mid-run.
 """
 
 from __future__ import annotations
 
 import json
+import time
+from contextlib import nullcontext
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, ContextManager, Literal, Protocol
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
+from ..artifacts import ArtifactStore
 from ..contracts_generated import SCHEMA_VERSIONS
-from ..llm import CostTracker, LLMClient, Message
+from ..errors import TerminalJobError
+from ..llm import LLMSession, Message, ask
 from .analysis_models import (
     BusinessOutput,
     CornerstoneOutput,
@@ -57,6 +65,8 @@ from .analysis_models import (
 )
 from .budget import Fitted, cornerstone_context, fit_section
 from .models import ProspectusParse, ProspectusSection, RoutedSection
+from .router import route_sections
+from .store import ParseFn, ensure_parse
 
 PROVENANCE_SOURCE = "real"  # the one showcase artifact on real, licence-safe data
 
@@ -69,30 +79,10 @@ STEP_CORNERSTONE = "cornerstone-investors"
 STEP_LOCKUP = "lockup"
 STEP_RELATED_PARTY = "related-party"
 STEP_WATCH = "what-to-watch"
-# Order the handler reports progress in.
-LLM_STEPS = (
-    STEP_OFFER,
-    STEP_BUSINESS,
-    STEP_FINANCIALS,
-    STEP_RISKS,
-    STEP_CORNERSTONE,
-    STEP_LOCKUP,
-    STEP_RELATED_PARTY,
-    STEP_WATCH,
-)
 
 MAX_TOKENS_SECTION = 3000
 MAX_TOKENS_WATCH = 1500
-MAX_RAW_ECHO_CHARS = 2000  # how much of a bad reply is echoed back on retry
-MAX_RETRIES = 1  # malformed-reply retries on a paid model (ADR-0007)
-MAX_RETRIES_FREE = 3  # ... and on a $0 model (prospectus-v2 T04 live run)
 
-T = TypeVar("T", bound=BaseModel)
-StepCallback = Callable[[str], None]
-
-
-class MalformedModelOutput(Exception):
-    """The model's reply stayed invalid after the bounded retries."""
 
 
 SYSTEM_PROMPT = """\
@@ -168,9 +158,7 @@ substantial shareholders, or persons connected to them). JSON shape:
 "basis" is whether the prospectus states it is on arm's length terms. At most \
 8 items, largest first. Set "present" to false and "items" to [] if the text \
 names no related-party transactions.""",
-}
-
-_WATCH_TASK = """\
+    STEP_WATCH: """\
 You are given the structured analysis of the four main sections of one IPO \
 prospectus, plus its lock-up and related-party insights (SECTION_OUTPUTS \
 above). Do NOT assume anything beyond them. \
@@ -181,64 +169,8 @@ monitor after reading this prospectus. JSON shape:
             "offer"|"business"|"financials"|"risk-factors"|"lockup"|
             "related-party"}]}
 "headline" is ONE sentence (under 160 characters) naming the single most \
-important thing to watch. 3-5 items. No verdict, no recommendation."""
-
-
-# --- JSON handling ----------------------------------------------------------
-
-
-def extract_json(text: str) -> Any:
-    """Parse a JSON object out of an LLM reply (tolerates fences / stray prose)."""
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.strip("`")
-        if stripped.lower().startswith("json"):
-            stripped = stripped[4:]
-        stripped = stripped.strip()
-    try:
-        return json.loads(stripped)
-    except json.JSONDecodeError:
-        start, end = stripped.find("{"), stripped.rfind("}")
-        if start == -1 or end <= start:
-            raise
-        return json.loads(stripped[start : end + 1])
-
-
-def _complete_validated(
-    *,
-    client: LLMClient,
-    tracker: CostTracker,
-    step: str,
-    messages: list[Message],
-    model: type[T],
-    max_tokens: int,
-) -> T:
-    """One guarded call, validated; bounded retries on malformed output
-    (:data:`MAX_RETRIES`, or :data:`MAX_RETRIES_FREE` on a $0 model)."""
-    retries = MAX_RETRIES_FREE if tracker.free else MAX_RETRIES
-    last_error = ""
-    convo = list(messages)
-    for attempt in range(1, retries + 2):
-        response = tracker.call(client, step, convo, max_tokens=max_tokens)
-        try:
-            return model.model_validate(extract_json(response.text))
-        except (ValueError, ValidationError) as exc:  # JSONDecodeError ⊂ ValueError
-            last_error = str(exc).splitlines()[0][:300] if str(exc) else repr(exc)
-            if attempt == retries + 1:
-                break
-            convo = messages + [
-                Message("assistant", response.text[:MAX_RAW_ECHO_CHARS]),
-                Message(
-                    "user",
-                    f"[step:{step}] Your previous reply could not be used "
-                    f"({last_error}). Reply again with ONLY the JSON object in "
-                    "the requested shape.",
-                ),
-            ]
-    raise MalformedModelOutput(
-        f"step {step!r}: the model's reply was still invalid after "
-        f"{retries} retr{'y' if retries == 1 else 'ies'} ({last_error})"
-    )
+important thing to watch. 3-5 items. No verdict, no recommendation.""",
+}
 
 
 # --- prompt assembly ----------------------------------------------------------
@@ -256,6 +188,7 @@ def _company_line(ref: IpoReference) -> str:
 def _section_messages(
     step: str, ref: IpoReference, section: str, fitted: Fitted, located: bool
 ) -> list[Message]:
+    """System prefix → the step's document context → the task."""
     origin = (
         f"the routed '{section}' section"
         if located
@@ -278,10 +211,6 @@ def _section_messages(
     ]
 
 
-def _dump(model: BaseModel) -> dict[str, Any]:
-    return model.model_dump(mode="json")
-
-
 # --- shariah ------------------------------------------------------------------
 
 
@@ -299,6 +228,111 @@ def shariah_insight(ref: IpoReference) -> dict[str, Any]:
     }
 
 
+# --- the steps ------------------------------------------------------------------
+
+Slot = tuple[Literal["sections", "insights"], str]
+
+
+@dataclass(frozen=True)
+class Step:
+    """One LLM step of the analysis.
+
+    * ``id`` — the ``[step:<id>]`` marker, the cost-report step, the fake's key;
+    * ``label`` / ``phase`` — its progress event (phase from the job registry);
+    * ``output`` — the pydantic model its reply must validate against;
+    * ``slot`` — where it lands: ``sections`` entries are
+      ``{routing, data}``, ``insights`` entries are ``{**data, **metadata}``;
+    * ``source`` — what it reads: a routed section, the cornerstone excerpts of
+      the whole parse, or (``"reduce"``) the outputs of every ``feeds_watch`` step;
+    * ``feeds_watch`` — its output goes into the what-to-watch reduce.
+    """
+
+    id: str
+    label: str
+    output: type[BaseModel]
+    slot: Slot
+    source: ProspectusSection | Literal["cornerstone", "reduce"]
+    feeds_watch: bool = False
+    phase: str = "analyzing-sections"
+
+    @property
+    def task(self) -> str:
+        return _TASKS[self.id]
+
+    @property
+    def max_tokens(self) -> int:
+        return MAX_TOKENS_WATCH if self.source == "reduce" else MAX_TOKENS_SECTION
+
+
+# Order = run order = progress order. The reduce runs last over the outputs of
+# every `feeds_watch` step.
+STEPS: tuple[Step, ...] = (
+    Step(STEP_OFFER, "Analyzing offer details", OfferOutput,
+         ("sections", "offer"), ProspectusSection.OFFER, feeds_watch=True),
+    Step(STEP_BUSINESS, "Summarizing the business", BusinessOutput,
+         ("sections", "business"), ProspectusSection.BUSINESS, feeds_watch=True),
+    Step(STEP_FINANCIALS, "Reading financials", FinancialsOutput,
+         ("sections", "financials"), ProspectusSection.FINANCIALS, feeds_watch=True),
+    Step(STEP_RISKS, "Ranking risk factors", RiskOutput,
+         ("sections", "riskFactors"), ProspectusSection.RISK_FACTORS, feeds_watch=True),
+    Step(STEP_CORNERSTONE, "Finding cornerstone investors", CornerstoneOutput,
+         ("insights", "cornerstone"), "cornerstone"),
+    Step(STEP_LOCKUP, "Checking share lock-ups", LockupOutput,
+         ("insights", "lockup"), ProspectusSection.LOCKUP, feeds_watch=True),
+    Step(STEP_RELATED_PARTY, "Reviewing related-party transactions", RelatedPartyOutput,
+         ("insights", "relatedParty"), ProspectusSection.RELATED_PARTY, feeds_watch=True),
+    Step(STEP_WATCH, "Synthesizing what to watch", WatchOutput,
+         ("sections", "whatToWatch"), "reduce", phase="synthesizing-watchlist"),
+)
+LLM_STEPS = tuple(s.id for s in STEPS)
+PARSE_STEP = ("parsing-document", "Parsing document")
+# The progress steps :func:`analyze` advances through, in order.
+PROGRESS_STEPS: tuple[tuple[str, str], ...] = (
+    PARSE_STEP,
+    *((s.phase, s.label) for s in STEPS),
+)
+# The reduce's inputs that are artifact SECTIONS. The contract pins
+# `whatToWatch.derivedFrom` to exactly these four; the lock-up and related-party
+# INSIGHTS the reduce also reads cannot be listed without a contract change.
+WATCH_DERIVED_FROM = [s.slot[1] for s in STEPS if s.feeds_watch and s.slot[0] == "sections"]
+
+
+# --- dependencies -------------------------------------------------------------------
+
+
+class Progress(Protocol):
+    """Where :func:`analyze` reports progress (the job's ``JobContext``)."""
+
+    def advance(self, label: str | None = None) -> None: ...
+
+    def heartbeat(self) -> ContextManager[None]: ...
+
+
+class _NoProgress:
+    def advance(self, label: str | None = None) -> None:
+        pass
+
+    def heartbeat(self) -> ContextManager[None]:
+        return nullcontext()
+
+
+NO_PROGRESS: Progress = _NoProgress()
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+@dataclass(frozen=True)
+class AnalysisDeps:
+    """``llm`` meters the run; ``parse_cache`` holds the reusable parse (S3)."""
+
+    llm: LLMSession
+    parse_fn: ParseFn
+    parse_cache: ArtifactStore
+    now: Callable[[], datetime] = _utcnow
+
+
 # --- orchestration --------------------------------------------------------------
 
 
@@ -313,124 +347,128 @@ def _routing_record(routed: RoutedSection, fitted: Fitted) -> dict[str, Any]:
     }
 
 
-def analyze_prospectus(
+def _run_step(
+    step: Step,
     *,
-    prospectus_id: str,
     reference: IpoReference,
     parse: ProspectusParse,
     routed: dict[ProspectusSection, RoutedSection],
-    client: LLMClient,
-    tracker: CostTracker,
-    on_step: StepCallback | None = None,
-    now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
-) -> dict[str, Any]:
-    """Run the five sections + four insights; return the rich artifact dict.
-
-    ``on_step(step_id)`` fires BEFORE each LLM step (progress hook).
-    """
-    notify = on_step or (lambda _step: None)
-
-    def section_call(
-        step: str, section: ProspectusSection, model: type[T]
-    ) -> tuple[T, dict[str, Any]]:
-        notify(step)
-        r = routed[section]
-        fitted = fit_section(section.value, r.content, located=r.located)
-        out = _complete_validated(
-            client=client,
-            tracker=tracker,
-            step=step,
-            messages=_section_messages(step, reference, section.value, fitted, r.located),
-            model=model,
-            max_tokens=MAX_TOKENS_SECTION,
-        )
-        return out, _routing_record(r, fitted)
-
-    offer, offer_routing = section_call(STEP_OFFER, ProspectusSection.OFFER, OfferOutput)
-    business, business_routing = section_call(
-        STEP_BUSINESS, ProspectusSection.BUSINESS, BusinessOutput
-    )
-    financials, fin_routing = section_call(
-        STEP_FINANCIALS, ProspectusSection.FINANCIALS, FinancialsOutput
-    )
-    risks, risk_routing = section_call(
-        STEP_RISKS, ProspectusSection.RISK_FACTORS, RiskOutput
-    )
-
-    # Insight: cornerstone investors, extracted from the text itself. No LLM
-    # call when the document never mentions them.
-    notify(STEP_CORNERSTONE)
-    ctx = cornerstone_context(parse)
-    if ctx is None:
-        cornerstone = CornerstoneOutput(
-            present=False,
-            investors=[],
-            summary="The prospectus text does not mention cornerstone investors.",
-        )
-        cornerstone_meta: dict[str, Any] = {"inputChars": 0, "truncated": False, "llmCalled": False}
-    else:
-        cornerstone = _complete_validated(
-            client=client,
-            tracker=tracker,
-            step=STEP_CORNERSTONE,
-            messages=_section_messages(
-                STEP_CORNERSTONE, reference, "cornerstone excerpts", ctx, located=True
-            ),
-            model=CornerstoneOutput,
-            max_tokens=MAX_TOKENS_SECTION,
-        )
-        cornerstone_meta = {
-            "inputChars": ctx.input_chars,
-            "truncated": ctx.truncated,
-            "llmCalled": True,
-        }
-
-    # Insights: lock-up and related-party transactions, routed like 1-4
-    # (whole-document fallback when their heading is not found).
-    lockup, lockup_routing = section_call(
-        STEP_LOCKUP, ProspectusSection.LOCKUP, LockupOutput
-    )
-    related, related_routing = section_call(
-        STEP_RELATED_PARTY, ProspectusSection.RELATED_PARTY, RelatedPartyOutput
-    )
-
-    # Section 5: REDUCE over the structured outputs above — not the doc.
-    notify(STEP_WATCH)
-    section_outputs = {
-        "offer": _dump(offer),
-        "business": _dump(business),
-        "financials": _dump(financials),
-        "riskFactors": _dump(risks),
-        "lockup": _dump(lockup),
-        "relatedParty": _dump(related),
-    }
-    watch = _complete_validated(
-        client=client,
-        tracker=tracker,
-        step=STEP_WATCH,
-        messages=[
+    watch_inputs: dict[str, dict[str, Any]],
+    llm: LLMSession,
+) -> tuple[BaseModel, dict[str, Any]]:
+    """One step → (validated output, its metadata for the artifact)."""
+    if step.source == "reduce":
+        # REDUCE over the structured outputs above — never the document.
+        messages = [
             Message("system", SYSTEM_PROMPT, cache=True),
             Message(
                 "user",
                 f"{_company_line(reference)}\n\nSECTION_OUTPUTS:\n"
-                + json.dumps(section_outputs, ensure_ascii=False),
+                + json.dumps(watch_inputs, ensure_ascii=False),
             ),
-            Message("user", f"[step:{STEP_WATCH}]\n{_WATCH_TASK}"),
-        ],
-        model=WatchOutput,
-        max_tokens=MAX_TOKENS_WATCH,
-    )
+            Message("user", f"[step:{step.id}]\n{step.task}"),
+        ]
+        out = ask(llm, step.id, messages, step.output, max_tokens=step.max_tokens)
+        return out, {"derivedFrom": list(WATCH_DERIVED_FROM)}
 
+    if step.source == "cornerstone":
+        # Extracted from the text itself, wherever it mentions cornerstones.
+        # No LLM call when the document never mentions them.
+        ctx = cornerstone_context(parse)
+        if ctx is None:
+            out = CornerstoneOutput(
+                present=False,
+                investors=[],
+                summary="The prospectus text does not mention cornerstone investors.",
+            )
+            return out, {"inputChars": 0, "truncated": False, "llmCalled": False}
+        messages = _section_messages(
+            step.id, reference, "cornerstone excerpts", ctx, located=True
+        )
+        out = ask(llm, step.id, messages, step.output, max_tokens=step.max_tokens)
+        return out, {"inputChars": ctx.input_chars, "truncated": ctx.truncated, "llmCalled": True}
+
+    # A routed section (whole-document fallback when its heading is not found).
+    r = routed[step.source]
+    fitted = fit_section(step.source.value, r.content, located=r.located)
+    messages = _section_messages(step.id, reference, step.source.value, fitted, r.located)
+    out = ask(llm, step.id, messages, step.output, max_tokens=step.max_tokens)
+    return out, {"routing": _routing_record(r, fitted)}
+
+
+def _place(step: Step, data: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+    group, _key = step.slot
+    if group == "sections":
+        return {**meta, "data": data}  # {routing|derivedFrom, data}
+    return {**data, **meta}
+
+
+def analyze(
+    prospectus_id: str,
+    reference: IpoReference,
+    pdf_bytes: bytes,
+    deps: AnalysisDeps,
+    progress: Progress = NO_PROGRESS,
+) -> dict[str, Any]:
+    """Parse (or reuse the parse), route, run :data:`STEPS`; return the artifact.
+
+    Advances ``progress`` through :data:`PROGRESS_STEPS` (heartbeating during
+    the parse). An unparseable PDF is terminal; LLM failures propagate as
+    :mod:`tuju_ai.llm` errors (``MalformedModelOutput``,
+    ``CostCeilingExceeded``, transport errors) for the caller to classify.
+    """
+    progress.advance()  # parsing-document
+    t_parse = time.perf_counter()
+    with progress.heartbeat():
+        try:
+            parse, parsed_now = ensure_parse(
+                artifact_store=deps.parse_cache,
+                prospectus_id=prospectus_id,
+                pdf_bytes=pdf_bytes,
+                parse_fn=deps.parse_fn,
+            )
+        except Exception as exc:  # deterministic on a given PDF ⇒ no retry
+            raise TerminalJobError(
+                f"Could not parse prospectus PDF for {prospectus_id!r}: {exc!r}"
+            ) from exc
+    routed = route_sections(parse)
+    parse_ms = int((time.perf_counter() - t_parse) * 1000)
+
+    t_analysis = time.perf_counter()
+    sections: dict[str, Any] = {}
+    insights: dict[str, Any] = {"shariah": shariah_insight(reference)}
+    watch_inputs: dict[str, dict[str, Any]] = {}
+    watch: WatchOutput | None = None
+    for step in STEPS:
+        progress.advance()
+        out, meta = _run_step(
+            step,
+            reference=reference,
+            parse=parse,
+            routed=routed,
+            watch_inputs=watch_inputs,
+            llm=deps.llm,
+        )
+        data = out.model_dump(mode="json")
+        group, key = step.slot
+        (sections if group == "sections" else insights)[key] = _place(step, data, meta)
+        if step.feeds_watch:
+            watch_inputs[key] = data
+        if isinstance(out, WatchOutput):
+            watch = out
+    assert watch is not None, "STEPS must end with the what-to-watch reduce"
+
+    tracker = deps.llm.tracker
     return {
-        "schemaVersion": SCHEMA_VERSIONS['prospectus'],
+        "schemaVersion": SCHEMA_VERSIONS["prospectus"],
         "prospectusId": prospectus_id,
         "provenance": {
             "source": PROVENANCE_SOURCE,
             "pdfSha256": parse.pdfSha256,
             # What actually answered: a router id (openrouter/free) can serve
             # each call from a different model.
-            "model": ", ".join(tracker.served_models()) or client.model,
-            "generatedAt": now().isoformat(),
+            "model": ", ".join(tracker.served_models()) or deps.llm.model,
+            "generatedAt": deps.now().isoformat(),
         },
         "company": {
             "name": reference.companyName,
@@ -438,21 +476,12 @@ def analyze_prospectus(
             "listingDate": reference.listingDate,
         },
         "headline": watch.headline,
-        "sections": {
-            "offer": {"routing": offer_routing, "data": _dump(offer)},
-            "business": {"routing": business_routing, "data": _dump(business)},
-            "financials": {"routing": fin_routing, "data": _dump(financials)},
-            "riskFactors": {"routing": risk_routing, "data": _dump(risks)},
-            "whatToWatch": {
-                "derivedFrom": ["offer", "business", "financials", "riskFactors"],
-                "data": _dump(watch),
-            },
-        },
-        "insights": {
-            "shariah": shariah_insight(reference),
-            "cornerstone": {**_dump(cornerstone), **cornerstone_meta},
-            "lockup": {**_dump(lockup), "routing": lockup_routing},
-            "relatedParty": {**_dump(related), "routing": related_routing},
-        },
+        "sections": sections,
+        "insights": insights,
         "cost": tracker.report(),
+        "parse": {"parsedNow": parsed_now, "reusedParse": not parsed_now},
+        "timing": {
+            "parseMs": parse_ms,
+            "analysisMs": int((time.perf_counter() - t_analysis) * 1000),
+        },
     }

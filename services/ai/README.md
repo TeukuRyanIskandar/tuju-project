@@ -1,6 +1,6 @@
 # tuju-ai
 
-Python + LangGraph AI worker for the Bursa platform.
+Python AI worker for the Bursa platform.
 
 **This is its own uv-managed world** — deliberately outside the pnpm workspace and
 the Turborepo task graph (ADR-0002). It talks to the rest of the system only through
@@ -14,7 +14,9 @@ A stateless job consumer:
 
 - **JobBus worker (ADR-0001):** consumes the `analysis` queue over Redis, connection
   URL by env (ADR-0006). Job names:
-  - `analyze-technical` / `analyze-fundamental` — LangGraph stub, placeholder artifact.
+  - `analyze-technical` / `analyze-fundamental` — reads the code-verified facts
+    (`GET /stocks/{symbol}/analysis/reference`) and narrates them under grounding
+    + no-advice checks; degrades to a facts-only artifact on cost/grounding exhaustion.
   - `generate-market-brief` — system-triggered daily brief (spec 06): reads
     `GET /market/indices` from the NestJS API and narrates the moves.
   - `summarize-announcement` — system-triggered per-announcement summary (spec 06):
@@ -66,13 +68,16 @@ the NestJS ingestion worker, ADR-0012).
 src/tuju_ai/
 ├── config.py               env-driven settings (Redis URL, S3, backend API) — ADR-0006
 ├── logging_config.py       structured JSON stdout logging — ADR-0010
-├── graph.py                trivial LangGraph stub (TA/FA jobs) — ADR-0003
-├── market_brief.py         templated daily market brief narrative (spec 06)
-├── announcement_summary.py templated plain-language announcement summary (spec 06)
+├── errors.py               TerminalJobError (leaf)
+├── jobs/pipeline.py        the job pipeline: run_job, JobDefinition, JobDeps, JobContext
+├── ta_fa_analysis.py       analyze-technical / analyze-fundamental definitions
+├── market_brief.py         generate-market-brief definition + templated narrative (spec 06)
+├── announcement_summary.py summarize-announcement definition + template (spec 06)
 ├── backend_client.py       thin httpx client for the NestJS read API — ADR-0004
-├── llm/                    LLMClient protocol, OpenRouterClient, FakeLLMClient, cost guard
+├── llm/                    LLMRuntime, ask() structured call, grounding validators,
+│                           LLMClient protocol, OpenRouterClient, FakeLLMClient, cost guard
 ├── artifacts.py            S3 claim-check writer → ArtifactPointer — ADR-0004
-├── handler.py              pure job handler: dispatch by job name → JobResult
+├── handler.py              dispatch: job name → JobDefinition → run_job
 ├── worker.py               BullMQ JobBus adapter (entrypoint: tuju-ai-worker)
 ├── smoke.py                offline smoke run, no infra (entrypoint: tuju-ai-smoke)
 ├── prospectus/
@@ -81,16 +86,19 @@ src/tuju_ai/
 │   ├── skeleton.py         regulated Bursa/SC section heading patterns
 │   ├── router.py           heading-based section router + whole-doc fallback
 │   ├── budget.py           per-section input budgets / trimming (ticket 05)
-│   ├── analysis.py         per-section LLM prompts + what-to-watch reduce (ticket 05)
+│   ├── analysis.py         analyze(): STEPS, parse reuse, LLM steps, reduce, artifact
 │   ├── analysis_models.py  pydantic models for the LLM's structured outputs
-│   ├── job.py              ProspectusRuntime (LLM client, parse fn, cost ceiling)
+│   ├── job.py              analyze-prospectus JobDefinition
 │   ├── store.py            idempotent S3 claim-check of the parse
 │   └── cli.py              entrypoint: tuju-ai-prospectus-parse
 └── contracts_generated/    generated Pydantic models (do not edit)
 scripts/
 └── inspect_corpus.py       one-off: dump demo-corpus heading skeletons (not a test)
 tests/
-├── test_handler.py                  handler dispatch (unit)
+├── test_job_pipeline.py             pipeline invariants against a trivial definition (unit)
+├── test_llm_structured.py           LLMRuntime + ask() retry/validators/ceiling (unit)
+├── test_ta_fa_analysis.py           TA/FA jobs: narration outcomes, facts-only (unit)
+├── test_handler.py                  market brief / announcement summary jobs (unit)
 ├── test_market_brief.py             market brief template (unit)
 ├── test_announcement_summary.py     announcement summary template (unit)
 ├── test_smoke.py                    offline smoke entrypoint (unit)
@@ -98,7 +106,7 @@ tests/
 ├── test_prospectus_router.py        section router (unit)
 ├── test_prospectus_parse_store.py   parse persistence / idempotency (unit)
 ├── test_prospectus_analysis.py      analysis / budget / cost guard, fake LLM (unit)
-├── test_prospectus_job.py           analyze-prospectus handler, failure classes (unit)
+├── test_prospectus_job.py           analyze-prospectus job, failure classes (unit)
 ├── test_prospectus_worker.py        worker thread-offload + terminal mapping (unit)
 ├── test_openrouter_client.py        OpenRouter client over httpx MockTransport (unit)
 ├── test_prospectus_corpus.py        real demo-corpus PDFs via Docling + fake LLM (corpus)
@@ -121,7 +129,7 @@ uv sync                                       # add --extra parse-ml for legacy 
 uv run pytest -m "not integration and not corpus"   # fast lane
 uv run pytest -m integration                  # testcontainers JobBus round-trip
 uv run pytest -m corpus                       # demo-corpus parse + routing (~10 s)
-uv run tuju-ai-smoke                          # offline smoke: full handler path, no Redis/S3
+uv run tuju-ai-smoke                          # offline smoke: TA job with fakes, no infra
 uv run tuju-ai-worker                         # boot the worker (needs Redis; S3; backend API)
 uv run tuju-ai-prospectus-parse --prospectus-id <id> --pdf <path>   # parse + route one PDF
 ```

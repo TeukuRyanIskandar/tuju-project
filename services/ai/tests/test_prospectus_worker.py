@@ -21,8 +21,8 @@ from prospectus_helpers import (
     make_parse,
     store_with_pdf,
 )
-from tuju_ai.llm import FakeLLMClient, LLMTransientError
-from tuju_ai.prospectus.job import ProspectusRuntime
+from tuju_ai.jobs.pipeline import JobDeps
+from tuju_ai.llm import FakeLLMClient, LLMRuntime, LLMTransientError
 from tuju_ai.worker import UnrecoverableError, _make_processor
 from tuju_ai.config import DEFAULT_WORKER_LOCK_DURATION_MS
 
@@ -50,8 +50,9 @@ def test_blocking_parse_does_not_block_the_event_loop() -> None:
         return make_parse(pdf_bytes)
 
     store, _fake = store_with_pdf()
-    runtime = ProspectusRuntime(llm_client=FakeLLMClient(), parse_fn=slow_parse)
-    process = _make_processor(store, FakeBackend(), runtime)
+    process = _make_processor(
+        JobDeps(store, FakeBackend(), LLMRuntime(client=FakeLLMClient()), parse_fn=slow_parse)
+    )
 
     async def scenario() -> tuple[dict, int]:
         ticks = 0
@@ -78,7 +79,7 @@ def test_blocking_parse_does_not_block_the_event_loop() -> None:
 
 def test_terminal_error_maps_to_unrecoverable() -> None:
     store, _fake = store_with_pdf()
-    process = _make_processor(store, FakeBackend(), ProspectusRuntime(llm_client=None))
+    process = _make_processor(JobDeps(store, FakeBackend(), LLMRuntime(client=None)))
     with pytest.raises(UnrecoverableError, match="OPENROUTER_API_KEY"):
         asyncio.run(process(StubJob(envelope()), "token"))
 
@@ -89,8 +90,9 @@ def test_transient_error_is_not_unrecoverable() -> None:
             raise LLMTransientError("429")
 
     store, _fake = store_with_pdf()
-    runtime = ProspectusRuntime(llm_client=Flaky(), parse_fn=lambda b: make_parse(b))
-    process = _make_processor(store, FakeBackend(), runtime)
+    process = _make_processor(
+        JobDeps(store, FakeBackend(), LLMRuntime(client=Flaky()), parse_fn=make_parse)
+    )
     with pytest.raises(LLMTransientError):
         asyncio.run(process(StubJob(envelope()), "token"))
 

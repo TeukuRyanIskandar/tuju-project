@@ -1,21 +1,38 @@
-"""Unit tests for the prospectus LLM analysis (spec 06, ticket 05).
+"""Unit tests for the prospectus at-a-glance analysis (spec 06 ticket 05;
+architecture-deepening ticket 06), through ``analyze()``.
 
-Everything runs against ``FakeLLMClient`` — NO network, NO infra.
+Everything runs against ``FakeLLMClient`` and an in-memory parse cache — NO
+network, NO infra.
 """
 
 from __future__ import annotations
 
 import json
+from contextlib import nullcontext
 
 import pytest
 
-from prospectus_helpers import make_parse, ipo_reference
-from tuju_ai.llm import CostTracker, FakeLLMClient, Message, Usage
-from tuju_ai.llm.cost import CostCeilingExceeded, load_price_table
-from tuju_ai.prospectus.analysis import (
+from prospectus_helpers import PDF_BYTES, MemoryS3, ipo_reference, make_parse, settings
+from tuju_ai.artifacts import ArtifactStore
+from tuju_ai.config import JOB_ANALYZE_PROSPECTUS
+from tuju_ai.contracts_generated.job_registry import JOBS
+from tuju_ai.llm import (
+    CostCeilingExceeded,
+    CostTracker,
+    FakeLLMClient,
+    LLMRuntime,
     MalformedModelOutput,
-    analyze_prospectus,
-    extract_json,
+    Message,
+    Usage,
+)
+from tuju_ai.llm.cost import load_price_table
+from tuju_ai.llm.fake import _CANNED
+from tuju_ai.prospectus.analysis import (
+    LLM_STEPS,
+    PROGRESS_STEPS,
+    STEPS,
+    AnalysisDeps,
+    analyze,
 )
 from tuju_ai.prospectus.analysis_models import IpoReference
 from tuju_ai.prospectus.budget import (
@@ -23,32 +40,64 @@ from tuju_ai.prospectus.budget import (
     cornerstone_context,
     fit_section,
 )
-from tuju_ai.prospectus.router import route_sections
 
 pytestmark = pytest.mark.unit
+
+
+class RecordingProgress:
+    def __init__(self) -> None:
+        self.labels: list[str | None] = []
+
+    def advance(self, label: str | None = None) -> None:
+        self.labels.append(label)
+
+    def heartbeat(self):
+        return nullcontext()
 
 
 def _run(client: FakeLLMClient | None = None, *, shariah: str | None = "compliant", parse=None, ceiling: float = 2.0):
     client = client or FakeLLMClient()
     parse = parse or make_parse()
-    tracker = CostTracker(
-        model=client.model, ceiling_usd=ceiling, price_table=load_price_table()
+    session = LLMRuntime(
+        client=client, ceilings_usd={JOB_ANALYZE_PROSPECTUS: ceiling}
+    ).session(JOB_ANALYZE_PROSPECTUS)
+    progress = RecordingProgress()
+    artifact = analyze(
+        "p1",
+        IpoReference.model_validate(ipo_reference(shariahStatus=shariah)),
+        PDF_BYTES,
+        AnalysisDeps(
+            llm=session,
+            parse_fn=lambda _b: parse,
+            parse_cache=ArtifactStore(settings(), s3_client=MemoryS3()),
+        ),
+        progress,
     )
-    steps: list[str] = []
-    artifact = analyze_prospectus(
-        prospectus_id="p1",
-        reference=IpoReference.model_validate(ipo_reference(shariahStatus=shariah)),
-        parse=parse,
-        routed=route_sections(parse),
-        client=client,
-        tracker=tracker,
-        on_step=steps.append,
-    )
-    return artifact, client, tracker, steps
+    return artifact, client, session.tracker, progress
+
+
+# --- the declarative step list ------------------------------------------------------
+
+
+@pytest.mark.parametrize("step", STEPS, ids=lambda s: s.id)
+def test_every_step_has_a_label_a_registry_phase_and_a_valid_fake_reply(step) -> None:
+    assert step.label
+    assert step.phase in JOBS[JOB_ANALYZE_PROSPECTUS].phases
+    assert f"[step:{step.id}]" not in step.task  # the marker is added once, by analyze
+    if step.source == "reduce":
+        return  # the fake derives the reduce from the outputs it is handed
+    step.output.model_validate(_CANNED[step.id])
+
+
+def test_progress_plan_and_llm_steps_derive_from_steps() -> None:
+    assert LLM_STEPS == tuple(s.id for s in STEPS)
+    assert PROGRESS_STEPS[0][0] == "parsing-document"
+    assert [label for _phase, label in PROGRESS_STEPS[1:]] == [s.label for s in STEPS]
+    assert STEPS[-1].source == "reduce"
 
 
 def test_all_five_sections_and_four_insights_present() -> None:
-    artifact, _client, _tracker, steps = _run()
+    artifact, client, _tracker, progress = _run()
 
     assert set(artifact["sections"]) == {
         "offer", "business", "financials", "riskFactors", "whatToWatch",
@@ -65,10 +114,13 @@ def test_all_five_sections_and_four_insights_present() -> None:
     assert artifact["insights"]["relatedParty"]["items"][0]["counterparty"]
     assert artifact["provenance"]["source"] == "real"
     assert artifact["headline"] == artifact["sections"]["whatToWatch"]["data"]["headline"]
-    assert steps == [
+    assert client.steps == [
         "offer", "business", "financials", "risk-factors",
         "cornerstone-investors", "lockup", "related-party", "what-to-watch",
     ]
+    assert len(progress.labels) == len(PROGRESS_STEPS)  # parse + one per step
+    assert artifact["parse"] == {"parsedNow": True, "reusedParse": False}
+    assert artifact["timing"]["parseMs"] >= 0
 
 
 def test_what_to_watch_is_a_reduce_over_the_structured_outputs() -> None:
@@ -88,9 +140,13 @@ def test_what_to_watch_is_a_reduce_over_the_structured_outputs() -> None:
     assert "150,000,000 shares at RM0.50" not in joined
     # The fake derives the headline from the top-ranked risk theme it was handed.
     assert "customer concentration" in artifact["headline"].lower()
+    # The contract pins derivedFrom to the four SECTIONS fed to the reduce; the
+    # lock-up / related-party insights it also reads cannot be listed (yet).
     assert artifact["sections"]["whatToWatch"]["derivedFrom"] == [
         "offer", "business", "financials", "riskFactors",
     ]
+    fed = {s.slot[1] for s in STEPS if s.feeds_watch}
+    assert fed == set(payload)
 
 
 def test_located_vs_fallback_is_recorded_per_section() -> None:
@@ -329,10 +385,3 @@ def test_price_table_override_is_honoured_and_validated() -> None:
     assert table["x/y"].cached_input == 0.5
     with pytest.raises(ValueError):
         load_price_table("not json")
-
-
-def test_extract_json_tolerates_fences_and_prose() -> None:
-    assert extract_json('```json\n{"a": 1}\n```') == {"a": 1}
-    assert extract_json('Here you go: {"a": 2} hope that helps') == {"a": 2}
-    with pytest.raises(ValueError):
-        extract_json("no json at all")

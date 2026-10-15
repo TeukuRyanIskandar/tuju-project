@@ -8,7 +8,6 @@ a counted stand-in for Docling, and the LLM is ``FakeLLMClient``.
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 
 import httpx
@@ -24,11 +23,9 @@ from prospectus_helpers import (
     envelope,
     ipo_reference,
     make_parse,
-    settings,
     store_with_pdf,
     stored_artifact,
 )
-from tuju_ai.artifacts import ArtifactStore
 from tuju_ai.backend_client import HttpBackendClient
 from tuju_ai.config import (
     JOB_ANALYZE_PROSPECTUS,
@@ -36,13 +33,10 @@ from tuju_ai.config import (
     Settings,
 )
 from tuju_ai.contracts_generated import JobProgress, JobResult
-from tuju_ai.handler import TerminalJobError, handle_job
-from tuju_ai.llm import FakeLLMClient, Usage
-from tuju_ai.prospectus.job import (
-    MISSING_KEY_MESSAGE,
-    ProspectusRuntime,
-    build_prospectus_runtime,
-)
+from tuju_ai.errors import TerminalJobError
+from tuju_ai.handler import handle_job
+from tuju_ai.jobs.pipeline import JobDeps
+from tuju_ai.llm import FakeLLMClient, LLMRuntime, Usage
 
 pytestmark = pytest.mark.unit
 
@@ -56,9 +50,31 @@ class CountedParse:
         return make_parse(pdf_bytes)
 
 
+class Runtime:
+    """What the prospectus job is wired with: the LLM client + parse fn."""
+
+    def __init__(self, llm_client=None, parse_fn=None, heartbeat_seconds: float = 30.0):
+        self.llm = LLMRuntime(client=llm_client)
+        self.parse_fn = parse_fn or CountedParse()
+        self.heartbeat_seconds = heartbeat_seconds
+
+
+def _handle(runtime: Runtime, store, backend, report=lambda _p: None, env=None):
+    deps = JobDeps(
+        artifact_store=store,
+        backend=backend,
+        llm=runtime.llm,
+        parse_fn=runtime.parse_fn,
+        heartbeat_seconds=runtime.heartbeat_seconds,
+    )
+    return handle_job(
+        JOB_ANALYZE_PROSPECTUS, env or envelope(), deps=deps, report_progress=report
+    )
+
+
 def _run(
     *,
-    runtime: ProspectusRuntime | None,
+    runtime: Runtime,
     backend: FakeBackend | None = None,
     fake: MemoryS3 | None = None,
     env: dict | None = None,
@@ -66,20 +82,13 @@ def _run(
     store, fake = store_with_pdf(fake)
     progress: list[JobProgress] = []
     backend = backend or FakeBackend()
-    result = handle_job(
-        JOB_ANALYZE_PROSPECTUS,
-        env or envelope(),
-        artifact_store=store,
-        report_progress=progress.append,
-        backend_client=backend,
-        prospectus_runtime=runtime,
-    )
+    result = _handle(runtime, store, backend, progress.append, env)
     return result, progress, fake, backend
 
 
-def _runtime(**kw) -> tuple[ProspectusRuntime, CountedParse, FakeLLMClient]:
+def _runtime(**kw) -> tuple[Runtime, CountedParse, FakeLLMClient]:
     parse, llm = CountedParse(), FakeLLMClient()
-    return ProspectusRuntime(llm_client=llm, parse_fn=parse, **kw), parse, llm
+    return Runtime(llm_client=llm, parse_fn=parse, **kw), parse, llm
 
 
 def test_happy_path_result_is_verdictless_and_contract_valid() -> None:
@@ -123,6 +132,10 @@ def test_progress_is_step_based_monotonic_with_known_phases() -> None:
                    "synthesizing-watchlist", "persisting-artifact"):
         assert needed in phases
     assert {p.stepTotal for p in progress} == {12}
+    from tuju_ai.prospectus.analysis import STEPS
+
+    labels = [p.label for p in progress]
+    assert labels[3:11] == [s.label for s in STEPS]  # one event per analysis step
     for p in progress:
         JobProgress.model_validate(p.model_dump(mode="json"))
 
@@ -131,14 +144,7 @@ def test_rerun_reuses_the_persisted_parse() -> None:
     runtime, parse, _llm = _runtime()
     store, fake = store_with_pdf()
     for _ in range(2):
-        handle_job(
-            JOB_ANALYZE_PROSPECTUS,
-            envelope(),
-            artifact_store=store,
-            report_progress=lambda _p: None,
-            backend_client=FakeBackend(),
-            prospectus_runtime=runtime,
-        )
+        _handle(runtime, store, FakeBackend())
     assert parse.calls == 1  # second run: near-free, no re-parse
     art = stored_artifact(fake, f"analysis/prospectus/{PROSPECTUS_ID}/at-a-glance.json")
     assert art["parse"] == {"parsedNow": False, "reusedParse": True}
@@ -153,23 +159,12 @@ def test_pdf_is_read_from_the_prospectus_prefix_not_the_artifacts_prefix() -> No
 
 def test_missing_api_key_fails_terminally_before_any_work() -> None:
     backend = FakeBackend()
-    runtime = ProspectusRuntime(llm_client=None, parse_fn=CountedParse())
+    parse = CountedParse()
+    runtime = Runtime(llm_client=None, parse_fn=parse)
     with pytest.raises(TerminalJobError, match="OPENROUTER_API_KEY"):
         _run(runtime=runtime, backend=backend)
     assert backend.reference_calls == []  # no backend / S3 / parse spend
-    # Also the default when no runtime is wired at all:
-    with pytest.raises(TerminalJobError, match="OPENROUTER_API_KEY"):
-        _run(runtime=None)
-    assert "OPENROUTER_API_KEY" in MISSING_KEY_MESSAGE
-
-
-def test_build_runtime_without_key_does_not_raise_and_with_key_builds_client() -> None:
-    assert build_prospectus_runtime(settings()).llm_client is None
-    rt = build_prospectus_runtime(
-        settings(openrouter_api_key="k", llm_model="google/gemini-2.5-pro")
-    )
-    assert rt.llm_client is not None and rt.llm_client.model == "google/gemini-2.5-pro"
-    assert "k" not in repr(rt.llm_client).replace("OpenRouterClient", "")
+    assert parse.calls == 0
 
 
 def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,67 +221,38 @@ def test_unparseable_pdf_is_terminal() -> None:
     def boom(_b: bytes):
         raise RuntimeError("corrupt pdf")
 
-    runtime = ProspectusRuntime(llm_client=FakeLLMClient(), parse_fn=boom)
+    runtime = Runtime(llm_client=FakeLLMClient(), parse_fn=boom)
     with pytest.raises(TerminalJobError, match="Could not parse"):
         _run(runtime=runtime)
 
 
 def test_cost_ceiling_abort_is_terminal_and_writes_no_result_artifact() -> None:
     llm = FakeLLMClient(usage=Usage(prompt_tokens=1_000_000, completion_tokens=100_000))
-    runtime = ProspectusRuntime(llm_client=llm, parse_fn=CountedParse())
+    runtime = Runtime(llm_client=llm)
     store, fake = store_with_pdf()
     with pytest.raises(TerminalJobError, match="Cost guard"):
-        handle_job(
-            JOB_ANALYZE_PROSPECTUS, envelope(), artifact_store=store,
-            report_progress=lambda _p: None, backend_client=FakeBackend(),
-            prospectus_runtime=runtime,
-        )
+        _handle(runtime, store, FakeBackend())
     assert (BUCKET, f"analysis/prospectus/{PROSPECTUS_ID}/at-a-glance.json") not in fake.objects
     assert "what-to-watch" not in llm.steps
 
 
-def test_malformed_artifact_fails_the_job_and_writes_nothing(monkeypatch) -> None:
-    """ADR-0014 §3: the assembled artifact is validated before the S3 write."""
-    import tuju_ai.handler as handler_mod
+def test_contract_violation_from_model_output_fails_the_job_and_writes_nothing() -> None:
+    """ADR-0014 §3: the assembled artifact is validated before the S3 write.
 
-    real = handler_mod.analyze_prospectus
-
-    def corrupted(**kw):
-        artifact = real(**kw)
-        del artifact["headline"]  # required by the ProspectusArtifact contract
-        return artifact
-
-    monkeypatch.setattr(handler_mod, "analyze_prospectus", corrupted)
-    runtime, _p, _l = _runtime()
+    Driven through the fake's output: a provider reporting negative token
+    usage passes the lenient analysis, but the cost report breaks the
+    contract (counts are >= 0)."""
+    llm = FakeLLMClient(usage=Usage(prompt_tokens=-5, completion_tokens=1))
     store, fake = store_with_pdf()
-    with pytest.raises(TerminalJobError, match="contract validation"):
-        handle_job(
-            JOB_ANALYZE_PROSPECTUS, envelope(), artifact_store=store,
-            report_progress=lambda _p: None, backend_client=FakeBackend(),
-            prospectus_runtime=runtime,
-        )
+    with pytest.raises(TerminalJobError, match="ProspectusArtifact failed contract validation"):
+        _handle(Runtime(llm_client=llm), store, FakeBackend())
     assert (BUCKET, f"analysis/prospectus/{PROSPECTUS_ID}/at-a-glance.json") not in fake.objects
-
-
-def test_artifact_with_unknown_key_is_rejected_before_write(monkeypatch) -> None:
-    import tuju_ai.handler as handler_mod
-
-    real = handler_mod.analyze_prospectus
-
-    def drifted(**kw):
-        artifact = real(**kw)
-        artifact["insights"]["cornerstone"]["surprise"] = True
-        return artifact
-
-    monkeypatch.setattr(handler_mod, "analyze_prospectus", drifted)
-    runtime, _p, _l = _runtime()
-    with pytest.raises(TerminalJobError, match="contract validation"):
-        _run(runtime=runtime)
+    assert "what-to-watch" in llm.steps  # the whole analysis ran; only the write was refused
 
 
 def test_persistently_malformed_llm_output_is_terminal() -> None:
     llm = FakeLLMClient(garbage_first={"financials": 5})
-    runtime = ProspectusRuntime(llm_client=llm, parse_fn=CountedParse())
+    runtime = Runtime(llm_client=llm)
     with pytest.raises(TerminalJobError, match="financials"):
         _run(runtime=runtime)
 
@@ -298,7 +264,7 @@ def test_llm_transient_error_propagates_for_bullmq_retry() -> None:
         def complete(self, messages, **kw):  # type: ignore[override]
             raise LLMTransientError("429 rate limited")
 
-    runtime = ProspectusRuntime(llm_client=Flaky(), parse_fn=CountedParse())
+    runtime = Runtime(llm_client=Flaky())
     with pytest.raises(LLMTransientError):
         _run(runtime=runtime)
 
@@ -310,17 +276,9 @@ def test_llm_permanent_error_is_terminal() -> None:
         def complete(self, messages, **kw):  # type: ignore[override]
             raise LLMPermanentError("401 bad key")
 
-    runtime = ProspectusRuntime(llm_client=Rejected(), parse_fn=CountedParse())
+    runtime = Runtime(llm_client=Rejected())
     with pytest.raises(TerminalJobError, match="permanently"):
         _run(runtime=runtime)
-
-
-def test_bad_envelope_is_terminal() -> None:
-    runtime, _p, _l = _runtime()
-    bad = envelope()
-    bad["payload"] = {}
-    with pytest.raises(TerminalJobError, match="contract validation"):
-        _run(runtime=runtime, env=bad)
 
 
 def test_heartbeat_reemits_progress_during_a_slow_parse() -> None:
@@ -328,7 +286,7 @@ def test_heartbeat_reemits_progress_during_a_slow_parse() -> None:
         time.sleep(0.35)
         return make_parse(pdf_bytes)
 
-    runtime = ProspectusRuntime(
+    runtime = Runtime(
         llm_client=FakeLLMClient(), parse_fn=slow_parse, heartbeat_seconds=0.1
     )
     _r, progress, _f, _b = _run(runtime=runtime)

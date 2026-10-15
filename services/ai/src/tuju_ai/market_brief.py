@@ -1,8 +1,8 @@
-"""Daily market brief narrative (spec 06, ticket 02).
+"""Daily market brief job (spec 06, ticket 02) — verdict-less ``SystemSummary``.
 
-NO real LLM call yet — same "no real analysis logic" scaffold posture as
-graph.py (ADR-0003 scope guard). A deterministic narrative template over the
-fetched index levels. MUST prominently flag the underlying series as
+NO real LLM call yet (ADR-0003 scope guard): a deterministic narrative
+template over the index levels fetched via the NestJS market-overview read API
+(ADR-0004). MUST prominently flag the underlying series as
 illustrative/synthetic (spec 06's demo-data honesty caveat) rather than
 dressing fake numbers up as real market movement.
 """
@@ -10,6 +10,10 @@ dressing fake numbers up as real market movement.
 from __future__ import annotations
 
 from typing import Any, TypedDict
+
+from .config import JOB_GENERATE_MARKET_BRIEF
+from .contracts_generated import MarketBriefJobEnvelope
+from .jobs.pipeline import JobContext, JobDefinition, JobOutput, day_bucket
 
 ILLUSTRATIVE_NOTE = (
     "This brief narrates illustrative, synthetic price data generated for "
@@ -54,3 +58,34 @@ def compose_market_brief(indices: list[dict[str, Any]]) -> MarketBrief:
         )
 
     return {"headline": headline, "lines": lines, "illustrative": True}
+
+
+def _work(envelope: MarketBriefJobEnvelope, ctx: JobContext) -> JobOutput:
+    ctx.advance("Fetching index data")
+    indices_response = ctx.deps.backend.get_market_indices()
+    brief = compose_market_brief(indices_response.get("indices", []))
+    ctx.advance()
+    return JobOutput(
+        artifact_key=f"brief/{day_bucket(envelope.asOf)}.json",
+        artifact={
+            "schemaVersion": ctx.schema_version,
+            "headline": brief["headline"],
+            "lines": brief["lines"],
+            "illustrative": brief["illustrative"],
+        },
+        headline=brief["headline"],
+    )
+
+
+# No symbol/timeframe anchor: the content-derived jobId is keyed by date
+# (ADR-0007 §2), so re-enqueuing the same day collapses to the existing job.
+MARKET_BRIEF_JOB = JobDefinition(
+    name=JOB_GENERATE_MARKET_BRIEF,
+    envelope=MarketBriefJobEnvelope,
+    result_key=lambda e: day_bucket(e.asOf),
+    work_steps=[
+        ("fetching-market-data", "Fetching index data"),
+        ("drafting-narrative", "Drafting market brief"),
+    ],
+    work=_work,
+)

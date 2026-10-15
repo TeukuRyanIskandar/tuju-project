@@ -46,6 +46,8 @@ from tuju_ai.artifacts import ArtifactStore  # noqa: E402
 from tuju_ai.config import JOB_ANALYZE_TECHNICAL, QUEUE_ANALYSIS, Settings  # noqa: E402
 from tuju_ai.contracts_generated import JobResult  # noqa: E402
 from tuju_ai.handler import handle_job  # noqa: E402
+from tuju_ai.jobs.pipeline import JobDeps  # noqa: E402
+from tuju_ai.llm import FakeLLMClient, LLMRuntime  # noqa: E402
 
 FIXTURES_DIR = (
     Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
@@ -181,9 +183,12 @@ def test_round_trip_over_redis_and_localstack(
             result = handle_job(
                 job.name,
                 job.data,
-                artifact_store=artifact_store,
+                deps=JobDeps(
+                    artifact_store=artifact_store,
+                    backend=backend,
+                    llm=LLMRuntime(client=FakeLLMClient()),
+                ),
                 report_progress=report,
-                backend_client=backend,
             )
             payload = result.model_dump(mode="json")
             if not done.done():
@@ -244,8 +249,6 @@ def test_prospectus_round_trip_over_redis_and_localstack(
     from bullmq import Queue, Worker
 
     from tuju_ai.config import JOB_ANALYZE_PROSPECTUS
-    from tuju_ai.llm import FakeLLMClient
-    from tuju_ai.prospectus.job import ProspectusRuntime
     from tuju_ai.prospectus.models import Block, Heading, ProspectusParse
 
     pdf = b"%PDF-1.7 integration prospectus"
@@ -274,7 +277,6 @@ def test_prospectus_round_trip_over_redis_and_localstack(
             "shariahStatus": None,
         }
     )
-    runtime = ProspectusRuntime(llm_client=FakeLLMClient(), parse_fn=parse_fn)
 
     async def scenario() -> JobResult:
         queue = Queue(QUEUE_ANALYSIS, {"connection": settings.redis_url})
@@ -286,10 +288,13 @@ def test_prospectus_round_trip_over_redis_and_localstack(
                 handle_job,
                 job.name,
                 job.data,
-                artifact_store=artifact_store,
+                deps=JobDeps(
+                    artifact_store=artifact_store,
+                    backend=backend,
+                    llm=LLMRuntime(client=FakeLLMClient()),
+                    parse_fn=parse_fn,
+                ),
                 report_progress=lambda _p: None,
-                backend_client=backend,
-                prospectus_runtime=runtime,
             )
             if not done.done():
                 done.set_result(result)

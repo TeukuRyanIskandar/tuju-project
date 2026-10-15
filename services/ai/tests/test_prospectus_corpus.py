@@ -196,23 +196,25 @@ def test_full_pipeline_on_real_pdf_with_fake_llm(
     itself is instant. Asserts the per-section input budget held on the real
     (fallback = whole-document) sections and the run stays under $2.
     """
-    from tuju_ai.llm import CostTracker, FakeLLMClient
-    from tuju_ai.prospectus.analysis import analyze_prospectus
+    from prospectus_helpers import MemoryS3, settings
+    from tuju_ai.artifacts import ArtifactStore as Store
+    from tuju_ai.config import JOB_ANALYZE_PROSPECTUS
+    from tuju_ai.llm import FakeLLMClient, LLMRuntime
+    from tuju_ai.prospectus.analysis import AnalysisDeps, analyze
     from tuju_ai.prospectus.analysis_models import IpoReference
     from tuju_ai.prospectus.budget import SECTION_CHAR_BUDGET
 
     parse = parsed[name]
     llm = FakeLLMClient(model="google/gemini-2.5-flash")
-    tracker = CostTracker(model=llm.model, ceiling_usd=2.0)
-    artifact = analyze_prospectus(
-        prospectus_id=name,
-        reference=IpoReference(
-            id=name, companyName=name, prospectusS3Key=f"prospectus/{name}.pdf"
+    artifact = analyze(
+        name,
+        IpoReference(id=name, companyName=name, prospectusS3Key=f"prospectus/{name}.pdf"),
+        b"%PDF corpus stand-in bytes",  # the parse is already in hand
+        AnalysisDeps(
+            llm=LLMRuntime(client=llm).session(JOB_ANALYZE_PROSPECTUS),
+            parse_fn=lambda _b: parse,
+            parse_cache=Store(settings(), s3_client=MemoryS3()),
         ),
-        parse=parse,
-        routed=route_sections(parse),
-        client=llm,
-        tracker=tracker,
     )
     assert set(artifact["sections"]) == {
         "offer", "business", "financials", "riskFactors", "whatToWatch",

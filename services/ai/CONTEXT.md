@@ -1,6 +1,6 @@
 # Context: AI worker (`tuju-ai`)
 
-Python + LangGraph AI worker. **Its own uv-managed world**, deliberately outside
+Python AI worker. **Its own uv-managed world**, deliberately outside
 the pnpm workspace and the Turborepo graph (ADR-0002), so it stays cleanly
 extractable to its own repo later.
 
@@ -15,19 +15,21 @@ A stateless job **consumer**:
   connection by env (ADR-0006).
 - **Runtime conformance (ADR-0011, ADR-0014)** — validates the incoming `JobEnvelope`
   and outgoing `JobResult` against the generated Pydantic v2 models
-  (`contracts_generated`, do not edit). The prospectus handler also validates the
-  assembled artifact against the generated `ProspectusArtifact` **before** the S3
-  write; a mismatch is a terminal job failure and nothing is written.
-- **Step-based progress (ADR-0007 §4)** — emits `JobProgress` via `job.updateProgress`.
+  (`contracts_generated`, do not edit). Jobs with a registered artifact
+  (TA/FA, prospectus) also validate it against the generated model **before**
+  the S3 write; a mismatch is a terminal job failure and nothing is written.
+- **Step-based progress (ADR-0007 §4)** — emits `JobProgress` via `job.updateProgress`;
+  phases come from the generated job registry (`JOBS[name].phases`).
 - **Claim-check (ADR-0004)** — writes the artifact to S3 (LocalStack locally) and
   returns a pointer + thin summary. **Never writes Postgres.**
-- **LLM (ticket 05, prospectus only)** — `llm/` seam (OpenRouter via httpx, env
-  `OPENROUTER_API_KEY` / `LLM_MODEL`); no key ⇒ clean terminal job failure. Per-doc
-  cost guard (~$2). Tests use `FakeLLMClient`, never the network.
-- **LangGraph stub (ADR-0003 scope)** — trivial 3-node graph; no real TA/FA logic yet.
+- **LLM** — `llm/` seam (OpenRouter via httpx, env `OPENROUTER_API_KEY` /
+  `LLM_MODEL`); no key ⇒ clean terminal job failure. Per-job cost ceilings
+  ($0.10 per TA/FA narration, ~$2 per prospectus). Tests use `FakeLLMClient`,
+  never the network.
 - **Structured logging (ADR-0010)** — JSON to stdout, `correlationId` on every line.
 
-Real TA/FA indicator/metric logic is a later feature effort, explicitly out of scope.
+TA/FA indicators and metrics are computed TS-side; the worker narrates the
+code-verified facts it reads from NestJS.
 
 ## Boundaries
 
@@ -38,9 +40,38 @@ Real TA/FA indicator/metric logic is a later feature effort, explicitly out of s
 
 ## Glossary
 
-- **Handler** — the pure path: validate → graph → claim-check → `JobResult`.
+- **Handler** — `handle_job`: dispatches a job name to its Job definition.
+- **Job pipeline** — `jobs/pipeline.run_job(definition, raw, deps, report)`: the
+  one run path. Owns envelope validation, the registry-derived `jobId` and
+  progress plan, LLM error mapping, the contract pre-write check, the
+  claim-check and the verdict-less `JobResult`.
+- **Job definition** — `JobDefinition`: one job family's envelope model,
+  `jobId` key, work steps, artifact contract and `work()`. Declared next to the
+  family's domain code. (Not the registry's `JobSpec`, which is metadata.)
+- **Job deps** — `JobDeps`: artifact store, backend client, LLM runtime (+ the
+  prospectus parse fn), built once per worker.
+- **Terminal job error** — `errors.TerminalJobError`: non-retryable
+  (BullMQ `UnrecoverableError`); anything else is retried.
+- **LLM runtime** — `llm.LLMRuntime`: client + price table + per-job-kind
+  ceilings, built once from `Settings`. Opens an **LLM session** (client + a
+  fresh cost tracker) per job run.
+- **Structured call** — `llm.ask(session, step, messages, schema, validators=…)`:
+  JSON extraction, schema + validator chain, bounded corrective retry, cost
+  guard. Exhaustion is `MalformedModelOutput` or `OutputRejected`.
+- **Grounding** — the TA/FA narration validators: every number must come from
+  the facts, and no advice-shaped terms.
+- **Facts-only** — a TA/FA run whose narration hit the cost ceiling or failed
+  grounding twice: the artifact keeps the facts, the narrative is a
+  placeholder and the headline starts `facts-only: ` (the backend reads it).
 - **Worker** — the BullMQ adapter around the handler (entrypoint `tuju-ai-worker`).
-- **At-a-glance** — the prospectus artifact: 5 sections + Shariah/cornerstone insights.
+- **At-a-glance** — the prospectus artifact: 5 sections + Shariah, cornerstone,
+  lock-up and related-party insights. Built by `prospectus.analysis.analyze(
+  prospectus_id, reference, pdf_bytes, deps, progress)`, which owns parse reuse,
+  routing, the LLM steps and the artifact metadata.
+- **Analysis step** — one entry of `prospectus.analysis.STEPS`: marker id,
+  progress label/phase, output model, artifact slot, source (routed section,
+  cornerstone excerpts, or the reduce) and whether the what-to-watch reduce
+  reads it. The progress plan, `LLM_STEPS` and `derivedFrom` derive from it.
 - **Claim-check** — the S3 pointer pattern that keeps large artifacts out of the queue.
 
 ## Commands
@@ -49,7 +80,7 @@ Real TA/FA indicator/metric logic is a later feature effort, explicitly out of s
 uv sync --project services/ai          # or: pnpm run ai:sync (from root)
 uv run --project services/ai pytest    # or: pnpm run ai:test
 # from within services/ai:
-uv run tuju-ai-smoke                    # offline smoke, no infra
+uv run tuju-ai-smoke                    # offline smoke (TA job, fakes), no infra
 uv run tuju-ai-worker                   # needs live Redis; S3 for artifacts
 uv run pytest -m integration            # testcontainers layer
 ```
@@ -57,4 +88,6 @@ uv run pytest -m integration            # testcontainers layer
 ## Decisions
 
 System-wide ADRs in `docs/adr/` govern this context (esp. ADR-0001, 0003, 0004,
-0006, 0007, 0010, 0011, 0014). No context-scoped ADRs yet.
+0006, 0007, 0010, 0011, 0014). No context-scoped ADRs yet. ADR-0003 allowed a
+LangGraph stub without requiring one; the unused stub was deleted
+(architecture-deepening ticket 02).

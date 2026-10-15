@@ -1,34 +1,27 @@
-"""Technical & Fundamental Analysis handlers (ticket 10).
+"""Technical & Fundamental Analysis jobs (poc-phase-a-worker ticket 10).
 
-Two flat handlers validate → fetch reference → assemble facts → narrate → post-check → claim-check.
-No LangGraph (ADR-0003 scope); corrective LLM retry on malformed output; grounding post-check
-with number containment and ban-word scan; $0.10 cost ceiling per job.
+Two :class:`~tuju_ai.jobs.pipeline.JobDefinition`\ s whose ``work()`` is:
+fetch the code-verified reference → assemble facts/metrics → narrate under the
+grounding + no-advice validators → build the artifact. The pipeline owns
+validation, progress, the contract pre-write check and the claim-check.
+
+Narration degrades to facts-only (placeholder narrative + ``facts-only: ``
+headline) when the cost ceiling or the grounding retries are exhausted; a
+reply that never parses is terminal.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
-import httpx
-from pydantic import ValidationError
+from pydantic import BaseModel, Field
 
-from .artifacts import ArtifactStore
-from .backend_client import BackendClient
 from .config import JOB_ANALYZE_FUNDAMENTAL, JOB_ANALYZE_TECHNICAL
 from .contracts_generated import (
-    AnalysisNarrative,
-    AnalysisProvenance,
     FundamentalAnalysisArtifact,
     FundamentalJobEnvelope,
     FundamentalMetric,
-    JobProgress,
-    JobResult,
-    ProspectusCostReport,
-    SCHEMA_VERSIONS,
-    SystemSummary,
     TechnicalAnalysisArtifact,
     TechnicalEvent,
     TechnicalFacts,
@@ -38,103 +31,57 @@ from .contracts_generated import (
     TechnicalSmaFacts,
     TechnicalWeek52Facts,
 )
-from .logging_config import get_logger
-from .llm import CostCeilingExceeded, CostTracker, LLMClient, Message
-from .llm.cost import DEFAULT_PRICE_TABLE
+from .errors import TerminalJobError
+from .jobs.pipeline import JobContext, JobDefinition, JobOutput, hour_bucket, now
+from .llm import CostCeilingExceeded, LLMSession, Message, OutputRejected, ask
+from .llm.grounding import advice_term, ungrounded_number
 
-ProgressReporter = Callable[[JobProgress], None]
-
-BAN_WORDS = {
-    "buy",
-    "sell",
-    "hold",
-    "target",
-    "price target",
-    "undervalued",
-    "overvalued",
-    "underweight",
-    "overweight",
-    "recommendation",
-    "recommend",
-    "advise",
-    "should invest",
-    "should buy",
-}
-
-NUMBER_REGEX = re.compile(
-    r"(?:RM)?[\d,]+\.?\d*\s*%?|[\d.]+%|[\d,]+(?:\.\d+)?"
+# Facts-only degrade (poc-phase-a-worker tickets 04-06): the facts are
+# verified, only the wording failed, so the run still lands an artifact with a
+# placeholder narrative and a `facts-only: ` headline the backend hook reads.
+WITHHELD_BY_COST = (
+    "Narrative withheld: narration stopped by cost guard.",
+    "facts-only: Narration stopped by cost guard.",
 )
+WITHHELD_BY_GROUNDING = (
+    "Narrative withheld: failed the grounding check.",
+    "facts-only: Grounding check failed.",
+)
+NARRATE_STEP = "narrate"
+NARRATE_MAX_TOKENS = 300
 
 
-def _now() -> datetime:
-    """Get current UTC time."""
-    return datetime.now(timezone.utc)
+class NarrativeOutput(BaseModel):
+    narrative: str = Field(min_length=1)
 
 
-def _progress(step: int, total: int, phase: str, label: str):
-    """Build a JobProgress."""
-    from .contracts_generated import JobProgress
-    return JobProgress(
-        stepIndex=step, stepTotal=total, phase=phase, label=label, at=_now()
-    )
+def narrate(
+    session: LLMSession, messages: list[Message], *sources: Any
+) -> tuple[str, str | None]:
+    """Narrate ``sources`` under the grounding + no-advice validators.
 
-
-def _extract_numbers(text: str) -> set[str]:
-    """Extract all numbers from narrative text and normalize them."""
-    matches = NUMBER_REGEX.findall(text)
-    numbers = set()
-    for m in matches:
-        normalized = m.replace(",", "").replace(" ", "").strip()
-        if normalized.endswith("%"):
-            normalized = normalized[:-1]
-        numbers.add(normalized)
-        if "." in normalized:
-            numbers.add(normalized.split(".")[0])
-    return numbers
-
-
-def _collect_fact_numbers(facts_or_metrics: Any) -> set[str]:
-    """Collect all numeric values from facts/events/metrics dicts."""
-    numbers = set()
-
-    def _visit(obj: Any) -> None:
-        if isinstance(obj, dict):
-            for v in obj.values():
-                _visit(v)
-        elif isinstance(obj, (list, tuple)):
-            for item in obj:
-                _visit(item)
-        elif isinstance(obj, (int, float)):
-            s = str(obj)
-            numbers.add(s)
-            if "." in s:
-                numbers.add(s.split(".")[0])
-
-    _visit(facts_or_metrics)
-    return numbers
-
-
-def check_grounding(
-    text: str, facts_or_metrics: Any, events: list | None = None
-) -> tuple[bool, str | None]:
-    """Check narrative for number grounding and banned terms."""
-    narrative_numbers = _extract_numbers(text)
-
-    if events is None:
-        events = []
-    fact_numbers = _collect_fact_numbers(facts_or_metrics)
-    fact_numbers.update(_collect_fact_numbers(events))
-
-    for num in narrative_numbers:
-        if num and num not in fact_numbers:
-            return False, f"number {num!r} not found in facts"
-
-    text_lower = text.lower()
-    for banned in BAN_WORDS:
-        if banned in text_lower:
-            return False, f"banned term: {banned!r}"
-
-    return True, None
+    Returns ``(narrative, facts_only_headline)``; the headline is ``None`` on a
+    clean narration. Cost-ceiling or grounding exhaustion degrades to the
+    facts-only placeholder; a reply that never parses raises
+    :class:`MalformedModelOutput` (terminal).
+    """
+    try:
+        out = ask(
+            session,
+            NARRATE_STEP,
+            messages,
+            NarrativeOutput,
+            max_tokens=NARRATE_MAX_TOKENS,
+            validators=[
+                lambda o: ungrounded_number(o.narrative, *sources),
+                lambda o: advice_term(o.narrative),
+            ],
+        )
+    except CostCeilingExceeded:
+        return WITHHELD_BY_COST
+    except OutputRejected:
+        return WITHHELD_BY_GROUNDING
+    return out.narrative, None
 
 
 def generate_ta_headline(facts: dict, events: list) -> str:
@@ -267,124 +214,33 @@ Instructions:
     ]
 
 
-def _get_llm_client() -> LLMClient:
-    """Get the LLM client (real only; missing config is a terminal job error)."""
-    import os
-    from .handler import TerminalJobError
-    from .llm.openrouter import OpenRouterClient
-
-    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    model = os.environ.get("LLM_MODEL", "").strip()
-
-    if not api_key or not model:
-        raise TerminalJobError(
-            "LLM not configured: OPENROUTER_API_KEY and LLM_MODEL must be set"
-        )
-
-    if api_key == "test-key-for-testing":
-        from .llm.fake import FakeLLMClient
-        return FakeLLMClient()
-
-    return OpenRouterClient(api_key=api_key, model=model)
+def _provenance(session: LLMSession) -> dict[str, Any]:
+    return {
+        "source": "real",
+        "adapter": "yfinance",
+        "model": session.model,
+        "generatedAt": now(),
+    }
 
 
-def _narrate_with_grounding_retry(
-    client: LLMClient,
-    tracker: CostTracker,
-    messages: list[Message],
-    facts_or_metrics: Any,
-    events: list | None = None,
-) -> str:
-    """Run LLM narration with grounding check and one corrective retry."""
-    from .handler import TerminalJobError
-
-    if events is None:
-        events = []
-
-    for attempt in (1, 2):
-        try:
-            response = tracker.call(
-                client, "narrate", messages, max_tokens=300, json_mode=True
-            )
-            reply = json.loads(response.text)
-            narrative_text = reply.get("narrative", "")
-        except (json.JSONDecodeError, KeyError, TypeError) as exc:
-            if attempt == 1:
-                bad_reply = response.text if hasattr(response, 'text') else str(exc)
-                messages = messages + [
-                    Message("assistant", bad_reply[:2000]),
-                    Message(
-                        "user",
-                        "[step:narrate] Your previous reply could not be parsed. "
-                        "Reply with ONLY the JSON object: {\"narrative\": \"<your text>\"}",
-                    ),
-                ]
-                continue
-            raise TerminalJobError(
-                "LLM output remained invalid after corrective retry"
-            ) from exc
-
-        passed, reason = check_grounding(narrative_text, facts_or_metrics, events)
-        if not passed:
-            if attempt == 1:
-                messages = messages + [
-                    Message("assistant", narrative_text),
-                    Message(
-                        "user",
-                        f"[step:narrate] Your narrative {reason}. "
-                        "Revise to use ONLY numbers from the facts and avoid investment advice.",
-                    ),
-                ]
-                continue
-            raise TerminalJobError(f"Grounding check failed after retry: {reason}")
-
-        return narrative_text
-
-    raise TerminalJobError("Narration retry exhausted")
+# --- analyze-technical -------------------------------------------------------
 
 
-def _handle_technical_job(
-    raw_envelope: dict,
-    artifact_store: ArtifactStore,
-    report_progress: ProgressReporter,
-    backend_client: BackendClient,
-) -> JobResult:
-    """TA handler: validate → fetch reference → assemble facts → narrate → post-check → claim-check."""
-    from .handler import TerminalJobError
-
-    try:
-        envelope = TechnicalJobEnvelope.model_validate(raw_envelope)
-    except ValidationError as exc:
-        raise TerminalJobError(f"Envelope failed contract validation: {exc}") from exc
-
-    correlation_id = str(envelope.correlationId)
-    log = get_logger(__name__, correlation_id=correlation_id)
+def _technical_work(envelope: TechnicalJobEnvelope, ctx: JobContext) -> JobOutput:
+    session = ctx.llm_session()  # no key ⇒ terminal, before any fetch
     symbol = envelope.payload.symbol
     timeframe = envelope.payload.timeframe
 
-    as_of_bucket = envelope.asOf.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
-    job_id = f"technical:{symbol}:{timeframe}:{as_of_bucket}"
-    log.info("job.start", extra={"jobId": job_id, "jobName": JOB_ANALYZE_TECHNICAL, "symbol": symbol})
-
-    total = 6
-    report_progress(_progress(0, total, "queued", "Queued"))
-    report_progress(_progress(1, total, "fetching-market-data", f"Fetching data for {symbol}"))
-
-    try:
-        reference = backend_client.get_analysis_reference(symbol)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise TerminalJobError(
-                f"Unknown symbol {symbol!r} (backend returned 404)"
-            ) from exc
-        raise
-
-    if not reference.get("technical"):
+    ctx.advance(f"Fetching data for {symbol}")
+    reference = ctx.read(
+        lambda: ctx.deps.backend.get_analysis_reference(symbol),
+        unknown=f"symbol {symbol!r}",
+    )
+    technical = reference.get("technical")
+    if not technical:
         raise TerminalJobError(f"Empty or missing technical facts for {symbol}")
 
-    report_progress(_progress(2, total, "computing-indicators", "Computing indicators"))
-
-    technical = reference["technical"]
+    ctx.advance()
     technical_facts = TechnicalFacts(
         sma=TechnicalSmaFacts(
             p20=technical.get("sma", {}).get("p20"),
@@ -405,8 +261,6 @@ def _handle_technical_job(
             low=technical.get("week52", {}).get("low"),
         ),
     )
-
-    events_raw = reference.get("technicalEvents", [])
     events = [
         TechnicalEvent(
             id=e.get("id"),
@@ -415,132 +269,79 @@ def _handle_technical_job(
             values=e.get("values", {}),
             at=e.get("at"),
         )
-        for e in events_raw
+        for e in reference.get("technicalEvents", [])
     ]
 
-    report_progress(_progress(3, total, "synthesizing-verdict", "Synthesizing verdict"))
-
+    ctx.advance()
     facts_dict = technical_facts.model_dump(mode="json")
     events_list = [e.model_dump(mode="json") for e in events]
-
-    headline = generate_ta_headline(facts_dict, events_list)
-    narrative_text = headline
-
-    client = _get_llm_client()
-    tracker = CostTracker(
-        model=client.model,
-        ceiling_usd=0.10,
-        price_table=DEFAULT_PRICE_TABLE,
+    narrative_text, facts_only = narrate(
+        session,
+        build_ta_messages(symbol, timeframe, facts_dict, events_list),
+        facts_dict,
+        events_list,
     )
-
-    try:
-        messages = build_ta_messages(symbol, timeframe, facts_dict, events_list)
-        narrative_text = _narrate_with_grounding_retry(
-            client, tracker, messages, facts_dict, events_list
-        )
-        headline = generate_ta_headline(facts_dict, events_list)
-    except CostCeilingExceeded:
-        narrative_text = "Narrative withheld: narration stopped by cost guard."
-        headline = "facts-only: Narration stopped by cost guard."
+    headline = facts_only or generate_ta_headline(facts_dict, events_list)
 
     artifact = {
-        "schemaVersion": SCHEMA_VERSIONS['technical'],
+        "schemaVersion": ctx.schema_version,
         "symbol": symbol,
         "jobName": JOB_ANALYZE_TECHNICAL,
         "asOf": envelope.asOf,
         "timeframe": timeframe,
         "facts": facts_dict,
         "events": events_list,
-        "narrative": {
-            "language": "en",
-            "text": narrative_text,
-        },
-        "provenance": {
-            "source": "real",
-            "adapter": "yfinance",
-            "model": client.model,
-            "generatedAt": _now(),
-        },
-        "cost": tracker.report(),
+        "narrative": {"language": "en", "text": narrative_text},
+        "provenance": _provenance(session),
+        "cost": session.tracker.report(),
     }
-
-    try:
-        TechnicalAnalysisArtifact.model_validate(artifact)
-    except ValidationError as exc:
-        raise TerminalJobError(
-            f"Technical artifact failed contract validation: {exc}"
-        ) from exc
-
-    key_suffix = f"technical/{symbol}/{as_of_bucket}.json"
-    pointer = artifact_store.put_artifact(key_suffix, artifact)
-    report_progress(_progress(4, total, "persisting-artifact", "Persisting artifact"))
-    log.info(
-        "job.artifact_written",
-        extra={"jobId": job_id, "bucket": pointer.bucket, "key": pointer.key},
+    return JobOutput(
+        artifact_key=f"technical/{symbol}/{hour_bucket(envelope.asOf)}.json",
+        artifact=artifact,
+        headline=headline,
     )
 
-    result = JobResult(
-        correlationId=envelope.correlationId,
-        jobId=job_id,
-        pointer=pointer,
-        summary=SystemSummary(headline=headline, asOf=envelope.asOf),
-        at=_now(),
-    )
-    report_progress(_progress(5, total, "done", "Done"))
-    log.info("job.done", extra={"jobId": job_id})
-    return result
+
+TECHNICAL_JOB = JobDefinition(
+    name=JOB_ANALYZE_TECHNICAL,
+    envelope=TechnicalJobEnvelope,
+    result_key=lambda e: f"{e.payload.symbol}:{e.payload.timeframe}:{hour_bucket(e.asOf)}",
+    work_steps=[
+        ("fetching-market-data", "Fetching market data"),
+        ("computing-indicators", "Computing indicators"),
+        ("synthesizing-verdict", "Synthesizing verdict"),
+    ],
+    work=_technical_work,
+    artifact_contract=TechnicalAnalysisArtifact,
+)
 
 
-def _handle_fundamental_job(
-    raw_envelope: dict,
-    artifact_store: ArtifactStore,
-    report_progress: ProgressReporter,
-    backend_client: BackendClient,
-) -> JobResult:
-    """FA handler: validate → fetch reference → assemble metrics → narrate → post-check → claim-check."""
-    from .handler import TerminalJobError
+# --- analyze-fundamental -----------------------------------------------------
 
-    try:
-        envelope = FundamentalJobEnvelope.model_validate(raw_envelope)
-    except ValidationError as exc:
-        raise TerminalJobError(f"Envelope failed contract validation: {exc}") from exc
+EXPECTED_METRIC_COUNT = 9
 
-    correlation_id = str(envelope.correlationId)
-    log = get_logger(__name__, correlation_id=correlation_id)
+
+def _fundamental_work(envelope: FundamentalJobEnvelope, ctx: JobContext) -> JobOutput:
     symbol = envelope.payload.symbol
     period = envelope.payload.period
+    if period == "annual":
+        raise TerminalJobError("Annual period not yet supported")
+    session = ctx.llm_session()  # no key ⇒ terminal, before any fetch
 
-    if period == 'annual':
-        raise TerminalJobError('Annual period not yet supported')
-
-    as_of_bucket = envelope.asOf.astimezone(timezone.utc).strftime("%Y-%m-%dT%H")
-    job_id = f"fundamental:{symbol}:{period}:{as_of_bucket}"
-    log.info("job.start", extra={"jobId": job_id, "jobName": JOB_ANALYZE_FUNDAMENTAL, "symbol": symbol})
-
-    total = 6
-    report_progress(_progress(0, total, "queued", "Queued"))
-    report_progress(_progress(1, total, "fetching-financials", f"Fetching financials for {symbol}"))
-
-    try:
-        reference = backend_client.get_analysis_reference(symbol)
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code == 404:
-            raise TerminalJobError(
-                f"Unknown symbol {symbol!r} (backend returned 404)"
-            ) from exc
-        raise
-
-    if not reference.get("fundamental", {}).get("metrics"):
+    ctx.advance(f"Fetching financials for {symbol}")
+    reference = ctx.read(
+        lambda: ctx.deps.backend.get_analysis_reference(symbol),
+        unknown=f"symbol {symbol!r}",
+    )
+    metrics_raw = (reference.get("fundamental") or {}).get("metrics") or []
+    if not metrics_raw:
         raise TerminalJobError(f"Empty or missing fundamental metrics for {symbol}")
 
-    report_progress(_progress(2, total, "computing-metrics", "Computing metrics"))
-
-    metrics_raw = reference.get("fundamental", {}).get("metrics", [])
-    if len(metrics_raw) != 9:
+    ctx.advance()
+    if len(metrics_raw) != EXPECTED_METRIC_COUNT:
         raise TerminalJobError(
-            f"Expected 9 fundamental metrics, got {len(metrics_raw)}"
+            f"Expected {EXPECTED_METRIC_COUNT} fundamental metrics, got {len(metrics_raw)}"
         )
-
     metrics = [
         FundamentalMetric(
             id=m.get("id"),
@@ -552,72 +353,40 @@ def _handle_fundamental_job(
         for m in metrics_raw
     ]
 
-    report_progress(_progress(3, total, "synthesizing-verdict", "Synthesizing verdict"))
-
+    ctx.advance()
     metrics_list = [m.model_dump(mode="json") for m in metrics]
-
-    headline = generate_fa_headline(metrics_list)
-    narrative_text = headline
-
-    client = _get_llm_client()
-    tracker = CostTracker(
-        model=client.model,
-        ceiling_usd=0.10,
-        price_table=DEFAULT_PRICE_TABLE,
+    narrative_text, facts_only = narrate(
+        session, build_fa_messages(symbol, period, metrics_list), metrics_list
     )
-
-    try:
-        messages = build_fa_messages(symbol, period, metrics_list)
-        narrative_text = _narrate_with_grounding_retry(
-            client, tracker, messages, metrics_list
-        )
-        headline = generate_fa_headline(metrics_list)
-    except CostCeilingExceeded:
-        narrative_text = "Narrative withheld: narration stopped by cost guard."
-        headline = "facts-only: Narration stopped by cost guard."
+    headline = facts_only or generate_fa_headline(metrics_list)
 
     artifact = {
-        "schemaVersion": SCHEMA_VERSIONS['fundamental'],
+        "schemaVersion": ctx.schema_version,
         "symbol": symbol,
         "jobName": JOB_ANALYZE_FUNDAMENTAL,
         "asOf": envelope.asOf,
         "period": period,
         "metrics": metrics_list,
-        "narrative": {
-            "language": "en",
-            "text": narrative_text,
-        },
-        "provenance": {
-            "source": "real",
-            "adapter": "yfinance",
-            "model": client.model,
-            "generatedAt": _now(),
-        },
-        "cost": tracker.report(),
+        "narrative": {"language": "en", "text": narrative_text},
+        "provenance": _provenance(session),
+        "cost": session.tracker.report(),
     }
-
-    try:
-        FundamentalAnalysisArtifact.model_validate(artifact)
-    except ValidationError as exc:
-        raise TerminalJobError(
-            f"Fundamental artifact failed contract validation: {exc}"
-        ) from exc
-
-    key_suffix = f"fundamental/{symbol}/{as_of_bucket}.json"
-    pointer = artifact_store.put_artifact(key_suffix, artifact)
-    report_progress(_progress(4, total, "persisting-artifact", "Persisting artifact"))
-    log.info(
-        "job.artifact_written",
-        extra={"jobId": job_id, "bucket": pointer.bucket, "key": pointer.key},
+    return JobOutput(
+        artifact_key=f"fundamental/{symbol}/{hour_bucket(envelope.asOf)}.json",
+        artifact=artifact,
+        headline=headline,
     )
 
-    result = JobResult(
-        correlationId=envelope.correlationId,
-        jobId=job_id,
-        pointer=pointer,
-        summary=SystemSummary(headline=headline, asOf=envelope.asOf),
-        at=_now(),
-    )
-    report_progress(_progress(5, total, "done", "Done"))
-    log.info("job.done", extra={"jobId": job_id})
-    return result
+
+FUNDAMENTAL_JOB = JobDefinition(
+    name=JOB_ANALYZE_FUNDAMENTAL,
+    envelope=FundamentalJobEnvelope,
+    result_key=lambda e: f"{e.payload.symbol}:{e.payload.period}:{hour_bucket(e.asOf)}",
+    work_steps=[
+        ("fetching-financials", "Fetching financials"),
+        ("computing-metrics", "Computing metrics"),
+        ("synthesizing-verdict", "Synthesizing verdict"),
+    ],
+    work=_fundamental_work,
+    artifact_contract=FundamentalAnalysisArtifact,
+)

@@ -24,20 +24,18 @@ except ImportError:  # pragma: no cover
     UnrecoverableError = RuntimeError  # type: ignore[assignment, misc]
 
 from .artifacts import ArtifactStore
-from .backend_client import BackendClient, HttpBackendClient
+from .backend_client import HttpBackendClient
 from .config import QUEUE_ANALYSIS, Settings
 from .contracts_generated import JobProgress
-from .handler import TerminalJobError, handle_job
+from .errors import TerminalJobError
+from .handler import handle_job
+from .jobs.pipeline import JobDeps
+from .llm import LLMRuntime
 from .logging_config import configure_logging, get_logger
-from .prospectus.job import ProspectusRuntime, build_prospectus_runtime
 
 
-def _make_processor(
-    artifact_store: ArtifactStore,
-    backend_client: BackendClient,
-    prospectus_runtime: ProspectusRuntime | None = None,
-):
-    """Build the async BullMQ processor bound to the given artifact/backend clients."""
+def _make_processor(deps: JobDeps):
+    """Build the async BullMQ processor bound to the worker's job deps."""
 
     async def process(job: Any, token: str) -> dict:
         async def report_progress(progress: JobProgress) -> None:
@@ -60,10 +58,8 @@ def _make_processor(
                 handle_job,
                 job.name,
                 job.data,
-                artifact_store=artifact_store,
+                deps=deps,
                 report_progress=sync_report,
-                backend_client=backend_client,
-                prospectus_runtime=prospectus_runtime,
             )
         except TerminalJobError as exc:
             # Fail fast, no retry (ADR-0007 §6).
@@ -80,13 +76,12 @@ async def run() -> None:
     configure_logging()
     log = get_logger(__name__)
     settings = Settings.from_env()
-    artifact_store = ArtifactStore(settings)
-    backend_client = HttpBackendClient(settings.backend_api_url)
-    prospectus_runtime = build_prospectus_runtime(settings)
-    if prospectus_runtime.llm_client is None:
+    # The one LLM runtime (client, prices, per-job ceilings), built once.
+    llm = LLMRuntime.from_settings(settings)
+    if not llm.configured:
         log.warning(
             "worker.llm_not_configured",
-            extra={"detail": "OPENROUTER_API_KEY unset: analyze-prospectus jobs will fail terminally"},
+            extra={"detail": "OPENROUTER_API_KEY unset: LLM jobs (TA/FA, prospectus) will fail terminally"},
         )
 
     log.info(
@@ -95,7 +90,13 @@ async def run() -> None:
     )
     worker = Worker(
         QUEUE_ANALYSIS,
-        _make_processor(artifact_store, backend_client, prospectus_runtime),
+        _make_processor(
+            JobDeps(
+                artifact_store=ArtifactStore(settings),
+                backend=HttpBackendClient(settings.backend_api_url),
+                llm=llm,
+            )
+        ),
         {
             "connection": settings.redis_url,
             # Generous lock for the long analyze-prospectus job (renewed every

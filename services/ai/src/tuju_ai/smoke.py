@@ -1,9 +1,11 @@
 """Offline smoke entrypoint (`uv run tuju-ai-smoke`).
 
-Exercises the full handler path — envelope validation → LangGraph stub →
-claim-check → validated JobResult — against an in-memory fake S3, with NO live
-Redis or S3 (ADR-0006 disposable, ADR-0011 unit layer needs no infra). Proves the
-service boots and its wiring is sound.
+Exercises the full handler path for ``analyze-technical`` — envelope
+validation → reference read → narration → claim-check → validated JobResult —
+against an in-memory fake S3, a canned backend and the deterministic
+``FakeLLMClient``, with NO live Redis, S3, backend or LLM (ADR-0006 disposable,
+ADR-0011 unit layer needs no infra). Proves the service boots and its wiring is
+sound.
 """
 
 from __future__ import annotations
@@ -14,6 +16,8 @@ from .artifacts import ArtifactStore
 from .config import JOB_ANALYZE_TECHNICAL, Settings
 from .contracts_generated import JobProgress
 from .handler import handle_job
+from .jobs.pipeline import JobDeps
+from .llm import FakeLLMClient, LLMRuntime
 from .logging_config import configure_logging, get_logger
 
 
@@ -38,6 +42,40 @@ _SMOKE_ENVELOPE = {
 }
 
 
+class CannedBackend:
+    """Serves one TA analysis reference row; no other read is used."""
+
+    def get_analysis_reference(self, symbol: str) -> dict:
+        return {
+            "code": "1155",
+            "shortName": symbol,
+            "technical": {
+                "sma": {"p20": 9.7, "p50": 9.55, "p200": 9.3},
+                "rsi": {"period": 14, "value": 57.4},
+                "macd": {"line": 0.021, "signal": 0.015, "histogram": 0.006},
+                "week52": {"high": 10.45, "low": 8.32},
+            },
+            "technicalEvents": [
+                {
+                    "id": "ma_cross_20_50",
+                    "label": "SMA-20 crossed above SMA-50",
+                    "fired": True,
+                    "values": {"sma20": 9.7, "sma50": 9.55},
+                    "at": "2026-09-29",
+                }
+            ],
+        }
+
+    def get_market_indices(self) -> dict:  # pragma: no cover - unused
+        raise AssertionError("smoke only runs analyze-technical")
+
+    def get_announcement(self, announcement_id: str) -> dict:  # pragma: no cover
+        raise AssertionError("smoke only runs analyze-technical")
+
+    def get_ipo_reference(self, prospectus_id: str) -> dict:  # pragma: no cover
+        raise AssertionError("smoke only runs analyze-technical")
+
+
 def main() -> None:
     configure_logging()
     log = get_logger(__name__)
@@ -49,14 +87,18 @@ def main() -> None:
     result = handle_job(
         JOB_ANALYZE_TECHNICAL,
         _SMOKE_ENVELOPE,
-        artifact_store=store,
+        deps=JobDeps(
+            artifact_store=store,
+            backend=CannedBackend(),
+            llm=LLMRuntime(client=FakeLLMClient()),
+        ),
         report_progress=progress.append,
     )
     log.info(
         "smoke.ok",
         extra={
             "jobId": result.jobId,
-            "verdict": result.summary.verdict,
+            "headline": result.summary.headline,
             "pointerKey": result.pointer.key,
             "progressSteps": len(progress),
         },

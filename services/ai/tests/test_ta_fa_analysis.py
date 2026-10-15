@@ -1,89 +1,46 @@
-"""Unit tests for TA/FA handlers (ticket 10).
+"""TA/FA jobs (poc-phase-a-worker ticket 10) through ``handle_job``.
 
-Covers: envelope validation, reference fetch, empty facts check, LLM narration
-with corrective retry, grounding post-check, cost ceiling, artifact validation.
+Per-job behaviour: the reference read, fact/metric assembly, the narration
+outcomes (clean, corrective retry, facts-only degrade, terminal) and the
+artifact. Envelope/progress/claim-check invariants live in
+``test_job_pipeline.py``. The LLM is ``FakeLLMClient`` injected via
+``LLMRuntime`` — no monkeypatching, no env.
 """
 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
-from datetime import datetime, timezone
-from uuid import uuid4
 
 import httpx
 import pytest
 
-from tuju_ai.artifacts import ArtifactStore
-from tuju_ai.config import (
-    JOB_ANALYZE_FUNDAMENTAL,
-    JOB_ANALYZE_TECHNICAL,
-    Settings,
+from job_helpers import load, run
+from tuju_ai.config import JOB_ANALYZE_FUNDAMENTAL, JOB_ANALYZE_TECHNICAL
+from tuju_ai.contracts_generated import (
+    FundamentalAnalysisArtifact,
+    JobResult,
+    TechnicalAnalysisArtifact,
 )
-from tuju_ai.contracts_generated import JobProgress, JobResult
-from tuju_ai.handler import TerminalJobError
-from tuju_ai.llm import Usage
+from tuju_ai.errors import TerminalJobError
+from tuju_ai.llm import LLMResponse, Usage
 from tuju_ai.llm.fake import FakeLLMClient
-from tuju_ai.ta_fa_analysis import (
-    _handle_fundamental_job,
-    _handle_technical_job,
-)
 
 pytestmark = pytest.mark.unit
 
-FIXTURES_DIR = (
-    Path(__file__).resolve().parents[3] / "packages" / "contracts" / "fixtures"
-)
-
-
-class FakeS3:
-    """Records ``put_object`` calls so the handler needs no live S3."""
-
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    def put_object(self, **kwargs: Any) -> dict:
-        self.calls.append(kwargs)
-        return {"ETag": '"fake"'}
-
-
-def _settings() -> Settings:
-    return Settings(
-        redis_url="redis://unused",
-        s3_endpoint_url="http://localstack:4566",
-        s3_region="ap-southeast-1",
-        s3_bucket="tuju-artifacts",
-        s3_prefix="analysis",
-        backend_api_url="http://backend-unused",
-    )
-
-
-def _load(name: str) -> dict:
-    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
-
 
 class FakeBackendClient:
-    """Records calls and returns canned reference responses."""
+    """Serves one canned analysis reference (or raises it)."""
 
-    def __init__(
-        self, *, analysis_reference_response: dict | None = None, **kwargs: Any
-    ) -> None:
-        self.analysis_reference_response = analysis_reference_response or {}
-        self.calls: list[tuple[str, str]] = []
+    def __init__(self, reference: dict | Exception) -> None:
+        self.reference = reference
+        self.calls: list[str] = []
 
     def get_analysis_reference(self, symbol: str) -> dict:
-        self.calls.append(("get_analysis_reference", symbol))
-        return self.analysis_reference_response
-
-    def get_market_indices(self) -> dict:
-        raise AssertionError("Should not call")
-
-    def get_announcement(self, announcement_id: str) -> dict:
-        raise AssertionError("Should not call")
-
-    def get_ipo_reference(self, prospectus_id: str) -> dict:
-        raise AssertionError("Should not call")
+        self.calls.append(symbol)
+        if isinstance(self.reference, Exception):
+            raise self.reference
+        return self.reference
 
 
 def _make_ta_reference() -> dict:
@@ -195,376 +152,189 @@ def _make_fa_reference() -> dict:
     }
 
 
-def _run_ta(
-    envelope: dict, backend: FakeBackendClient
-) -> tuple[JobResult, list[JobProgress], FakeS3]:
-    fake_s3 = FakeS3()
-    store = ArtifactStore(_settings(), s3_client=fake_s3)
-    progress: list[JobProgress] = []
-    result = _handle_technical_job(
-        envelope,
-        artifact_store=store,
-        report_progress=progress.append,
-        backend_client=backend,
+def _run_ta(reference: Any = None, llm: Any = True, envelope: dict | None = None):
+    backend = FakeBackendClient(_make_ta_reference() if reference is None else reference)
+    result, progress, s3 = run(
+        JOB_ANALYZE_TECHNICAL,
+        envelope or load("technical-job-envelope.json"),
+        backend=backend,
+        llm=llm,
     )
-    return result, progress, fake_s3
+    return result, progress, s3, backend
 
 
-def _run_fa(
-    envelope: dict, backend: FakeBackendClient
-) -> tuple[JobResult, list[JobProgress], FakeS3]:
-    fake_s3 = FakeS3()
-    store = ArtifactStore(_settings(), s3_client=fake_s3)
-    progress: list[JobProgress] = []
-    result = _handle_fundamental_job(
-        envelope,
-        artifact_store=store,
-        report_progress=progress.append,
-        backend_client=backend,
+def _run_fa(reference: Any = None, llm: Any = True, envelope: dict | None = None):
+    backend = FakeBackendClient(_make_fa_reference() if reference is None else reference)
+    result, progress, s3 = run(
+        JOB_ANALYZE_FUNDAMENTAL,
+        envelope or load("fundamental-job-envelope.json"),
+        backend=backend,
+        llm=llm,
     )
-    return result, progress, fake_s3
+    return result, progress, s3, backend
+
+
+def _not_found() -> httpx.HTTPStatusError:
+    req = httpx.Request("GET", "http://backend/stocks/X/analysis/reference")
+    return httpx.HTTPStatusError("nf", request=req, response=httpx.Response(404, request=req))
+
+
+# --- happy paths --------------------------------------------------------------
 
 
 def test_ta_happy_path() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-    result, progress, fake_s3 = _run_ta(
-        _load("technical-job-envelope.json"), backend
-    )
+    result, progress, s3, backend = _run_ta()
 
     JobResult.model_validate(result.model_dump(mode="json"))
-    assert result.jobId.startswith("technical:MAYBANK:1D:")
-    assert not hasattr(result.summary, "verdict")
-    assert len(result.summary.headline) > 0
-    assert result.pointer.bytes > 0
-    assert len(result.pointer.sha256) == 64
+    assert result.jobId == "technical:MAYBANK:1D:2026-09-29T04"
+    assert result.summary.headline == "SMA-20 crossed above SMA-50"  # first fired event
+    assert result.pointer.key == "analysis/technical/MAYBANK/2026-09-29T04.json"
+    assert backend.calls == ["MAYBANK"]
+    assert progress[1].label == "Fetching data for MAYBANK"
 
-    assert len(fake_s3.calls) == 1
-    assert fake_s3.calls[0]["Key"].startswith("analysis/technical/MAYBANK/")
-    assert backend.calls == [("get_analysis_reference", "MAYBANK")]
+    artifact = s3.artifact(result.pointer.key)
+    TechnicalAnalysisArtifact.model_validate(artifact)
+    assert artifact["schemaVersion"] == "technical-analysis-1"
+    assert artifact["facts"]["rsi"] == {"period": 14, "value": 57.4}
+    assert [e["id"] for e in artifact["events"]] == ["ma_cross_20_50", "ma_cross_50_200"]
+    assert artifact["narrative"]["text"] == "Fake: price above all SMAs with RSI at mid-band."
+    assert artifact["provenance"]["model"] == "fake/deterministic"
+    assert artifact["cost"]["calls"] == 1 and artifact["cost"]["ceilingUsd"] == 0.10
 
 
 def test_fa_happy_path() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-    result, progress, fake_s3 = _run_fa(
-        _load("fundamental-job-envelope.json"), backend
-    )
+    result, progress, s3, backend = _run_fa()
 
     JobResult.model_validate(result.model_dump(mode="json"))
     assert result.jobId.startswith("fundamental:MAYBANK:quarterly:")
-    assert not hasattr(result.summary, "verdict")
-    assert len(result.summary.headline) > 0
+    assert result.summary.headline == "P/E ratio (trailing) 12.5x"  # first non-null metric
+    assert result.pointer.key.startswith("analysis/fundamental/MAYBANK/")
+    assert backend.calls == ["MAYBANK"]
+    assert progress[1].label == "Fetching financials for MAYBANK"
 
-    assert len(fake_s3.calls) == 1
-    assert fake_s3.calls[0]["Key"].startswith("analysis/fundamental/MAYBANK/")
-    assert backend.calls == [("get_analysis_reference", "MAYBANK")]
-
-
-def test_ta_progress_sequence() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-    result, progress, fake_s3 = _run_ta(
-        _load("technical-job-envelope.json"), backend
-    )
-
-    assert [p.stepIndex for p in progress] == [0, 1, 2, 3, 4, 5]
-    phases = [p.phase for p in progress]
-    assert phases == [
-        "queued",
-        "fetching-market-data",
-        "computing-indicators",
-        "synthesizing-verdict",
-        "persisting-artifact",
-        "done",
-    ]
-    for p in progress:
-        JobProgress.model_validate(p.model_dump(mode="json"))
+    artifact = s3.artifact(result.pointer.key)
+    FundamentalAnalysisArtifact.model_validate(artifact)
+    assert artifact["schemaVersion"] == "fundamental-analysis-1"
+    assert len(artifact["metrics"]) == 9
 
 
-def test_fa_progress_sequence() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-    result, progress, fake_s3 = _run_fa(
-        _load("fundamental-job-envelope.json"), backend
-    )
-
-    assert [p.stepIndex for p in progress] == [0, 1, 2, 3, 4, 5]
-    phases = [p.phase for p in progress]
-    assert phases == [
-        "queued",
-        "fetching-financials",
-        "computing-metrics",
-        "synthesizing-verdict",
-        "persisting-artifact",
-        "done",
-    ]
+def test_ta_without_fired_events_falls_back_to_the_unavailable_headline() -> None:
+    ref = _make_ta_reference()
+    ref["technicalEvents"] = []
+    result, *_ = _run_ta(ref)
+    assert result.summary.headline == "Data unavailable for analysis"
 
 
-def test_bad_ta_envelope_is_terminal() -> None:
-    bad = _load("technical-job-envelope.json")
-    bad["trigger"] = "not-a-trigger"
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-    with pytest.raises(TerminalJobError):
-        _run_ta(bad, backend)
+# --- terminal inputs --------------------------------------------------------------
 
 
-def test_bad_fa_envelope_is_terminal() -> None:
-    bad = _load("fundamental-job-envelope.json")
-    bad["trigger"] = "invalid"
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-    with pytest.raises(TerminalJobError):
-        _run_fa(bad, backend)
-
-
-def test_ta_404_reference_is_terminal() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-
-    def raise_404(*args, **kwargs):
-        response = httpx.Response(404)
-        raise httpx.HTTPStatusError("Not found", request=None, response=response)
-
-    backend.get_analysis_reference = raise_404
-    with pytest.raises(TerminalJobError):
-        _run_ta(_load("technical-job-envelope.json"), backend)
-
-
-def test_fa_404_reference_is_terminal() -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-
-    def raise_404(*args, **kwargs):
-        response = httpx.Response(404)
-        raise httpx.HTTPStatusError("Not found", request=None, response=response)
-
-    backend.get_analysis_reference = raise_404
-    with pytest.raises(TerminalJobError):
-        _run_fa(_load("fundamental-job-envelope.json"), backend)
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_unknown_symbol_404_is_terminal(runner) -> None:
+    with pytest.raises(TerminalJobError, match="Unknown symbol 'MAYBANK'"):
+        runner(_not_found())
 
 
 def test_ta_empty_facts_is_terminal() -> None:
     ref = _make_ta_reference()
     ref["technical"] = {}
-    backend = FakeBackendClient(analysis_reference_response=ref)
-    with pytest.raises(TerminalJobError):
-        _run_ta(_load("technical-job-envelope.json"), backend)
+    with pytest.raises(TerminalJobError, match="technical facts"):
+        _run_ta(ref)
 
 
 def test_fa_empty_metrics_is_terminal() -> None:
     ref = _make_fa_reference()
     ref["fundamental"]["metrics"] = []
-    backend = FakeBackendClient(analysis_reference_response=ref)
-    with pytest.raises(TerminalJobError):
-        _run_fa(_load("fundamental-job-envelope.json"), backend)
+    with pytest.raises(TerminalJobError, match="fundamental metrics"):
+        _run_fa(ref)
 
 
-def test_ta_malformed_llm_on_both_attempts_is_terminal(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
+def test_fa_wrong_metric_count_is_terminal() -> None:
+    ref = _make_fa_reference()
+    ref["fundamental"]["metrics"].pop()
+    with pytest.raises(TerminalJobError, match="Expected 9"):
+        _run_fa(ref)
 
-    fake_client = FakeLLMClient(garbage_first={"narrate": 2})
 
-    def mock_get_llm():
-        return fake_client
+def test_fa_annual_period_is_terminal_before_any_read() -> None:
+    envelope = load("fundamental-job-envelope.json")
+    envelope["payload"]["period"] = "annual"
+    with pytest.raises(TerminalJobError, match="Annual"):
+        _run_fa(RuntimeError("must not be read"), envelope=envelope)
 
-    import tuju_ai.ta_fa_analysis
 
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_missing_llm_key_is_terminal_before_any_read(runner) -> None:
+    with pytest.raises(TerminalJobError, match="OPENROUTER_API_KEY"):
+        runner(RuntimeError("must not be read"), llm=None)
 
-    with pytest.raises(TerminalJobError, match="invalid"):
-        _run_ta(_load("technical-job-envelope.json"), backend)
 
+# --- narration outcomes (FakeLLMClient injected via LLMRuntime) -------------
 
-def test_ta_grounding_double_violation_is_terminal(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
 
-    class GrindingViolatingClient(FakeLLMClient):
-        def complete(self, messages, **kwargs):
-            resp = super().complete(messages, **kwargs)
-            from tuju_ai.llm import LLMResponse
-            return LLMResponse(text='{"narrative": "Should buy this stock now"}', usage=resp.usage, model=resp.model)
+class ScriptedNarration(FakeLLMClient):
+    """Replies with the given narratives in order, then the canned one."""
 
-    fake_client = GrindingViolatingClient()
+    def __init__(self, *narratives: str, **kw) -> None:
+        super().__init__(**kw)
+        self._script = list(narratives)
 
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    with pytest.raises(TerminalJobError, match="Grounding"):
-        _run_ta(_load("technical-job-envelope.json"), backend)
-
-
-def test_ta_cost_ceiling_strips_narrative(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-
-    class ExpensiveClient(FakeLLMClient):
-        def complete(self, messages, **kwargs):
-            huge_usage = Usage(
-                prompt_tokens=1_000_000, completion_tokens=1_000_000
-            )
-            resp = super().complete(messages, **kwargs)
-            from tuju_ai.llm import LLMResponse
-            return LLMResponse(text=resp.text, usage=huge_usage, model=resp.model)
-
-    fake_client = ExpensiveClient()
-
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    result, progress, fake_s3 = _run_ta(
-        _load("technical-job-envelope.json"), backend
-    )
-
-    assert "facts-only: Narration stopped by cost guard." in result.summary.headline
-
-
-def test_fa_pre_write_validation_failure_is_terminal(monkeypatch) -> None:
-    """Test that a malformed artifact (pre-write validation) fails the job."""
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-
-    from tuju_ai.contracts_generated import FundamentalAnalysisArtifact
-    from pydantic import ValidationError
-
-    original_validate = FundamentalAnalysisArtifact.model_validate
-
-    def bad_validate(artifact):
-        raise ValidationError.from_exception_data("test", [])
-
-    monkeypatch.setattr(
-        FundamentalAnalysisArtifact, "model_validate", bad_validate
-    )
-
-    with pytest.raises(TerminalJobError, match="contract validation"):
-        _run_fa(_load("fundamental-job-envelope.json"), backend)
-
-
-# ---------------------------------------------------------------------------
-# New tests appended below (additive only)
-# ---------------------------------------------------------------------------
-
-
-def test_fa_malformed_llm_on_both_attempts_is_terminal(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-
-    fake_client = FakeLLMClient(garbage_first={"narrate": 2})
-
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    with pytest.raises(TerminalJobError, match="invalid"):
-        _run_fa(_load("fundamental-job-envelope.json"), backend)
-
-
-def test_fa_grounding_double_violation_is_terminal(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-
-    class BannedWordClient(FakeLLMClient):
-        def complete(self, messages, **kwargs):
-            resp = super().complete(messages, **kwargs)
-            from tuju_ai.llm import LLMResponse
-            return LLMResponse(
-                text='{"narrative": "Should buy this stock now"}',
-                usage=resp.usage,
-                model=resp.model,
-            )
-
-    fake_client = BannedWordClient()
-
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    with pytest.raises(TerminalJobError, match="Grounding"):
-        _run_fa(_load("fundamental-job-envelope.json"), backend)
-
-
-def test_fa_cost_ceiling_strips_narrative(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_fa_reference())
-
-    class ExpensiveClient(FakeLLMClient):
-        def complete(self, messages, **kwargs):
-            huge_usage = Usage(
-                prompt_tokens=1_000_000, completion_tokens=1_000_000
-            )
-            resp = super().complete(messages, **kwargs)
-            from tuju_ai.llm import LLMResponse
-            return LLMResponse(text=resp.text, usage=huge_usage, model=resp.model)
-
-    fake_client = ExpensiveClient()
-
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    result, progress, fake_s3 = _run_fa(
-        _load("fundamental-job-envelope.json"), backend
-    )
-
-    assert "facts-only: Narration stopped by cost guard." in result.summary.headline
-
-
-def test_ta_pre_write_validation_failure_is_terminal(monkeypatch) -> None:
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-
-    from tuju_ai.contracts_generated import TechnicalAnalysisArtifact
-    from pydantic import ValidationError
-
-    original_validate = TechnicalAnalysisArtifact.model_validate
-
-    def bad_validate(artifact):
-        raise ValidationError.from_exception_data("test", [])
-
-    monkeypatch.setattr(
-        TechnicalAnalysisArtifact, "model_validate", bad_validate
-    )
-
-    with pytest.raises(TerminalJobError, match="contract validation"):
-        _run_ta(_load("technical-job-envelope.json"), backend)
-
-
-def test_ta_grounding_recovered_on_second_attempt(monkeypatch) -> None:
-    """First narration has a ban word; corrective retry returns clean text."""
-    backend = FakeBackendClient(analysis_reference_response=_make_ta_reference())
-
-    call_count = {"n": 0}
-
-    class FirstBadThenGoodClient(FakeLLMClient):
-        def complete(self, messages, **kwargs):
-            resp = super().complete(messages, **kwargs)
-            call_count["n"] += 1
-            from tuju_ai.llm import LLMResponse
-            if call_count["n"] == 1:
-                return LLMResponse(
-                    text='{"narrative": "Should buy this stock now"}',
-                    usage=resp.usage,
-                    model=resp.model,
-                )
+    def complete(self, messages, **kwargs):  # type: ignore[override]
+        resp = super().complete(messages, **kwargs)
+        if not self._script:
             return resp
+        text = json.dumps({"narrative": self._script.pop(0)})
+        return LLMResponse(text=text, usage=resp.usage, model=resp.model)
 
-    fake_client = FirstBadThenGoodClient()
 
-    def mock_get_llm():
-        return fake_client
-
-    import tuju_ai.ta_fa_analysis
-
-    monkeypatch.setattr(tuju_ai.ta_fa_analysis, "_get_llm_client", mock_get_llm)
-
-    result, progress, fake_s3 = _run_ta(
-        _load("technical-job-envelope.json"), backend
+def _expensive() -> FakeLLMClient:
+    return FakeLLMClient(
+        model="google/gemini-2.5-flash",
+        usage=Usage(prompt_tokens=1_000_000, completion_tokens=1_000_000),
     )
 
-    assert not result.summary.headline.startswith("facts-only:")
-    assert len(fake_s3.calls) == 1
-    assert call_count["n"] == 2
+
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_malformed_narration_on_both_attempts_is_terminal(runner) -> None:
+    llm = FakeLLMClient(model="google/gemini-2.5-flash", garbage_first={"narrate": 2})
+    with pytest.raises(TerminalJobError, match="invalid"):
+        runner(llm=llm)
+    assert llm.steps == ["narrate", "narrate"]  # one corrective retry, no more
+
+
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_grounding_violation_on_both_attempts_degrades_to_facts_only(runner) -> None:
+    llm = ScriptedNarration(
+        "Investors should buy this stock now",
+        "Price sits 42 above the average",  # 42 is not in the facts
+        model="google/gemini-2.5-flash",
+    )
+    result, _progress, s3, _b = runner(llm=llm)
+
+    assert result.summary.headline == "facts-only: Grounding check failed."
+    artifact = s3.artifact(result.pointer.key)
+    assert artifact["narrative"]["text"] == "Narrative withheld: failed the grounding check."
+    assert artifact["cost"]["calls"] == 2  # real usage is still reported
+
+
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_cost_ceiling_degrades_to_facts_only(runner) -> None:
+    result, _progress, s3, _b = runner(llm=_expensive())
+    assert result.summary.headline == "facts-only: Narration stopped by cost guard."
+    artifact = s3.artifact(result.pointer.key)
+    assert artifact["narrative"]["text"] == "Narrative withheld: narration stopped by cost guard."
+    assert artifact["cost"]["ceilingUsd"] == 0.10  # the narration ceiling
+
+
+def test_grounding_recovered_on_second_attempt() -> None:
+    """First narration has a ban word; corrective retry returns clean text."""
+    llm = ScriptedNarration("Should buy this stock now")
+    result, _progress, s3, _b = _run_ta(llm=llm)
+
+    assert result.summary.headline == "SMA-20 crossed above SMA-50"
+    assert len(s3.calls) == 1
+    assert llm.steps == ["narrate", "narrate"]
+    # the retry fed the rejection back to the model
+    assert "banned term 'buy'" in llm.calls[1][-1].content
+    assert s3.artifact(result.pointer.key)["cost"]["calls"] == 2
+
+

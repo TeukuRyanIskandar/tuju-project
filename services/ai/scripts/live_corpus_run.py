@@ -28,45 +28,64 @@ REPO = Path(__file__).resolve().parents[3]
 CORPUS = REPO / ".scratch" / "free-tier" / "demo-corpus" / "prospectuses"
 OUT_DIR = REPO / ".scratch" / "prospectus-v2"
 
-from tuju_ai.config import Settings
-from tuju_ai.llm import CostTracker
-from tuju_ai.prospectus.analysis import analyze_prospectus
+from tuju_ai.artifacts import ArtifactStore
+from tuju_ai.config import JOB_ANALYZE_PROSPECTUS, Settings
+from tuju_ai.llm import LLMRuntime
+from tuju_ai.prospectus.analysis import AnalysisDeps, analyze
 from tuju_ai.prospectus.analysis_models import IpoReference
-from tuju_ai.prospectus.job import build_prospectus_runtime
-from tuju_ai.prospectus.models import ProspectusSection
 from tuju_ai.prospectus.parsing import (
     group_pdf_parts,
     merge_pdf_parts,
     parse_prospectus_fast,
 )
-from tuju_ai.prospectus.router import route_sections
+
+
+class _MemoryS3:
+    """In-memory parse cache: this run never touches real S3."""
+
+    def __init__(self) -> None:
+        self.objects: dict[str, bytes] = {}
+
+    def put_object(self, *, Key: str, Body: bytes, **_: object) -> dict:
+        self.objects[Key] = Body
+        return {}
+
+    def get_object(self, *, Key: str, **_: object) -> dict:
+        from botocore.exceptions import ClientError
+
+        if Key not in self.objects:
+            raise ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        return {"Body": self.objects[Key]}
+
+
+class _PrintProgress:
+    def __init__(self) -> None:
+        self.n = 0
+
+    def advance(self, label: str | None = None) -> None:
+        self.n += 1
+        print(f"    step {self.n} ...", flush=True)
+
+    def heartbeat(self):
+        from contextlib import nullcontext
+
+        return nullcontext()
 
 
 def _run_one(name: str, parts: list[Path], settings: Settings) -> dict:
-    runtime = build_prospectus_runtime(settings)
-    client = runtime.llm_client
+    session = LLMRuntime.from_settings(settings).session(JOB_ANALYZE_PROSPECTUS)
     t0 = time.perf_counter()
-    parse = parse_prospectus_fast(merge_pdf_parts([p.read_bytes() for p in parts]))
-    t_parse = time.perf_counter() - t0
-    routed = route_sections(parse)
-    tracker = CostTracker(
-        model=client.model,
-        ceiling_usd=runtime.cost_ceiling_usd,
-        price_table=runtime.price_table,
-    )
-    t1 = time.perf_counter()
-    artifact = analyze_prospectus(
-        prospectus_id=name,
-        reference=IpoReference(
-            id=name, companyName=name, prospectusS3Key=f"prospectus/{name}.pdf"
+    artifact = analyze(
+        name,
+        IpoReference(id=name, companyName=name, prospectusS3Key=f"prospectus/{name}.pdf"),
+        merge_pdf_parts([p.read_bytes() for p in parts]),
+        AnalysisDeps(
+            llm=session,
+            parse_fn=parse_prospectus_fast,
+            parse_cache=ArtifactStore(settings, s3_client=_MemoryS3()),
         ),
-        parse=parse,
-        routed=routed,
-        client=client,
-        tracker=tracker,
-        on_step=lambda step: print(f"    step {step} ...", flush=True),
+        _PrintProgress(),
     )
-    t_llm = time.perf_counter() - t1
 
     (OUT_DIR / "artifacts").mkdir(parents=True, exist_ok=True)
     (OUT_DIR / "artifacts" / f"{name}.json").write_text(
@@ -75,8 +94,8 @@ def _run_one(name: str, parts: list[Path], settings: Settings) -> dict:
     sections = artifact["sections"]
     return {
         "parts": len(parts),
-        "parseS": t_parse,
-        "llmS": t_llm,
+        "parseS": artifact["timing"]["parseMs"] / 1000,
+        "llmS": artifact["timing"]["analysisMs"] / 1000,
         "totalS": time.perf_counter() - t0,
         "models": artifact["provenance"]["model"],
         "costUsd": artifact["cost"]["estimatedCostUsd"],
@@ -85,7 +104,10 @@ def _run_one(name: str, parts: list[Path], settings: Settings) -> dict:
         "themes": len(sections["riskFactors"]["data"].get("themes") or []),
         "headline": bool(sections["whatToWatch"]["data"].get("headline")),
         "located": "".join(
-            "L" if r.located else "F" for r in routed.values()
+            "L" if v["routing"]["located"] else "F"
+            for group in ("sections", "insights")
+            for v in artifact[group].values()
+            if "routing" in v
         ),
     }
 
@@ -120,7 +142,7 @@ def main() -> int:
         )
         print(f"    done: {rows[-1]}", flush=True)
 
-    sections = "/".join(s.value for s in ProspectusSection)
+    sections = "offer/business/financials/riskFactors/lockup/relatedParty"
     md = (
         "# prospectus-v2 live corpus run\n\n"
         f"Run {datetime.now(timezone.utc).isoformat(timespec='seconds')} · "

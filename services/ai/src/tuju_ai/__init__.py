@@ -1,4 +1,4 @@
-"""tuju-ai — Bursa platform AI worker (Python + LangGraph).
+"""tuju-ai — Bursa platform AI worker (Python).
 
 Its own uv-managed world, outside the pnpm/Turbo graph (ADR-0002). Entrypoints:
 
