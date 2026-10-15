@@ -97,7 +97,13 @@ export class BullMqJobBus extends JobBus implements OnModuleInit, OnModuleDestro
       if (state !== 'unknown') {
         if (!FINISHED_STATES.has(state)) return this.collapsed(jobName, jobId, env, 'inFlight');
         if (!opts.replaceFinished) return this.collapsed(jobName, jobId, env, 'finished');
-        await existing.remove();
+        try {
+          await existing.remove();
+        } catch {
+          // It went active (locked) since getState, or another enqueuer
+          // replaced it first: whatever holds the id now is not ours.
+          return this.collapsedOnto(jobName, jobId, env);
+        }
       }
     }
 
@@ -108,6 +114,14 @@ export class BullMqJobBus extends JobBus implements OnModuleInit, OnModuleDestro
       removeOnComplete: { age: 60 * 60 }, // 1h (ADR-0007 §7)
       removeOnFail: { age: 60 * 60 * 24 }, // 24h — kept longer for debugging
     });
+    // The check-then-add above is not atomic: a concurrent enqueuer (another
+    // process, same id) can add between our remove and add, and BullMQ then
+    // drops ours silently. Only the stored envelope says whose job it is.
+    const stored = await this.queue.getJob(jobId);
+    const storedEnv = stored?.data as JobEnvelope<unknown> | undefined;
+    if (storedEnv && storedEnv.correlationId !== env.correlationId) {
+      return this.collapsedOnto(jobName, jobId, env);
+    }
     this.logger.log({
       msg: 'job enqueued',
       jobName,
@@ -120,6 +134,22 @@ export class BullMqJobBus extends JobBus implements OnModuleInit, OnModuleDestro
   /** Introspection surface for Bull Board only (ADR-0010 §4); not on the seam. */
   getQueue(): Queue {
     return this.queue;
+  }
+
+  /** Our add lost to another job under the same id: report that job's state. */
+  private async collapsedOnto(
+    jobName: JobName,
+    jobId: string,
+    env: JobEnvelope<unknown>,
+  ): Promise<EnqueueOutcome> {
+    const holder = await this.queue.getJob(jobId);
+    const state = holder ? await holder.getState() : 'unknown';
+    return this.collapsed(
+      jobName,
+      jobId,
+      env,
+      FINISHED_STATES.has(state) ? 'finished' : 'inFlight',
+    );
   }
 
   private collapsed(

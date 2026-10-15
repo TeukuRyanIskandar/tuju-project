@@ -123,6 +123,25 @@ describe('JobBus routing', () => {
     await expect(bus.complete(result('brief:2026-09-29'))).resolves.toBeUndefined();
   });
 
+  it('a throwing observer never stops the family from landing', async () => {
+    const bus = new InMemoryJobBus();
+    const brief = recordingFamily(marketBriefIdentity);
+    bus.register(brief.family);
+    bus.onResult(() => {
+      throw new Error('observer bug');
+    });
+    bus.onFailure(() => {
+      throw new Error('observer bug');
+    });
+
+    await expect(bus.complete(result('brief:2026-09-29'))).resolves.toBeUndefined();
+    expect(brief.landed).toHaveLength(1);
+
+    const { jobId } = await bus.enqueue(JobNames.marketBrief, briefEnv());
+    await expect(bus.failJob(jobId)).resolves.toBeUndefined();
+    expect(brief.failed).toHaveLength(1);
+  });
+
   it('allows one family per job name, and only with the registered identity', () => {
     const bus = new InMemoryJobBus();
     bus.register(recordingFamily(marketBriefIdentity).family);

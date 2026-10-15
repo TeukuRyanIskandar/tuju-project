@@ -192,7 +192,10 @@ export class KlciEnqueueService {
       const { jobId, status } = await this.jobBus.enqueue(jobName, envelope, {
         replaceFinished: true,
       });
-      if (status === 'inFlight') {
+      // `finished` despite replaceFinished: a concurrent enqueuer's job took
+      // the id (and already ran). Either way nothing of ours was added, so
+      // never mark pending for an envelope that is not queued.
+      if (status !== 'enqueued') {
         result.alreadyInFlight.push(key);
         return;
       }

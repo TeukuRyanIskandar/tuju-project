@@ -89,13 +89,31 @@ export abstract class JobBus {
     for (const handler of this.progressHandlers) handler(progress);
   }
 
+  /**
+   * Run observe-only hooks. A throwing observer is logged and skipped: it
+   * must never stop the family from landing the result or failure.
+   */
+  private notify<E>(observers: ReadonlyArray<(e: E) => void>, event: E, jobId: string): void {
+    for (const observer of observers) {
+      try {
+        observer(event);
+      } catch (err) {
+        this.logger.error({
+          msg: 'job observer threw; ignored',
+          jobId,
+          error: (err as Error).message,
+        });
+      }
+    }
+  }
+
   /** Route a worker result to the one family that owns its result id. */
   protected async deliverResult(result: JobResult): Promise<void> {
     if (typeof result?.jobId !== 'string') {
       this.logger.warn({ msg: 'completed job returned no JobResult; dropped' });
       return;
     }
-    for (const observer of this.resultObservers) observer(result);
+    this.notify(this.resultObservers, result, result.jobId);
 
     const ref = resolveResultId(result.jobId);
     if (!ref) {
@@ -132,7 +150,7 @@ export abstract class JobBus {
     failure: JobFailure,
     job: { name: string; data: JobEnvelope<unknown> } | undefined,
   ): Promise<void> {
-    for (const observer of this.failureObservers) observer(failure);
+    this.notify(this.failureObservers, failure, failure.jobId);
 
     const identity = job ? JOB_IDENTITIES[job.name as JobName] : undefined;
     if (!job || !identity) {

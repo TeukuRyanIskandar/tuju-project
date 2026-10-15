@@ -254,6 +254,32 @@ describe('JobBus (integration — testcontainers)', () => {
     expect(fresh?.data.correlationId).toBe(rerun.correlationId);
   });
 
+  it('concurrent replaceFinished enqueues of one finished id: exactly one is reported enqueued, and it is the stored one', async () => {
+    const queue = jobBus.getQueue();
+    const env = () => envelope('2026-10-02T20:00:00.000Z', {});
+    await jobBus.enqueue(JobNames.marketBrief, env());
+    const worker = new Worker(ANALYSIS_QUEUE, async () => ({ ok: true }), { connection: redis });
+    try {
+      await waitFor(async () =>
+        (await (await queue.getJob('brief-2026-10-02'))?.getState()) === 'completed' ? true : null,
+      );
+    } finally {
+      await worker.close();
+    }
+
+    const envs = [env(), env(), env()];
+    const outcomes = await Promise.all(
+      envs.map((e) => jobBus.enqueue(JobNames.marketBrief, e, { replaceFinished: true })),
+    );
+
+    const winners = outcomes
+      .map((o, i) => ({ o, e: envs[i] }))
+      .filter(({ o }) => o.status === 'enqueued');
+    expect(winners).toHaveLength(1);
+    const stored = await queue.getJob('brief-2026-10-02');
+    expect(stored?.data.correlationId).toBe(winners[0].e.correlationId);
+  });
+
   it('a final failure reaches exactly the failed job\'s family, keyed from its envelope', async () => {
     const bus = new BullMqJobBus(redis);
     await bus.onModuleInit();
