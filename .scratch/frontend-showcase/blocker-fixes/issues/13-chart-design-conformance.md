@@ -1,7 +1,7 @@
 # 13 — Conform chart volume colouring to DESIGN.md
 
 Type: task
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: none
 Severity: low
 Component: `apps/frontend`
@@ -95,3 +95,15 @@ Also deferred: the market chart has no keyboard inspection control, only a
 collapsed `<details>` table. That satisfies parent ticket 03's accessibility
 criterion literally, but the asymmetry with the stock chart's slider is worth a
 decision. Same recommendation — separate ticket, not here.
+
+## Comments
+
+- Implemented volume direction from the immediately preceding stored close;
+  gaps break the comparison, and first/no-comparator and equal-close bars use
+  `--unch` and are labelled unknown or unchanged. Bars require usable close and
+  volume, preserving gaps. The table and keyboard inspection value expose the
+  direction as text.
+- Added visible directional glyphs and legend, vertical gridlines, and a tinted
+  volume pane. Direction is text in the data table and slider value. Full frontend
+  suite (339 tests), typecheck and production build pass. History parsing/chart
+  tests also pass under `TZ=UTC` and `TZ=Pacific/Auckland` (32 tests each).

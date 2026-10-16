@@ -1,7 +1,7 @@
 # 15 — Remove doc drift and dead code
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Severity: low
 Component: `apps/frontend`
@@ -92,6 +92,23 @@ pnpm --filter frontend test
 pnpm --filter frontend typecheck
 pnpm --filter frontend build
 ```
+
+## Resolution
+
+- Corrected the data-loading convention: routes do not preload backend reads;
+  components use `useQuery` and imperative reads use `fetchQuery`. Updated both
+  the frontend context and README, which repeated the stale claim.
+- Removed `placeholderData: undefined` and its misleading comment, and removed
+  the redundant TA/FA keys (the route remounts `StockDetail` on code changes).
+- Made the market `HistoryChart` private. Retained
+  `stockCorporateActionsQuery`: git history shows it was introduced in the
+  original typed stocks API-layer commit with the endpoint schema and key
+  factory, so it remains an intended reusable API builder despite having no UI
+  consumer yet.
+- Sweep found only the intentional `keepPreviousData` option in search and no
+  additional redundant resource keys needing cleanup.
+- Verification passed: frontend suite (339 tests), typecheck and production build.
+  The rebuilt stock route client chunk is 22.37 kB (7.38 kB gzip).
 
 Grep for `ensureQueryData` after the edit to confirm the stale convention is gone
 from docs and has not been reintroduced in code.

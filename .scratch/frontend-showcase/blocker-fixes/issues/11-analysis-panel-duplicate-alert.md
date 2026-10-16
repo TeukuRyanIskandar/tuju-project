@@ -1,7 +1,7 @@
 # 11 — Remove the duplicate analysis detail alert
 
 Type: bug
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: none
 Severity: low
 Component: `apps/frontend`
@@ -84,3 +84,9 @@ pnpm --filter frontend typecheck
   in `apps/frontend/CONTEXT.md` and parent ticket 05's comment, never on screen.
   Out of scope for this ticket; worth raising separately if a presenter could be
   misled.
+
+## Comments
+
+- The single `detailUnavailable` condition and exact-count regression test were
+  already present in the working tree before this implementation round. The full
+  frontend suite passes (339 tests) and typecheck passes.

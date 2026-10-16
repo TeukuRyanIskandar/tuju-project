@@ -30,7 +30,7 @@ this effort adds remediation on top of it.
 | Timestamp conformance | 05 | Resolved |
 | Narration diagnosis | 06-08 | 06 and 07 resolved; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
-| Frontend cleanup | 10-15 | All ready, all unblocked |
+| Frontend cleanup | 10-15 | 10, 12, 14, 15 resolved; 11, 13 ready for human |
 | Tracker | 16 | Ready, blocked on the work it describes |
 
 ## Dependency graph
@@ -66,14 +66,10 @@ this effort adds remediation on top of it.
 | --- | --- | --- | --- |
 | [06](issues/06-openrouter-response-diagnostics.md) | Sanitized response metadata at the OpenRouter boundary | high | `services/ai` |
 | [10](issues/10-market-provenance-honesty.md) | Market provenance fallback | high | `apps/frontend` |
-| [11](issues/11-analysis-panel-duplicate-alert.md) | Duplicate analysis detail alert | low | `apps/frontend` |
 | [12](issues/12-stock-detail-panel-honesty.md) | Stock detail header honesty | medium | `apps/frontend` |
-| [13](issues/13-chart-design-conformance.md) | Chart volume colouring | low | `apps/frontend` |
 | [14](issues/14-fixture-module-boundary.md) | Fixture module boundary | medium | `apps/frontend` |
-| [15](issues/15-doc-drift-and-dead-code.md) | Doc drift and dead code | low | `apps/frontend` |
 
-Tickets 10-15 touch files no other ticket edits, so they can run concurrently with
-the contract track and with each other. Ticket
+11, 13 and 15 landed in one round and now await human review. Ticket
 [04](issues/04-frontend-scale-presentation.md) is now unblocked too, but it should
 not start until a real `fundamental-analysis-2` artifact exists to verify against —
 that is [09](issues/09-bounded-rerun-readiness-reaudit.md), which is
@@ -235,12 +231,12 @@ All unblocked, all independently verifiable, none touching another ticket's file
 
 | Ticket | Title | Area | Status | Severity |
 | --- | --- | --- | --- | --- |
-| [10](issues/10-market-provenance-honesty.md) | Provenance fallback says "Real source" for unknown | honesty | `ready-for-agent` | high |
-| [11](issues/11-analysis-panel-duplicate-alert.md) | Duplicate `role="alert"` | a11y | `ready-for-agent` | low |
-| [12](issues/12-stock-detail-panel-honesty.md) | Unexplained EOD blank; 3x fetch on mismatch | honesty | `ready-for-agent` | medium |
-| [13](issues/13-chart-design-conformance.md) | Volume colour vs `DESIGN.md` | design | `ready-for-agent` | low |
-| [14](issues/14-fixture-module-boundary.md) | `?raw` fixture import in production src | structure | `ready-for-agent` | medium |
-| [15](issues/15-doc-drift-and-dead-code.md) | False `CONTEXT.md` convention; dead code | hygiene | `ready-for-agent` | low |
+| [10](issues/10-market-provenance-honesty.md) | Provenance fallback says "Real source" for unknown | honesty | `resolved` | high |
+| [11](issues/11-analysis-panel-duplicate-alert.md) | Duplicate `role="alert"` | a11y | `ready-for-human` | low |
+| [12](issues/12-stock-detail-panel-honesty.md) | Stock detail header honesty | honesty | `resolved` | medium |
+| [13](issues/13-chart-design-conformance.md) | Volume colour vs `DESIGN.md` | design | `ready-for-human` | low |
+| [14](issues/14-fixture-module-boundary.md) | `?raw` fixture import in production src | structure | `resolved` | medium |
+| [15](issues/15-doc-drift-and-dead-code.md) | False `CONTEXT.md` convention; dead code | hygiene | `resolved` | low |
 
 Ticket 13 also records an explicit **deferral** on shared chart primitives, with
 the recommendation to file a separate refactor ticket.
