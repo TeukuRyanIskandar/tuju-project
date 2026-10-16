@@ -37,6 +37,13 @@ test-results/
 .localstack/
 *.local
 
+# --- Local agent runtime (opencode) ---
+# Local-only: opencode's generated package.json/node_modules and the vendored
+# Matt Pocock skills snapshot. Already-tracked files keep their status, so
+# .opencode/plans/ stays committed; re-inclusion needs no negation because git
+# never applies .gitignore to tracked paths.
+.opencode/
+
 # --- Editors / OS ---
 .DS_Store
 Thumbs.db

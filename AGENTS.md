@@ -16,6 +16,14 @@ Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 Multi-context: root `CONTEXT-MAP.md` indexes a per-context `CONTEXT.md` at each workspace member (`apps/backend`, `apps/frontend`, `packages/contracts`, `services/ai`). System-wide ADRs stay in `docs/adr/`. See `docs/agents/domain.md`.
 
+### Matt Pocock skills
+
+Project-local copies are in `.opencode/skills/`; source, inventory, and local compatibility rules are documented in `docs/agents/matt-pocock-skills.md`. That guide and this file take precedence over imported skill instructions: use this repo's `CONTEXT*` and `.scratch` conventions, and never commit or push without a separate explicit user request.
+
+### Live LLM tests
+
+For any live OpenRouter test, and especially an approved paid-model test, follow `docs/agents/llm-testing.md`. Record sanitized token and spend usage in `.scratch/llm-usage.md`.
+
 <!-- BEGIN:turborepo-agent-rules -->
 
 # This is NOT the Turborepo you know
