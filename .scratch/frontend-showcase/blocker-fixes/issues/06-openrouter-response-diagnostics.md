@@ -1,7 +1,7 @@
 # 06 — Capture sanitized response metadata at the OpenRouter boundary
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Severity: high
 Component: `services/ai`
@@ -106,3 +106,13 @@ fields appear and nothing sensitive does.
 - Do not change retry counts, `MAX_RETRIES_FREE`, or the cost ceiling. Free
   routing retrying three times is deliberate (`llm/structured.py:36-38`).
 - Do not change model routing. Free-only stays free-only.
+
+## Comments
+
+- 2026-10-16: Added allowlisted response metadata to `LLMResponse` and an
+  INFO-level metadata-only log event. Provider HTTP bodies and transport error
+  details are no longer included in exceptions; unknown finish reasons normalize
+  to `unknown`; malformed usage metadata also fails without echoing its value.
+  The AI unit suite passed (230 passed, 11 deselected). The bounded live-job log
+  read is not performed here; no network/job execution was authorized, and
+  ticket 09 owns that step.

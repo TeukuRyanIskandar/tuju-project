@@ -1,7 +1,7 @@
 # 12 — Make the stock detail header honest about missing EOD data
 
 Type: bug
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Severity: medium
 Component: `apps/frontend`
@@ -91,6 +91,30 @@ pnpm --filter frontend test:e2e
 Parent ticket 04's timezone runs must still pass — 31 tests each under
 `TZ=America/Los_Angeles` and `TZ=Pacific/Kiritimati` over
 `stock-history.test.ts` and `stock-history-chart.test.tsx`.
+
+## Comments
+
+- 2026-10-16: The header EOD value now follows the independent series read state,
+  including loading, unavailable, retained-snapshot and empty-history states.
+  Focused stock-detail tests and frontend typecheck passed. Production-default
+  request-count tests show one request for each identity-mismatched query.
+  Investigation of the installed TanStack Query version confirms a `select`
+  exception does not re-enter the query fetch retry loop; the original triple-
+  fetch diagnosis was inaccurate, so retry policy was left unchanged. Final
+   frontend verification passed: 336 tests, typecheck, production build, three
+   stock-detail E2E tests, and both 31-test timezone history runs.
+- 2026-10-16 follow-up: The stock-detail identity-mismatch request-count test now
+  mounts with `createQueryClient()` production retry defaults (only retry delay
+  is set to zero) and confirms one read for each mismatched core/series request.
+  A transient series 503 control confirms the production policy retries and then
+  succeeds. Header assertions cover initial loading, failed read, retained data,
+  and an empty series. Frontend test suite passed (338 tests) and typecheck passed;
+  no retry-policy change was needed.
+
+- Resolved 2026-10-16: The in-scope header/read-state change and request-count
+  behavior are verified above. The original triple-fetch diagnosis was
+  disproven, so retry policy stayed unchanged; remaining limits below are
+  explicitly out of scope.
 
 ## Limits
 

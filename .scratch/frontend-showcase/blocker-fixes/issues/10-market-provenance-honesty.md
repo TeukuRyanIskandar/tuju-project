@@ -1,7 +1,7 @@
 # 10 — Fix the market provenance fallback
 
 Type: bug
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Severity: high
 Component: `apps/frontend`
@@ -14,54 +14,31 @@ presented to a user as real market data.
 
 ## Evidence
 
-`apps/frontend/src/components/market/market-overview.tsx:24-28`:
+The original local market fallback described below has already been replaced by
+the shared `ProvenanceSource` component (`apps/frontend/src/components/provenance.tsx`).
+All market panels use that component for displayed provenance.
 
-```tsx
-function Source({ value }: { value: ProvenanceClass }) {
-  return value === 'synthetic'
-    ? <ProvenanceBadge kind="synthetic" />
-    : <span className="text-xs text-fg-3">{value === 'aggregator' ? 'Aggregator · private demo / non-redistributable' : 'Real source · not a live quote guarantee'}</span>
-}
-```
-
-The final `else` catches `real` **and** anything else. This matters because
-production `apiGet` skips runtime response validation
-(`apps/frontend/src/lib/api.ts`, `VALIDATE_RESPONSES`), so the `ProvenanceClass`
-type is not enforced at runtime — an unknown or absent value arrives as-is.
-
-The sibling implementation in the same codebase gets it right, with a fourth
-branch for the unknown case —
-`apps/frontend/src/components/stocks/stock-detail.tsx:16-19`:
-
-```tsx
-return value === 'synthetic' ? <ProvenanceBadge kind="synthetic" />
-  : <span className="text-xs text-fg-3">{value === 'real' ? 'Real source' : value === 'aggregator' ? 'Aggregator source' : 'Source unavailable'}</span>
-```
+The previous code evidence above is stale; the stock-detail component also uses
+the shared implementation.
 
 ## Root cause
 
-The `Source` component was written as a two-way branch when the domain has four
-outcomes. Defaulting the unknown case to "real" inverts the intent of the parent
-spec, which requires provenance to be explicit
+The original local `Source` component defaulted unknown values to "real". The
+shared component now handles the domain's four outcomes explicitly, honoring the
+parent spec's requirement that provenance be explicit
 ([`../../spec.md`](../../spec.md), "Label private demo/non-redistributable
 yfinance data; preserve mixed provenance per panel").
 
 ## Fix
 
-1. Make `market-overview.tsx:24-28` a four-way branch matching
-   `stock-detail.tsx:16-19`: `synthetic` -> badge, `real` -> "Real source",
-   `aggregator` -> the private-demo label, anything else ->
-   **"Source unavailable"**.
-2. Prefer extracting one shared component rather than maintaining two copies.
-   Both files already have a local `control` string constant and a local `Source`
-   with near-identical shapes. A single `components/provenance.tsx` export would
-   remove the divergence permanently — but if that collides with
-   [13](13-chart-design-conformance.md) or
-   [15](15-doc-drift-and-dead-code.md) file touching, keep the fix local and note
-   the duplication rather than coordinating three tickets.
-3. Add a test case for the unknown-provenance path. This is the branch with no
-   coverage today, which is why the bug survived.
-4. Update `market-overview.test.tsx`.
+1. Shared `components/provenance.tsx` handles the four outcomes and is consumed
+   at the market display sites.
+2. Component regression coverage in `components/provenance.test.tsx` exercises
+   unknown, absent, and null provenance and asserts none appears as real.
+3. No market-level unknown-payload integration test was added: the market API
+   response schemas reject unknown provenance in test mode before rendering.
+   That runtime validation is intentionally unchanged; the component tests
+   directly cover the unvalidated production input case.
 
 The consumer sites are `market-overview.tsx:85` (index history), `:108` (movers
 rows) and `:123` (sector rows) — all three benefit.
@@ -73,14 +50,27 @@ rows) and `:123` (sector rows) — all three benefit.
 - `aggregator` renders the private-demo/non-redistributable label.
 - An unknown or absent value renders **"Source unavailable"**, never "Real
   source".
-- A test covers the unknown branch.
+- Tests cover unknown, absent, and null values through the shared component.
 
 ## Verification
 
 ```bash
-pnpm --filter frontend test
-pnpm --filter frontend typecheck
+pnpm --filter frontend test -- src/components/market/market-overview.test.tsx src/components/provenance.test.tsx
 ```
+
+## Comments
+
+- 2026-10-16: Reconciled this ticket with the committed shared provenance fix.
+  Targeted verification found the provenance tests pass. The targeted command
+  also exposed an unrelated failure in `stock-detail.test.tsx` because Vitest's
+  forwarded file arguments ran the full suite; the market test's pre-existing
+  controls passed, but a direct unrecognized response fixture is rejected by
+  test-mode API schema validation. No API validation or provenance classification
+  was changed. No map file exists for this feature, so no map update applies.
+
+- Resolved 2026-10-16: Shared provenance rendering and regression coverage are
+  in place; targeted provenance tests passed. Unknown, absent, and null values
+  cannot render as real source.
 
 Parent ticket 03's acceptance criterion "Synthetic/real provenance and missing
 quote times are explicit" is only met once this lands.

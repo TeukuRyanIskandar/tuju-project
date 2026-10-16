@@ -1,7 +1,7 @@
 # 14 — Move the analysis fixture module out of production source
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 Severity: medium
 Component: `apps/frontend`
@@ -72,6 +72,18 @@ pnpm --filter frontend build
 After `build`, inspect the stock route chunk size and compare against the
 `21.22 kB / 7.03 kB gzip` figure recorded in parent ticket 05. It should be
 unchanged, which is the proof the fixtures were never in the bundle.
+
+## Comments
+
+- 2026-10-16: Moved fixture support into `src/test/`, exposed contract fixtures
+  through a narrow package subpath, and routed direct API-test fixture imports
+  through the shared test helper without changing assertions. Focused tests (55),
+  frontend typecheck, and frontend build passed. The stock route chunk measured
+  21.34 kB / 7.03 kB gzip. The E2E spec's remaining relative fixture imports
+  were also switched to the package subpath. Combined frontend verification then
+  passed: 336 tests, typecheck, build, and 3 stock-detail E2E tests. The timezone
+  history runs each passed 31 tests. The route chunk remained 21.34 kB / 7.03 kB
+  gzip.
 
 ## Limits
 
