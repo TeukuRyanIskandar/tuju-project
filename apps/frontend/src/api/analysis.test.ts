@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { QueryFunctionContext } from '@tanstack/react-query'
 import {
-  ContractParseError, ProspectusArtifact, StockTechnicalAnalysisArtifact,
-  StockFundamentalAnalysisArtifact, type StockTechnicalAnalysisResponse,
+  ContractParseError, type StockTechnicalAnalysisResponse,
   type StockFundamentalAnalysisResponse, type ProspectusAtAGlanceResponse,
 } from '@tuju/contracts'
 import { ApiError, apiUrl } from '../lib/api'
@@ -13,17 +12,7 @@ import {
 } from './stocks'
 import { ipoKeys, prospectusArtifactQuery } from './ipo'
 import { sameInstant, prospectusArtifactMatches } from './result-coherence'
-import technicalJson from '../../../../packages/contracts/fixtures/technical-analysis-artifact.json?raw'
-import fundamentalJson from '../../../../packages/contracts/fixtures/fundamental-analysis-artifact.json?raw'
-import prospectusJson from '../../../../packages/contracts/fixtures/prospectus-artifact.json?raw'
-
-const withoutCost = (raw: string) => {
-  const { cost: _cost, ...body } = JSON.parse(raw)
-  return body
-}
-const technical = StockTechnicalAnalysisArtifact.parse(withoutCost(technicalJson))
-const fundamental = StockFundamentalAnalysisArtifact.parse(withoutCost(fundamentalJson))
-const prospectus = ProspectusArtifact.parse(JSON.parse(prospectusJson))
+import { technical, fundamental, prospectus } from '../test/analysis-fixtures'
 const thin = <K extends 'technical' | 'fundamental'>(kind: K, code: string, asOf: string) => ({
   code, jobName: `analyze-${kind}`, status: 'ready', headline: 'Summary', asOf: new Date(asOf).toISOString(),
   artifact: { bucket: 'https://untrusted.example', key: 'private.json' },

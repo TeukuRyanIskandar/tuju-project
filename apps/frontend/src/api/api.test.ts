@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { QueryFunctionContext } from '@tanstack/react-query'
-import { ContractParseError, ProspectusArtifact, type ProspectusAtAGlanceResponse } from '@tuju/contracts'
+import { ContractParseError, type ProspectusAtAGlanceResponse } from '@tuju/contracts'
 import { apiUrl } from '../lib/api'
 import { announcementQuery, announcementsQuery } from './announcements'
 import { sessionQuery } from './auth'
@@ -9,7 +9,7 @@ import { indexSeriesQuery, moversQuery } from './market'
 import { screenerQuery } from './screener'
 import { searchQuery } from './search'
 import { stockAnnouncementsQuery, stockCoreQuery } from './stocks'
-import artifactFixture from '../../../../packages/contracts/fixtures/prospectus-artifact.json?raw'
+import { prospectus as artifactFixture } from '../test/analysis-fixtures'
 
 /** Run a builder's queryFn against a stubbed fetch and return the requested URL. */
 async function run(
@@ -122,7 +122,7 @@ describe('src/api query builders', () => {
   })
 
   it('prospectusArtifactQuery hits /ipo/:id/at-a-glance/artifact and parses the contract', async () => {
-    const fixture = ProspectusArtifact.parse(JSON.parse(artifactFixture))
+    const fixture = artifactFixture
     const summary: ProspectusAtAGlanceResponse = {
       prospectusId: fixture.prospectusId, headline: fixture.headline,
       companyName: fixture.company.name, board: null, listingDate: null, offerPrice: null,

@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { StockTechnicalAnalysisArtifact, type StockTechnicalAnalysisResponse } from '@tuju/contracts'
+import type { StockTechnicalAnalysisResponse } from '@tuju/contracts'
 import { createQueryClient } from '../lib/query-client'
 import { createAnalysisResults, stockTechnicalResults, stockFundamentalResults, prospectusResults } from './analysis-results'
 import { stockKeys } from './stocks'
 import type { ArtifactRead } from './result-coherence'
-import technicalJson from '../../../../packages/contracts/fixtures/technical-analysis-artifact.json?raw'
-
-const { cost: _cost, ...body } = JSON.parse(technicalJson)
-const artifact = StockTechnicalAnalysisArtifact.parse(body)
+import { technical as artifact } from '../test/analysis-fixtures'
 const summary: StockTechnicalAnalysisResponse = {
   code: artifact.symbol, jobName: 'analyze-technical', status: 'ready',
   headline: 'Original summary', asOf: new Date(artifact.asOf).toISOString(),

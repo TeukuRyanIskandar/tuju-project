@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import technical from '../../../packages/contracts/fixtures/technical-analysis-artifact.json' with { type: 'json' }
-import fundamental from '../../../packages/contracts/fixtures/fundamental-analysis-artifact.json' with { type: 'json' }
+import technical from '@tuju/contracts/fixtures/technical-analysis-artifact.json' with { type: 'json' }
+import fundamental from '@tuju/contracts/fixtures/fundamental-analysis-artifact.json' with { type: 'json' }
 
 // Mock transport only: built SPA/Chromium, not backend freshness, CORS or ingestion.
 test('direct stock history is keyboard accessible, local-filtered and narrow-screen safe', async ({ page }) => {

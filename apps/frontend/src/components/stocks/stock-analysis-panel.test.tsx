@@ -8,7 +8,7 @@ import { ApiError } from '#/lib/api'
 import { AnalysisPanel, TechnicalAnalysisPanel, FundamentalAnalysisPanel } from './stock-analysis-panel'
 import { TechnicalAnalysis } from './technical-analysis'
 import { FundamentalAnalysis } from './fundamental-analysis'
-import { technical, fundamental, technicalSummary, fundamentalSummary } from './analysis-fixtures'
+import { technical, fundamental, technicalSummary, fundamentalSummary } from '#/test/analysis-fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 const matched = () => ({ summary: structuredClone(technicalSummary), artifact: structuredClone(technical) })
