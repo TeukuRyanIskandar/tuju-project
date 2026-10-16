@@ -50,7 +50,7 @@ it('loads a direct stock link, shows EOD vs retrieval provenance and filters wit
   const slider = screen.getByRole('slider', { name: 'Inspect trading day' })
   // jsdom does not implement native range keyboard behavior; browser test covers it.
   fireEvent.change(slider, { target: { value: '1' } })
-  expect(slider).toHaveAttribute('aria-valuetext', '1 Oct 2026; close RM 10.250; volume 0')
+  expect(slider).toHaveAttribute('aria-valuetext', '1 Oct 2026; close RM 10.250; volume 0; up close direction')
 })
 
 it.each(['core', 'series'] as const)('keeps a %s failure local', async failure => {

@@ -37,7 +37,7 @@ function ReadState<T>({ query, empty, children }: { query: UseQueryResult<T>; em
   </>
 }
 
-export function HistoryChart({ points }: { points: IndexSeriesPoint[] }) {
+function HistoryChart({ points }: { points: IndexSeriesPoint[] }) {
   // Unavailable levels remain gaps, not zeroes or lines across missing data.
   const valid = points.map((point) => ({ ...point, value: marketNumber(point.level) }))
   const values = valid.flatMap((point) => point.value === null ? [] : [point.value])

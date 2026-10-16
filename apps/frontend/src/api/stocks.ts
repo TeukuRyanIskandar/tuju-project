@@ -132,7 +132,11 @@ export const stockAnnouncementsQuery = (code: string, params: StockAnnouncements
       ),
   })
 
-/** GET /stocks/:code/corporate-actions?type&offset&limit — by exDate ascending. */
+/**
+ * GET /stocks/:code/corporate-actions?type&offset&limit — by exDate ascending.
+ * Retained as part of the original typed stocks API surface; the UI has not
+ * consumed it yet, but callers can use the builder and its typed key/schema.
+ */
 export const stockCorporateActionsQuery = (
   code: string,
   params: StockCorporateActionsParams = {},

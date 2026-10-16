@@ -33,3 +33,25 @@ it('does not draw a price line across a malformed close or ambiguous duplicate d
   expect(chart.querySelectorAll('circle')).toHaveLength(2)
   expect(chart.querySelectorAll('line[stroke="currentColor"]')).toHaveLength(0)
 })
+
+it('colours volume by the preceding stored close and labels unknown/equal direction', () => {
+  render(<StockHistoryChart points={parseHistory([
+    { date: '2026-10-01', close: '10', volume: '10' },
+    { date: '2026-10-02', close: 'bad', volume: '20' },
+    { date: '2026-10-03', close: '11', volume: '30' },
+    { date: '2026-10-04', close: '11', volume: '40' },
+    { date: '2026-10-05', close: '9', volume: 'bad' },
+    { date: '2026-10-06', close: '8', volume: '50' },
+  ])} />)
+  const chart = screen.getByRole('img')
+  const bars = [...chart.querySelectorAll('rect[fill="var(--up)"], rect[fill="var(--down)"], rect[fill="var(--unch)"]')]
+  expect(bars).toHaveLength(4)
+  expect(bars.map(bar => bar.getAttribute('fill'))).toEqual([
+    'var(--unch)', 'var(--unch)', 'var(--unch)', 'var(--down)',
+  ])
+  expect(chart).toHaveTextContent('▲ higher close · ▼ lower close · • unchanged / unknown')
+  expect(chart.querySelector('[aria-label="Volume 10; unknown close"]')).toBeInTheDocument()
+  expect(chart.querySelector('[aria-label="Volume 40; unchanged close"]')).toBeInTheDocument()
+  expect(chart.querySelectorAll('line[stroke="var(--border)"]')).toHaveLength(10)
+  expect(chart.querySelector('rect[fill="var(--surface-2)"]')).toHaveAttribute('opacity', '0.35')
+})

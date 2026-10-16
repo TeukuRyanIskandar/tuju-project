@@ -18,7 +18,8 @@ later is an additive change, not a rewrite.
   `ApiError` on non-2xx and validates against the `@tuju/contracts` schema in dev
   and test (off in production builds). `src/api/` has the TanStack Query key
   factories and `queryOptions` builders per area; the `QueryClient` lives in the
-  router context and loaders use `ensureQueryData`.
+  router context. Backend reads currently run in components with `useQuery` or
+  through imperative `fetchQuery` calls, not loader preloading.
 - **Tier = show/hide only** — `src/lib/auth.ts` reads `tier` from `/auth/me` for
   presentation. It asks capability questions (`canRunJob`), never compares tier
   names. The backend always re-checks at the enqueue seam; the FE never enforces.

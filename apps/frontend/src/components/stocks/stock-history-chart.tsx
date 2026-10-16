@@ -13,12 +13,25 @@ export function StockHistoryChart({ points }: { points: readonly HistoryPoint[] 
   const min = prices.length ? Math.min(...prices) : 0
   const max = prices.length ? Math.max(...prices) : 0
   const volumeMax = Math.max(1, ...points.map(point => point.volume ?? 0))
+  const precedingCloses: (number | null)[] = []
+  let lastUsableClose: number | null = null
+  for (const point of points) {
+    precedingCloses.push(lastUsableClose)
+    // A stored gap breaks the comparison; never infer direction across it.
+    lastUsableClose = point.close
+  }
+  const volumeDirection = (point: HistoryPoint, i: number) => {
+    const previous = precedingCloses[i]
+    if (point.close === null || point.volume === null || previous === null) return 'unknown'
+    if (point.close === previous) return 'unchanged'
+    return point.close > previous ? 'up' : 'down'
+  }
   // Nonnegative values normalized before subtraction/multiplication avoid overflow.
   const y = (value: number) => max === min ? 105 : 180 - ((value / max - min / max) / (1 - min / max)) * 150
   const start = points[0] ? Date.parse(`${points[0].date}T00:00:00Z`) : 0
   const end = points.at(-1) ? Date.parse(`${points.at(-1)!.date}T00:00:00Z`) : start
   const x = (point: HistoryPoint) => end === start ? 270 : 12 + (Date.parse(`${point.date}T00:00:00Z`) - start) / (end - start) * 510
-  const valueText = current ? `${formatDate(current.date)}; close ${formatRm(current.close, { decimals: 3 })}; volume ${formatVolume(current.volume)}` : ''
+  const valueText = current ? `${formatDate(current.date)}; close ${formatRm(current.close, { decimals: 3 })}; volume ${formatVolume(current.volume)}; ${volumeDirection(current, index)} close direction` : ''
   return <>
     {prices.length ? <svg viewBox="0 0 640 290" role="img" aria-label="Daily EOD close price line and volume bars; exact values in daily data table" className="my-2 block w-full text-chart-1"
       onPointerMove={event => {
@@ -28,12 +41,15 @@ export function StockHistoryChart({ points }: { points: readonly HistoryPoint[] 
         const nearest = points.reduce((a, b) => Math.abs(x(a) - target) < Math.abs(x(b) - target) ? a : b)
         setSelected(nearest.date)
       }}>
+      <rect x="12" y="210" width="518" height="45" fill="var(--surface-2)" opacity="0.35" />
       {[30, 105, 180, 255].map(level => <line key={level} x1="12" x2="530" y1={level} y2={level} stroke="var(--border)" />)}
+      {points.map(point => <line key={`grid-${point.date}`} x1={x(point)} x2={x(point)} y1="30" y2="255" stroke="var(--border)" />)}
       <text x="538" y="20" fill="var(--fg-3)" fontSize="11">Close (RM)</text>
       <text x="538" y="38" fill="currentColor" fontSize="11">{formatRm(max, { decimals: 3 })}</text>
       <text x="538" y="184" fill="currentColor" fontSize="11">{formatRm(min, { decimals: 3 })}</text>
       <text x="538" y="220" fill="var(--fg-3)" fontSize="11">Volume</text>
       <text x="538" y="236" fill="var(--fg-3)" fontSize="11">(shares)</text>
+      <text x="12" y="205" fill="var(--fg-3)" fontSize="10">▲ higher close · ▼ lower close · • unchanged / unknown</text>
       {points.map((point, i) => {
         const next = points[i + 1]
         return <g key={point.date}>
@@ -41,7 +57,16 @@ export function StockHistoryChart({ points }: { points: readonly HistoryPoint[] 
             {next?.close != null && <line x1={x(point)} y1={y(point.close)} x2={x(next)} y2={y(next.close)} stroke="currentColor" strokeWidth="2" />}
             <circle cx={x(point)} cy={y(point.close)} r={i === index ? 4 : 2} fill="currentColor" />
           </>}
-          {point.volume !== null && <rect x={x(point) - 1.5} y={255 - point.volume / volumeMax * 45} width="3" height={point.volume / volumeMax * 45} fill="var(--chart-6)" />}
+          {point.close !== null && point.volume !== null && (() => {
+            const label = volumeDirection(point, i)
+            const direction = label === 'unknown' || label === 'unchanged' ? 'unch' : label
+            const cue = direction === 'up' ? '▲' : direction === 'down' ? '▼' : '•'
+            const height = point.volume / volumeMax * 45
+            return <g aria-label={`Volume ${formatVolume(point.volume)}; ${label} close`}>
+              <rect x={x(point) - 1.5} y={255 - height} width="3" height={height} fill={`var(--${direction})`} />
+              <text x={x(point)} y={Math.max(219, 251 - height)} textAnchor="middle" fill={`var(--${direction})`} fontSize="10">{cue}</text>
+            </g>
+          })()}
         </g>
       })}
       {current && <line x1={x(current)} x2={x(current)} y1="25" y2="257" stroke="var(--fg-2)" strokeDasharray="3 3" />}
@@ -60,9 +85,10 @@ export function StockHistoryChart({ points }: { points: readonly HistoryPoint[] 
     <details>
       <summary className="cursor-pointer text-xs text-fg-2">Inspect daily data table</summary>
       <Table aria-label="Daily EOD dates, close and volume">
-        <TableHeader><TableRow><TableHead>Trading date</TableHead><TableHead numeric>Close (RM)</TableHead><TableHead numeric>Volume (shares)</TableHead></TableRow></TableHeader>
-        <TableBody>{points.map(point => <TableRow key={point.date}><TableCell>{formatDate(point.date)}</TableCell><TableCell numeric>{formatRm(point.close, { decimals: 3 })}</TableCell><TableCell numeric>{formatVolume(point.volume)}</TableCell></TableRow>)}</TableBody>
+        <TableHeader><TableRow><TableHead>Trading date</TableHead><TableHead numeric>Close (RM)</TableHead><TableHead numeric>Volume (shares)</TableHead><TableHead>Close direction*</TableHead></TableRow></TableHeader>
+        <TableBody>{points.map((point, i) => <TableRow key={point.date}><TableCell>{formatDate(point.date)}</TableCell><TableCell numeric>{formatRm(point.close, { decimals: 3 })}</TableCell><TableCell numeric>{formatVolume(point.volume)}</TableCell><TableCell>{volumeDirection(point, i)}</TableCell></TableRow>)}</TableBody>
       </Table>
+      <p className="text-xs text-fg-3">*Derived from this day’s close versus the immediately preceding stored day; direction is unknown after a gap.</p>
     </details>
   </>
 }

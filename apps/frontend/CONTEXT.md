@@ -15,9 +15,9 @@ additive, not a rewrite.
   client JS (ADR-0005).
 - Read every backend endpoint through `apiGet(path, schema)` (`src/lib/api.ts`),
   wrapped per area in `src/api/` as TanStack Query key factories and
-  `queryOptions` builders. Route loaders call
-  `context.queryClient.ensureQueryData(xQuery(...))`; components use the same
-  builders with `useQuery`.
+  `queryOptions` builders. Backend reads currently run from components with
+  `useQuery` or imperative `fetchQuery` through those builders; routes do not
+  preload backend data through loaders.
 
 ## Boundaries
 

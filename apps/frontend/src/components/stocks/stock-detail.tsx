@@ -28,12 +28,11 @@ function ReadState<T>({ query, children, showMeta = true }: { query: UseQueryRes
 
 export function StockDetail({ code }: { code: string }) {
   const [range, setRange] = useState<HistoryRange>('1Y')
-  // No suspense/loader coupling, and explicitly no cross-resource placeholder data.
-  const core = useQuery({ ...stockCoreQuery(code), placeholderData: undefined, select: data => {
+  const core = useQuery({ ...stockCoreQuery(code), select: data => {
     if (data?.identity?.stockCode !== code) throw new Error('Stock identity mismatch')
     return data
   } })
-  const series = useQuery({ ...stockSeriesQuery(code), placeholderData: undefined, select: data => {
+  const series = useQuery({ ...stockSeriesQuery(code), select: data => {
     if (data?.code !== code || data.interval !== '1d' || data.range !== '2y') throw new Error('Stock series identity mismatch')
     return data
   } })
@@ -76,8 +75,8 @@ export function StockDetail({ code }: { code: string }) {
       </ReadState>
     </Panel>
     <div className="grid min-w-0 gap-3 lg:grid-cols-2">
-      <TechnicalAnalysisPanel key={`ta-${code}`} code={code} />
-      <FundamentalAnalysisPanel key={`fa-${code}`} code={code} />
+      <TechnicalAnalysisPanel code={code} />
+      <FundamentalAnalysisPanel code={code} />
     </div>
     <Panel title="Stock news" className="min-w-0"><p className="text-xs text-fg-3">Reserved for a later ticket · not loaded on this screen yet.</p></Panel>
   </div>
