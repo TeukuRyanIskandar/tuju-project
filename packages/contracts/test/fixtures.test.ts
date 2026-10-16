@@ -12,6 +12,8 @@ import {
   MarketBriefJobEnvelope,
   ProspectusArtifact,
   ProspectusJobEnvelope,
+  StockFundamentalAnalysisArtifact,
+  StockTechnicalAnalysisArtifact,
   TechnicalAnalysisArtifact,
   TechnicalJobEnvelope,
 } from '../src/index.js';
@@ -28,11 +30,14 @@ const load = (name: string): unknown =>
 
 // Opt-in handoffs contain exact final S3 bodies in pytest-owned directories.
 // Missing samples MUST fail when opted in; normal contracts-only runs skip them.
+// The browser schema is what the live 200-but-fails defect broke: the proxy
+// strips cost, so that shape is a strict contract of its own (http/stocks.ts).
+// Prospectus keeps cost, so it has no cost-stripped variant to check.
 const captureDir = process.env.TUJU_TA_FA_CAPTURE_DIR;
-for (const [kind, schema, directory] of [
-  ['technical', TechnicalAnalysisArtifact, captureDir],
-  ['fundamental', FundamentalAnalysisArtifact, captureDir],
-  ['prospectus', ProspectusArtifact, process.env.TUJU_PROSPECTUS_CAPTURE_DIR],
+for (const [kind, schema, directory, browser] of [
+  ['technical', TechnicalAnalysisArtifact, captureDir, StockTechnicalAnalysisArtifact],
+  ['fundamental', FundamentalAnalysisArtifact, captureDir, StockFundamentalAnalysisArtifact],
+  ['prospectus', ProspectusArtifact, process.env.TUJU_PROSPECTUS_CAPTURE_DIR, null],
 ] as const) {
   describe.skipIf(!directory)(`captured ${kind === 'prospectus' ? 'prospectus' : 'TA/FA'} timestamp serialization`, () => {
     it(`${kind}: exact stored bytes pass; old-format timestamp controls fail`, () => {
@@ -80,6 +85,39 @@ for (const [kind, schema, directory] of [
         expect(singleRejected.error.issues[0]).toMatchObject({
           path: expectedPath, code: 'invalid_format', format: 'datetime',
         });
+      }
+
+      if (browser) {
+        // The proxy strips cost and forwards everything else verbatim, so the
+        // browser body is the stored body minus cost — never a re-encoding.
+        const { cost, ...body } = captured;
+        expect(cost).toBeDefined();
+        expect(browser.safeParse(captured).success).toBe(false); // not the browser shape
+        // Identity, not a Date: a coercing schema fails this equality.
+        expect(browser.parse(body)).toEqual(body);
+        expect(body.asOf).toBe('2026-10-08T18:02:03.123456+08:00');
+        expect(body.provenance.generatedAt).toBe('2026-10-08T10:04:05.654321Z');
+
+        // Same old-format controls, cost stripped: leaving cost in would fail on
+        // the extra key and prove nothing about the timestamps.
+        const { cost: _dropped, ...oldBody } = old;
+        const browserRejected = browser.safeParse(oldBody);
+        expect(browserRejected.success).toBe(false);
+        if (browserRejected.success) throw new Error('expected old timestamp rejection');
+        expect(browserRejected.error.issues.map(({ path, code }) => ({ path, code }))).toEqual(expected);
+
+        for (const [singleBad, expectedPath] of [
+          [{ ...body, asOf: old.asOf }, ['asOf']],
+          [{ ...body, provenance: old.provenance }, ['provenance', 'generatedAt']],
+        ]) {
+          const singleRejected = browser.safeParse(singleBad);
+          expect(singleRejected.success).toBe(false);
+          if (singleRejected.success) throw new Error('expected single timestamp rejection');
+          expect(singleRejected.error.issues).toHaveLength(1);
+          expect(singleRejected.error.issues[0]).toMatchObject({
+            path: expectedPath, code: 'invalid_format', format: 'datetime',
+          });
+        }
       }
     });
   });
