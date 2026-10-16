@@ -4,10 +4,6 @@ import { SearchBox } from '#/components/search-box'
 
 const NAV = [
   { to: '/', label: 'Market' },
-  { to: '/screener', label: 'Screener' },
-  { to: '/announcements', label: 'Announcements' },
-  { to: '/calendar', label: 'Calendar' },
-  { to: '/news', label: 'News' },
 ] as const
 
 const NAV_LINK =

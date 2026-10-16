@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PagePlaceholder } from '#/components/page-placeholder'
+import { ProspectusReader } from '#/components/ipo/prospectus-reader'
 
 export const Route = createFileRoute('/ipo/$prospectusId')({
-  component: IpoPlaceholder,
+  component: IpoPage,
 })
 
-function IpoPlaceholder() {
+function IpoPage() {
   const { prospectusId } = Route.useParams()
-  return <PagePlaceholder title="Prospectus at a glance" detail={`Prospectus ${prospectusId}`} />
+  return <ProspectusReader key={prospectusId} prospectusId={prospectusId} />
 }

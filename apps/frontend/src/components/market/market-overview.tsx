@@ -3,12 +3,15 @@ import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import type { IndexSeriesPoint, IndexSeriesRange, MoversBoardType } from '@tuju/contracts'
 import { indicesQuery, indexSeriesQuery, moversQuery, sectorsQuery } from '#/api/market'
+import { stockCoreQuery, stockTechnicalAnalysisQuery, stockFundamentalAnalysisQuery } from '#/api/stocks'
+import { prospectusAtAGlanceQuery } from '#/api/ipo'
 import { ChangeChip } from '#/components/change-chip'
 import { Panel } from '#/components/panel'
 import { ProvenanceSource } from '#/components/provenance'
 import { EmptyState, ErrorState, LoadingState } from '#/components/states'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSymbol } from '#/components/table'
 import { formatDate, formatDateTime, formatNumber, formatRm, formatVolume } from '#/lib/format'
+import { DISCOVERY_PROSPECTUS_IDS, DISCOVERY_STOCK_CODES } from './discovery-examples'
 
 /** Decimal conversion at the display boundary; missing values never become zero. */
 export function marketNumber(value: unknown): number | null {
@@ -121,6 +124,61 @@ function SectorsPanel() {
   </Panel>
 }
 
+function PreviewRead<T>({ query, children, error }: { query: UseQueryResult<T>; children: (data: T) => ReactNode; error: string }) {
+  if (query.data === undefined) {
+    return query.isError
+      ? <ErrorState title={error} message="This configured example could not be loaded." onRetry={() => void query.refetch()} />
+      : <LoadingState label="Loading verified example…" />
+  }
+  return <>
+    {query.isError && <ErrorState title="Refresh failed — showing retained preview" onRetry={() => void query.refetch()} />}
+    {query.isFetching && <p role="status" className="text-xs text-fg-3">Refreshing preview…</p>}
+    {children(query.data)}
+  </>
+}
+
+function StockDiscoveryCard({ code }: { code: string }) {
+  const identity = useQuery(stockCoreQuery(code))
+  const technical = useQuery(stockTechnicalAnalysisQuery(code))
+  const fundamental = useQuery(stockFundamentalAnalysisQuery(code))
+  return <article className="border-b border-border py-2 last:border-0">
+    <Link to="/stocks/$code" params={{ code }} className="font-medium text-fg hover:underline">{code} · {identity.data?.identity.shortName ?? 'Stock'}</Link>
+    {identity.data && <p className="m-0 text-xs text-fg-3">{identity.data.identity.companyName} · {identity.data.identity.board} · {identity.data.identity.sector}</p>}
+    {identity.isError && <ErrorState title="Stock identity unavailable" onRetry={() => void identity.refetch()} />}
+    <div className="mt-1 space-y-1 text-xs text-fg-2">
+      <PreviewRead query={technical} error="Stock analysis preview unavailable">{summary => <p className="m-0">Technical analysis: {summary.status}{summary.headline ? ` · ${summary.headline}` : ''}{summary.asOf ? ` · ${formatDate(summary.asOf)}` : ''}</p>}</PreviewRead>
+      <PreviewRead query={fundamental} error="Stock analysis preview unavailable">{summary => <p className="m-0">Fundamental analysis: {summary.status}{summary.headline ? ` · ${summary.headline}` : ''}{summary.asOf ? ` · ${formatDate(summary.asOf)}` : ''}</p>}</PreviewRead>
+    </div>
+  </article>
+}
+
+function StockDiscoveryPanel() {
+  return <Panel title="Automatic stock analysis">
+    <p className="mb-2 text-xs text-fg-3">Curated examples are system-precomputed; opening or refreshing a preview never starts analysis. Search and market movers may include stocks outside this coverage.</p>
+    {DISCOVERY_STOCK_CODES.map(code => <StockDiscoveryCard key={code} code={code} />)}
+  </Panel>
+}
+
+function ProspectusDiscoveryCard({ prospectusId }: { prospectusId: string }) {
+  const query = useQuery(prospectusAtAGlanceQuery(prospectusId))
+  return <PreviewRead query={query} error="Prospectus preview unavailable">
+    {summary => summary.prospectusId !== prospectusId
+      ? <ErrorState title="Prospectus preview unavailable" message="The returned summary does not match this configured example." onRetry={() => void query.refetch()} />
+      : <article>
+        <Link to="/ipo/$prospectusId" params={{ prospectusId }} className="font-medium text-fg hover:underline">{summary.companyName}</Link>
+        <p className="m-0 mt-1 text-sm">{summary.headline}</p>
+        <p className="m-0 mt-1 text-xs text-fg-3">Precomputed summary · As of {formatDate(summary.asOf)}{summary.listingDate ? ` · Listing ${formatDate(summary.listingDate)}` : ''}</p>
+      </article>}
+  </PreviewRead>
+}
+
+function ProspectusDiscoveryPanel() {
+  return <Panel title="Prospectus at a glance">
+    <p className="mb-2 text-xs text-fg-3">Prepared prospectus summaries from stored source documents; details are available on each reader page.</p>
+    {DISCOVERY_PROSPECTUS_IDS.map(prospectusId => <ProspectusDiscoveryCard key={prospectusId} prospectusId={prospectusId} />)}
+  </Panel>
+}
+
 export function MarketOverview() {
   const indices = useQuery(indicesQuery())
   const headline = indices.data?.indices.find((index) => index.kind === 'headline')
@@ -141,8 +199,8 @@ export function MarketOverview() {
     </div>
     <div className="grid min-w-0 gap-3 xl:grid-cols-2"><MoversPanel /><SectorsPanel /></div>
     <div className="grid min-w-0 gap-3 md:grid-cols-2">
-      <Panel title="Automatic stock analysis"><p className="text-xs text-fg-3">Discovery panel reserved for a later ticket.</p></Panel>
-      <Panel title="Prospectus at a glance"><p className="text-xs text-fg-3">Discovery panel reserved for a later ticket.</p></Panel>
+      <StockDiscoveryPanel />
+      <ProspectusDiscoveryPanel />
     </div>
   </div>
 }

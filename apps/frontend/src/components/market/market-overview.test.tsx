@@ -11,13 +11,19 @@ let failHistory = false
 let failMovers = false
 let emptySectors = false
 let pendingSectors = false
+let failStockAnalysis = false
+let failProspectus = false
 let fetchMock: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
-  missingHeadline = failHistory = failMovers = emptySectors = pendingSectors = false
+  missingHeadline = failHistory = failMovers = emptySectors = pendingSectors = failStockAnalysis = failProspectus = false
   fetchMock = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://test')
     if (url.pathname.endsWith('/auth/me')) return new Response('{}', { status: 401 })
+    if (url.pathname === '/stocks/1155') return Response.json({ identity: { provenance: 'real', stockCode: '1155', shortName: 'MAYBANK', fullName: 'Malayan Banking Berhad', companyName: 'Malayan Banking Berhad', board: 'MAIN', sector: 'Financial Services' }, fundamentals: null, technicals: null, shariah: { provenance: 'real', status: null, effectiveDate: null } })
+    if (url.pathname === '/stocks/1155/analysis/technical') return failStockAnalysis ? new Response('{}', { status: 503 }) : Response.json({ code: '1155', jobName: 'analyze-technical', status: 'ready', headline: 'Grounded technical preview', asOf: '2026-10-16T08:44:00.000Z', artifact: { bucket: 'private', key: 'private' }, artifactPath: '/private', errorMessage: null })
+    if (url.pathname === '/stocks/1155/analysis/fundamental') return Response.json({ code: '1155', jobName: 'analyze-fundamental', status: 'pending', headline: null, asOf: null, artifact: null, artifactPath: null, errorMessage: null })
+    if (url.pathname === '/ipo/094fd734-c812-4bcf-921d-72dea6f21fb6/at-a-glance') return failProspectus ? new Response('{}', { status: 503 }) : Response.json({ prospectusId: '094fd734-c812-4bcf-921d-72dea6f21fb6', companyName: 'Insights Analytics Berhad', board: 'ACE', listingDate: '2025-10-27', offerPrice: '0.360000', headline: 'Prospectus preview headline', asOf: '2026-10-16T08:45:00.000Z', source: 'real', artifact: { bucket: 'private', key: 'private' }, artifactPath: '/private' })
     if (url.pathname.endsWith('/market/indices')) return Response.json({ indices: missingHeadline ? [sector] : [sector, headline] })
     if (url.pathname.includes('/series')) return failHistory ? new Response('{}', { status: 503 }) : Response.json({ id: headline.id, name: headline.name, range: url.searchParams.get('range'), provenance: 'synthetic', points: [{ levelDate: '2026-10-01', level: '1230.20' }, { levelDate: '2026-10-02', level: 'bad' }, { levelDate: '2026-10-03', level: '1234.50' }] })
     if (url.pathname.endsWith('/market/movers')) return failMovers ? new Response('{}', { status: 503 }) : Response.json({ type: url.searchParams.get('type'), limit: 10, rows: [
@@ -54,6 +60,36 @@ describe('market overview', () => {
     await user.click(screen.getByRole('button', { name: 'Most active' }))
     await waitFor(() => expect(calls().some((url) => url.endsWith('/movers?type=actives&limit=10'))).toBe(true))
     expect(panel('Headline snapshot').getByText('1,234.50')).toBeInTheDocument()
+  })
+
+  it('discovers the verified stock and prospectus using thin API reads only', async () => {
+    const { router } = await renderApp()
+    const stockLink = await screen.findByRole('link', { name: /1155.*MAYBANK/ })
+    expect(stockLink).toHaveAttribute('href', '/stocks/1155')
+    expect(await screen.findByText(/Technical analysis: ready/)).toBeInTheDocument()
+    expect(screen.getByText(/Fundamental analysis: pending/)).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Insights Analytics Berhad/ })).toHaveAttribute('href', '/ipo/094fd734-c812-4bcf-921d-72dea6f21fb6')
+    expect(await screen.findByText('Prospectus preview headline')).toBeInTheDocument()
+    expect(screen.getByText(/Prepared prospectus summaries/)).toBeInTheDocument()
+    expect(screen.getByText(/Curated examples are system-precomputed/)).toBeInTheDocument()
+    await waitFor(() => expect(router.state.location.pathname).toBe('/'))
+    expect(calls()).toContain('/stocks/1155')
+    expect(calls()).toContain('/stocks/1155/analysis/technical')
+    expect(calls()).toContain('/stocks/1155/analysis/fundamental')
+    expect(calls()).toContain('/ipo/094fd734-c812-4bcf-921d-72dea6f21fb6/at-a-glance')
+    expect(calls().some(url => url.includes('/artifact') || url.includes('/jobs'))).toBe(false)
+  })
+
+  it('keeps preview errors local and retryable without replacing examples', async () => {
+    failStockAnalysis = failProspectus = true
+    await renderApp()
+    expect(await screen.findByRole('link', { name: /1155.*Stock/ })).toHaveAttribute('href', '/stocks/1155')
+    expect(await screen.findByText('Prospectus preview unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Stock analysis preview unavailable')).toBeInTheDocument()
+    const callsBeforeRetry = calls().length
+    await userEvent.click(panel('Automatic stock analysis').getByRole('button', { name: 'Try again' }))
+    await userEvent.click(panel('Prospectus at a glance').getByRole('button', { name: 'Try again' }))
+    await waitFor(() => expect(calls().length).toBeGreaterThan(callsBeforeRetry))
   })
 
   it('shows truthful per-row provenance, unavailable values, plain volume and stock navigation', async () => {

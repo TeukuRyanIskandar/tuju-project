@@ -17,13 +17,24 @@ describe('routes', () => {
     await renderApp(path)
     expect(await screen.findByRole('heading', { level: 1, name: heading })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: 'Primary' })).toBeInTheDocument()
+    expect(screen.getAllByRole('navigation', { name: 'Primary' })[0]).toHaveTextContent('Market')
+    expect(screen.getByRole('navigation', { name: 'Primary' }).querySelectorAll('a')).toHaveLength(1)
     expect(screen.getAllByRole('main')).toHaveLength(1)
+    if (path.startsWith('/stocks/') || path.startsWith('/ipo/')) {
+      expect(screen.getByRole('link', { name: '← Back to market' })).toHaveAttribute('href', '/')
+      expect(screen.getByRole('link', { name: 'Market' })).not.toHaveAttribute('aria-current')
+    }
   })
 
   it('marks the current nav link', async () => {
     await renderApp('/screener')
-    expect(await screen.findByRole('link', { name: 'Screener' })).toHaveAttribute('aria-current', 'page')
+    expect(await screen.findByRole('heading', { name: 'Screener' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Market' })).not.toHaveAttribute('aria-current')
+  })
+
+  it('keeps stock search available on market home', async () => {
+    await renderApp('/')
+    expect(screen.getByRole('combobox', { name: 'Search stocks' })).toBeInTheDocument()
   })
 
   it('shows the not-found page for an unknown path', async () => {
