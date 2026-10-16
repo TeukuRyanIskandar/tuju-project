@@ -1,7 +1,7 @@
 # 07 — Distinguish an empty reply from a malformed reply
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 Severity: medium
 Component: `services/ai`
@@ -83,3 +83,19 @@ frontend's facts-only suppression.
 - If [08](08-narration-empty-content-remedy.md) resolves to `wontfix`, this
   ticket still stands on its own: an accurate terminal reason is worth having
   regardless.
+
+## Answer
+
+`llm.structured.ask` now distinguishes whitespace-only replies, non-empty
+unparseable replies, and parsed schema-invalid replies before retry formatting.
+Each terminal reason includes only the ticket-06 allowlisted response facts:
+finish reason, completion tokens, content-empty flag and reasoning-present
+flag. All remain `MalformedModelOutput`, so the existing pipeline terminal path
+and retry/cost accounting are unchanged; only `OutputRejected` still reaches
+the TA/FA facts-only degrade.
+
+Offline regressions cover all three classes, including an empty reply with
+`finish_reason="length"`; TA and FA coverage proves empty narration remains
+terminal rather than writing a facts-only artifact. `uv run --project
+services/ai pytest` passed: 246 tests. The suite emitted 25 pre-existing
+third-party/pytest-marker warnings.

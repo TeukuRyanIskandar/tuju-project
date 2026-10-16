@@ -28,7 +28,7 @@ this effort adds remediation on top of it.
 | --- | --- | --- |
 | Contract scale | 01-04 | 01, 02, 03 resolved; 04 ready |
 | Timestamp conformance | 05 | Resolved |
-| Narration diagnosis | 06-08 | 06 and 07 ready; 08 evidence-gated |
+| Narration diagnosis | 06-08 | 06 and 07 resolved; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
 | Frontend cleanup | 10-15 | All ready, all unblocked |
 | Tracker | 16 | Ready, blocked on the work it describes |
@@ -199,14 +199,25 @@ plus the revert proof. Closes parent ticket 14's first technical criterion.
 
 | Ticket | Title | Blocked by | Status | Severity |
 | --- | --- | --- | --- | --- |
-| [06](issues/06-openrouter-response-diagnostics.md) | Sanitized response metadata | — | `ready-for-agent` | high |
-| [07](issues/07-empty-vs-malformed-reply.md) | Empty vs malformed reply | 06 | `ready-for-agent` | medium |
+| [06](issues/06-openrouter-response-diagnostics.md) | Sanitized response metadata | — | `resolved` | high |
+| [07](issues/07-empty-vs-malformed-reply.md) | Empty vs malformed reply | 06 | `resolved` | medium |
 | [08](issues/08-narration-empty-content-remedy.md) | Resolve the narration cause | 07 | `needs-triage` | high |
 
 06 and 07 are worth doing on their own merits: an accurate terminal reason and
 non-discarding transport diagnostics are improvements whether or not a remedy
 follows. 08 is a decision tree with four outcomes — **`wontfix` is a legitimate
 result** if the evidence shows free-only provider behaviour.
+
+### Verification record — 2026-10-16, for 07
+
+```bash
+uv run --project services/ai pytest    # 246 passed
+```
+
+Ticket 07 now reports empty, unparseable and schema-invalid replies distinctly,
+with ticket 06's allowlisted metadata only. Empty narration remains terminal;
+it never enters TA/FA facts-only degradation. The 25 warnings are pre-existing
+pytest-marker and third-party deprecations.
 
 ## Track 4 — Execution (09)
 
