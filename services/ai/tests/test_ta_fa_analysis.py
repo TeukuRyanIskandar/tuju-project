@@ -34,9 +34,10 @@ from tuju_ai.contracts_generated import (
     TechnicalAnalysisArtifact,
 )
 from tuju_ai.errors import TerminalJobError
-from tuju_ai.llm import LLMResponse, Usage
+from tuju_ai.llm import LLMResponse, LLMRuntime, Message, Usage
 from tuju_ai.llm.base import ResponseMetadata
 from tuju_ai.llm.fake import FakeLLMClient
+from tuju_ai.ta_fa_analysis import NARRATE_MAX_TOKENS, narrate
 
 pytestmark = pytest.mark.unit
 
@@ -524,6 +525,28 @@ class EmptyNarration(FakeLLMClient):
             model=resp.model,
             response_metadata=ResponseMetadata(content_empty=True),
         )
+
+
+def test_narration_uses_expanded_token_budget() -> None:
+    class RecordingNarration(FakeLLMClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.max_tokens: list[int | None] = []
+
+        def complete(self, messages, **kwargs):  # type: ignore[override]
+            self.max_tokens.append(kwargs.get("max_tokens"))
+            return super().complete(messages, **kwargs)
+
+    llm = RecordingNarration()
+    session = LLMRuntime(client=llm).session(JOB_ANALYZE_TECHNICAL)
+    narrative, facts_only = narrate(
+        session,
+        [Message("user", "[step:narrate]")],
+    )
+
+    assert narrative and facts_only is None
+    assert NARRATE_MAX_TOKENS == 4096
+    assert llm.max_tokens == [4096]
 
 
 def _expensive() -> FakeLLMClient:

@@ -48,7 +48,9 @@ WITHHELD_BY_GROUNDING = (
     "facts-only: Grounding check failed.",
 )
 NARRATE_STEP = "narrate"
-NARRATE_MAX_TOKENS = 300
+# Free-route measurements found 1024 can exhaust in reasoning before JSON; 4096
+# produced a schema-valid reply while retaining the free-only route.
+NARRATE_MAX_TOKENS = 4096
 
 
 class NarrativeOutput(BaseModel):

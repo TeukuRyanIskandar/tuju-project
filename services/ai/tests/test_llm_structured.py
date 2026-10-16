@@ -215,6 +215,29 @@ def test_grounding_validators() -> None:
     assert advice_term("Price is above all moving averages") is None
 
 
+def test_grounding_accepts_source_key_string_and_four_digit_rounding() -> None:
+    facts = {
+        "technical": {
+            "sma": {"p20": 10.0555, "p50": 10.3754, "p200": 10.98235},
+            "week52": {"high": 12.38, "low": 9.8},
+        },
+        "technicalEvents": [
+            {
+                "id": "week52_proximity",
+                "label": "SMA-20 crossed above SMA-50; RSI-14 in mid band",
+                "values": {"pctFromHigh": -18.90145395799678},
+            }
+        ],
+    }
+
+    assert ungrounded_number(
+        "The 20-day SMA is 10.06, the 50-day SMA is 10.38, and the "
+        "200-day SMA is 10.9824. RSI-14 is in the 52-week range, with the "
+        "close 18.9% below the high.",
+        facts,
+    ) is None
+
+
 def test_grounding_accepts_a_fraction_rendered_in_whole_units() -> None:
     """A `fraction` metric's honest rendering must not read as an ungrounded number."""
     metrics = [{"id": "dividend_yield", "value": 0.045, "unit": "%", "scale": "fraction"}]

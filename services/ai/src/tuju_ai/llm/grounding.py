@@ -5,9 +5,13 @@ fact payload, and must not read as investment advice.
 
 * :func:`ungrounded_number` — raw string containment: every numeral in the text
   (``70%``, ``RM1.23``, ``0.85``; commas/spaces stripped, also checked by its
-  integer part) must appear among the numbers of the given sources. A source
-  metric declared ``scale: "fraction"`` also contributes its whole-unit
-  rendering, so a percentage metric can be narrated honestly.
+  integer part) must appear among the numerals of the given sources. Source
+  keys and string leaves count because the prompt shows them as facts. Numeric
+  values also contribute their absolute value rounded to one through four
+  decimal places, matching the headline precision, so concise renderings such
+  as ``18.9`` for ``-18.90145395799678`` are grounded. A source metric declared
+  ``scale: "fraction"`` also contributes its whole-unit rendering, so a
+  percentage metric can be narrated honestly.
 * :func:`advice_term` — case-insensitive substring scan for :data:`BAN_WORDS`.
 
 Both return a rejection reason (fed back to the model on the corrective retry)
@@ -59,10 +63,18 @@ def _source_numbers(source: Any) -> set[str]:
         numbers.add(s)
         if "." in s:
             numbers.add(s.split(".")[0])
+        # A narrative may state a value less precisely than the source. Limit
+        # this to the four decimal places used for headlines; more digits must
+        # still match exactly, preventing binary float noise from being allowed.
+        for places in range(1, 5):
+            rounded = f"{abs(value):.{places}f}"
+            numbers.add(rounded)
+            numbers.add(rounded.split(".")[0])
 
     def visit(obj: Any) -> None:
         if isinstance(obj, dict):
-            for v in obj.values():
+            for key, v in obj.items():
+                numbers.update(_text_numbers(str(key)))
                 visit(v)
             # A `fraction` metric is stored as a fraction of its unit, so the
             # multiplied value is its honest rendering. Without this the check
@@ -80,6 +92,8 @@ def _source_numbers(source: Any) -> set[str]:
                 visit(item)
         elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
             add(obj)
+        elif isinstance(obj, str):
+            numbers.update(_text_numbers(obj))
 
     visit(source)
     return numbers
