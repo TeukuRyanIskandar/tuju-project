@@ -1,7 +1,7 @@
 # 03 — Pass metric scale through the AI worker assembly
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02
 Severity: high
 Component: `services/ai`
@@ -123,3 +123,94 @@ Still open:
 
 Deployment note: producer and worker must ship together, in either order's
 absence being the failure mode described above.
+
+## Answer
+
+**Resolved 2026-10-16.** Items 1-4 all landed; the passthrough is correct across
+the [01](01-contract-percent-scale.md) change, and two honesty leaks the item
+list did not anticipate are closed.
+
+**Item 2 — fail loudly.** Two layers, both `TerminalJobError`:
+
+- An explicit presence check before assembly, naming the symbol and the metric
+  id. Absent key and explicit `null` are both terminal, so the Option-B limit in
+  the Limits section still holds. It does **not** check the value against a
+  hardcoded enum: `contracts_generated/models.py:58` inlines the `Literal`, so
+  there is no constant to import and duplicating the three strings would be a
+  second place to forget to update.
+- A `ValidationError` backstop around the whole comprehension. **This mattered
+  more than the ticket said.** `run_job` maps LLM errors only
+  (`jobs/pipeline.py:260-271`) and `worker.py:64-66` converts only
+  `TerminalJobError` to no-retry, so *any* raw pydantic traceback escaping
+  `work()` is retried by BullMQ. Permanently-bad reference data would have burned
+  queue attempts silently — the opposite of the ticket's intent.
+
+**Item 3 — the headline, and the rule 04 must adopt.** Scale picks the number,
+the metric's own `unit` stays the suffix:
+
+| Scale | Stored | Headline |
+| --- | --- | --- |
+| `fraction` | `0.045`, unit `%` | `Dividend yield 4.5%` |
+| `percentage_point` | `8.4`, unit `%` | `Revenue growth (QoQ) 8.4%` |
+| `absolute` | `12.5`, unit `x` | `P/E ratio (trailing) 12.5x` |
+
+**This is deliberately not [04](04-frontend-scale-presentation.md)'s literal
+wording**, which forces a `%` suffix onto any metric declared `fraction` even
+when its `unit` is not `%` — that prints "1250%" for a fraction measured in
+`x`. Deriving the number from `scale` and the suffix from `unit` cannot
+contradict the field it is displaying.
+
+Rounding to 4 fraction digits is **required, not cosmetic**: `0.29 * 100` is
+`28.999999999999996`, which would otherwise be the user-visible ROE. The
+format is `f"{v:.4f}".rstrip("0").rstrip(".")` — the forced decimal point keeps
+the integer part safe from the strip, and fixed-precision format is also what
+keeps `4200000000` out of `%g`'s exponent form. 4 digits matches the frontend's
+`factValue` `maximumFractionDigits`.
+
+**Unplanned but load-bearing: the narration had the same bug, worse.** `scale`
+already reached the prompt packet via `model_dump`, but
+`ungrounded_number` accepted only numbers *literally* present in the facts. So a
+model writing the correct "dividend yield 5.67%" was **rejected** while one
+writing "0.0567%" passed — the grounding check was actively pushing the
+narrative toward the false statement. `_source_numbers` now adds the whole-unit
+rendering for any dict carrying `scale: "fraction"`, and rule 2 of the FA system
+prompt states the rendering as the single permitted transformation (rule 1's
+"Do not compute new metrics" now names the exception rather than contradicting
+it). No metric-id knowledge was added, and TA facts carry no `scale`, so their
+behaviour is byte-identical.
+
+**Item 4 — 15 tests.** Missing scale absent and explicitly `null` (message
+asserted to name symbol and metric id); unknown scale and an unbuildable metric
+both terminal rather than retried; headline across all three scales including
+the `0.29 → "29%"` float case and a large absolute; float noise rejected by
+grounding while a correctly-scaled narration reaches a real narrative. Full AI
+suite green: **227 passed** (was 212). No `test_prospectus_job.py` or
+`test_job_pipeline.py` case regressed.
+
+### Deviations from the ticket as written
+
+- **Test fixture realigned.** `_make_fa_reference` declared `dividend_yield:
+  3.2` and `roe: 15.0` as `fraction` — 320% and 1500%, a lie the fixture was
+  certifying. Realigned to the producer's real convention (`0.045`, `0.124`),
+  the same fix commit `047d362` made to the contracts fixture. `operating_cash_flow`'s
+  unit was `'RM m'`, which the backend never emits; it is now `'RM bn'` with a
+  `null` value, because the backend always emits `null` there. Changing the unit
+  without the value would have asserted "RM 150bn" of operating cash flow.
+- **Scope widened to `llm/grounding.py`.** The Limits section says no prompt
+  rewrite beyond item 3; the validator change is what makes item 3's sibling
+  surface reachable. Recording it rather than burying it.
+
+### Recorded limits
+
+- **The headline bug was latent, not live.** The headline takes the *first*
+  non-null metric and the producer always fills `trailing_pe` first, so
+  "0.045%" only appeared when P/E was null. Real, worth fixing, but it was not
+  corrupting a live headline.
+- **The narration fix is not live-verified.** The tests prove a correctly-scaled
+  narration *can* pass grounding and that a wrong one still cannot. Whether the
+  free-tier model actually writes one is only observable on a run, which
+  [09](09-bounded-rerun-readiness-reaudit.md) owns.
+- **[04](04-frontend-scale-presentation.md) is now unblocked** and should adopt
+  the number-from-`scale`, suffix-from-`unit` rule above, dropping its `%`-forcing
+  wording. Its per-id table at `analysis-presentation.ts:22-24` is still in place,
+  so the two sides agree by construction only once it lands.

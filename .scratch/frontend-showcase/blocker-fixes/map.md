@@ -20,13 +20,13 @@ no demoable data, and the frontend work plus the tracker record need cleanup. Se
 
 ## Overall status
 
-**Track 1's producer half is done; nothing else is.** The uncommitted working
-tree still holds all parent-ticket 02-05 implementation; this effort adds
-remediation on top of it.
+**Track 1's contract and worker halves are done; the frontend half is not.**
+The uncommitted working tree still holds all parent-ticket 02-05 implementation;
+this effort adds remediation on top of it.
 
 | Track | Tickets | State |
 | --- | --- | --- |
-| Contract scale | 01-04 | 01, 02 resolved; 03 core landed (2 of 4 items open); 04 ready |
+| Contract scale | 01-04 | 01, 02, 03 resolved; 04 ready |
 | Timestamp conformance | 05 | Ready — its fix is already in the working tree |
 | Narration diagnosis | 06-08 | 06 and 07 ready; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
@@ -101,6 +101,18 @@ Nothing skipped for a reason other than the three opt-in captured-timestamp test
 in `contracts`, which are gated on an environment variable and belong to ticket
 05. No failure or unexplained skip.
 
+## Verification record — 2026-10-16, for 03's remainder
+
+Python-only change, so only the AI lane moved:
+
+```bash
+uv run --project services/ai pytest    # 227 passed (was 212)
+```
+
++15 tests. The 7 warnings are pre-existing third-party deprecations
+(testcontainers `wait_for_logs`, PyMuPDF's SWIG types). `test_prospectus_job.py`
+and `test_job_pipeline.py` did not regress from the [01] model regeneration.
+
 ## Track 1 — Contract scale (01-04)
 
 The frontend currently branches on metric id to decide scaling, because the
@@ -112,7 +124,7 @@ every future consumer, so this is contract-first.
 | --- | --- | --- | --- | --- |
 | [01](issues/01-contract-percent-scale.md) | Add explicit scale to `FundamentalMetric` | — | `resolved` | high |
 | [02](issues/02-backend-fa-scale-producer.md) | Emit honest scale from the FA producer | 01 | `resolved` | high |
-| [03](issues/03-ai-worker-scale-passthrough.md) | Pass scale through worker assembly | 01, 02 | `ready-for-agent` (fix item 1 landed) | high |
+| [03](issues/03-ai-worker-scale-passthrough.md) | Pass scale through worker assembly | 01, 02 | `resolved` | high |
 | [04](issues/04-frontend-scale-presentation.md) | Drive presentation off scale, not id | 01 | `ready-for-agent` | high |
 
 **Ticket 01's open question is answered: Option A**, with the caveat the audit
@@ -127,8 +139,20 @@ inspectable.
 commits, so no window existed in which a FA job could run against a contract the
 worker could not satisfy.
 
+**[03](issues/03-ai-worker-scale-passthrough.md) settled the rule [04] must
+adopt: `scale` picks the number, the metric's own `unit` stays the suffix.**
+[04]'s literal wording forces a `%` onto any metric declared `fraction` even
+when its `unit` is not `%`, which would print "1250%" for a fraction measured in
+`x`. It also found that the *narrative* had the same leak, worse: grounding
+accepted only numbers literally in the facts, so a correct "5.67%" was rejected
+while "0.0567%" passed, actively pushing the narrative toward the false
+statement. `llm/grounding.py` now adds the whole-unit rendering for a `fraction`
+source. [04] should carry the same rule.
+
 **Still true:** the frontend's per-metric-id scaling table at
 `components/stocks/analysis-presentation.ts:22-24` is untouched. [04] removes it.
+Until it does, the worker headline and the panel agree by construction rather
+than by code.
 
 ## Track 2 — Timestamp conformance (05)
 
