@@ -19,7 +19,7 @@ import hashlib
 import json
 import re
 
-from .base import LLMResponse, Message, Usage
+from .base import LLMResponse, Message, ResponseMetadata, Usage
 
 _STEP_RE = re.compile(r"\[step:([a-z\-]+)\]")
 
@@ -215,4 +215,11 @@ class FakeLLMClient:
             completion_tokens=len(text) // 4,
             cached_tokens=cached,
         )
-        return LLMResponse(text=text, usage=usage, model=self.model)
+        return LLMResponse(
+            text=text,
+            usage=usage,
+            model=self.model,
+            response_metadata=ResponseMetadata(
+                content_empty=not bool(text), completion_tokens=usage.completion_tokens
+            ),
+        )

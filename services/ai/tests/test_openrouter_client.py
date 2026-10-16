@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 
 import httpx
 import pytest
@@ -19,7 +20,7 @@ pytestmark = pytest.mark.unit
 
 OK_BODY = {
     "model": "google/gemini-2.5-flash",
-    "choices": [{"message": {"content": '{"ok": true}'}}],
+    "choices": [{"message": {"content": '{"ok": true}'}, "finish_reason": "stop"}],
     "usage": {
         "prompt_tokens": 100,
         "completion_tokens": 20,
@@ -56,6 +57,83 @@ def test_request_shape_and_usage_parsing() -> None:
     assert seen["body"]["messages"][0] == {"role": "system", "content": "sys"}
     assert resp.text == '{"ok": true}'
     assert (resp.usage.prompt_tokens, resp.usage.completion_tokens, resp.usage.cached_tokens) == (100, 20, 60)
+    assert resp.response_metadata.finish_reason == "stop"
+    assert resp.response_metadata.content_empty is False
+
+
+@pytest.mark.parametrize(
+    ("choice", "expected"),
+    [
+        ({"finish_reason": "length", "message": {"content": None}}, ("length", True, False, 0)),
+        ({"finish_reason": "stop", "message": {"content": "", "reasoning": "secret reasoning"}}, ("stop", True, True, 16)),
+        (None, (None, True, False, 0)),
+    ],
+)
+def test_response_diagnostics_are_metadata_only(caplog, choice, expected) -> None:
+    body = {"choices": [] if choice is None else [choice], "usage": {"completion_tokens": 0}}
+    caplog.set_level(logging.INFO, logger="tuju_ai.llm.openrouter")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=body)
+
+    if choice is None:
+        with pytest.raises(LLMTransientError) as error:
+            _client(handler).complete([Message("user", "secret prompt")])
+        assert "secret" not in str(error.value)
+        return
+
+    response = _client(handler).complete([Message("user", "secret prompt")])
+    metadata = response.response_metadata
+    assert (metadata.finish_reason, metadata.content_empty, metadata.reasoning_present, metadata.reasoning_length) == expected
+    output = " ".join(record.getMessage() for record in caplog.records)
+    assert "secret" not in output
+    assert "response metadata" in output
+
+
+@pytest.mark.parametrize("status", [429, 500, 503, 408, 400, 401, 402, 403, 404])
+def test_http_error_body_is_not_propagated(status: int) -> None:
+    error_body = "secret provider response and pointer"
+    with pytest.raises((LLMTransientError, LLMPermanentError)) as error:
+        _client(lambda r: httpx.Response(status, text=error_body)).complete([Message("user", "secret prompt")])
+    assert error_body not in str(error.value)
+
+
+def test_unrecognized_finish_reason_is_normalized_before_logging(caplog) -> None:
+    caplog.set_level(logging.INFO, logger="tuju_ai.llm.openrouter")
+    response = _client(
+        lambda request: httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "secret provider pointer",
+                        "message": {"content": "ok"},
+                    }
+                ]
+            },
+        )
+    ).complete([Message("user", "secret prompt")])
+
+    assert response.response_metadata.finish_reason == "unknown"
+    rendered_logs = " ".join(record.getMessage() for record in caplog.records)
+    assert "secret" not in rendered_logs
+    assert "pointer" not in rendered_logs
+
+
+def test_malformed_usage_metadata_does_not_leak_provider_value() -> None:
+    with pytest.raises(LLMTransientError) as error:
+        _client(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"completion_tokens": "secret provider value"},
+                },
+            )
+        ).complete([Message("user", "secret prompt")])
+
+    assert "secret" not in str(error.value)
+    assert "provider value" not in str(error.value)
 
 
 def test_cache_control_is_optional() -> None:

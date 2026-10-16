@@ -60,10 +60,22 @@ class Usage:
 
 
 @dataclass(frozen=True)
+class ResponseMetadata:
+    """Sanitized provider completion facts; safe to retain for diagnosis."""
+
+    finish_reason: str | None = None
+    content_empty: bool = False
+    completion_tokens: int = 0
+    reasoning_present: bool = False
+    reasoning_length: int = 0
+
+
+@dataclass(frozen=True)
 class LLMResponse:
     text: str
     usage: Usage
     model: str
+    response_metadata: ResponseMetadata = ResponseMetadata()
 
 
 class LLMClient(Protocol):

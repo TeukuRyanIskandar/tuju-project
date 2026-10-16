@@ -17,6 +17,7 @@ injectable (``httpx.MockTransport`` in unit tests).
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
@@ -27,10 +28,13 @@ from .base import (
     LLMResponse,
     LLMTransientError,
     Message,
+    ResponseMetadata,
     Usage,
 )
 
 DEFAULT_TIMEOUT_SECONDS = 180.0  # long-context calls take a while
+logger = logging.getLogger(__name__)
+_KNOWN_FINISH_REASONS = frozenset({"stop", "length", "content_filter", "tool_calls", "function_call"})
 
 
 class OpenRouterClient:
@@ -101,35 +105,54 @@ class OpenRouterClient:
                     json=body,
                     headers={"Authorization": f"Bearer {self._api_key}"},
                 )
-        except httpx.TransportError as exc:  # timeouts, connect errors
-            raise LLMTransientError(f"OpenRouter request failed: {exc!r}") from exc
+        except httpx.TransportError:  # timeouts, connect errors
+            raise LLMTransientError("OpenRouter transport request failed") from None
 
         if resp.status_code in (408, 429) or resp.status_code >= 500:
-            raise LLMTransientError(
-                f"OpenRouter transient HTTP {resp.status_code}: {resp.text[:200]}"
-            )
+            raise LLMTransientError(f"OpenRouter transient HTTP {resp.status_code}")
         if resp.status_code >= 400:
             # 400/401/402/403/404: bad request, bad key, no credits, unknown model.
             raise LLMPermanentError(
-                f"OpenRouter rejected the request (HTTP {resp.status_code}): "
-                f"{resp.text[:200]}"
+                f"OpenRouter rejected the request (HTTP {resp.status_code})"
             )
 
         try:
             data = resp.json()
             choice = data["choices"][0]
-            text = choice["message"]["content"] or ""
+            message = choice["message"]
+            content = message.get("content")
+            text = content or ""
+            reasoning = message.get("reasoning") or message.get("reasoning_content") or ""
         except (ValueError, KeyError, IndexError, TypeError) as exc:
-            # 200 with an error body / empty choices: usually a provider blip.
-            raise LLMTransientError(
-                f"OpenRouter returned an unusable body: {resp.text[:200]}"
-            ) from exc
+            raise LLMTransientError("OpenRouter returned an unusable response shape") from None
 
-        u = data.get("usage") or {}
-        details = u.get("prompt_tokens_details") or {}
-        usage = Usage(
-            prompt_tokens=int(u.get("prompt_tokens") or 0),
-            completion_tokens=int(u.get("completion_tokens") or 0),
-            cached_tokens=int(details.get("cached_tokens") or 0),
+        try:
+            u = data.get("usage") or {}
+            details = u.get("prompt_tokens_details") or {}
+            usage = Usage(
+                prompt_tokens=int(u.get("prompt_tokens") or 0),
+                completion_tokens=int(u.get("completion_tokens") or 0),
+                cached_tokens=int(details.get("cached_tokens") or 0),
+            )
+        except (AttributeError, TypeError, ValueError, OverflowError):
+            raise LLMTransientError("OpenRouter returned unusable usage metadata") from None
+        raw_finish_reason = choice.get("finish_reason")
+        finish_reason = (
+            raw_finish_reason
+            if isinstance(raw_finish_reason, str) and raw_finish_reason in _KNOWN_FINISH_REASONS
+            else "unknown"
         )
-        return LLMResponse(text=text, usage=usage, model=str(data.get("model") or self.model))
+        metadata = ResponseMetadata(
+            finish_reason=finish_reason,
+            content_empty=not bool(text),
+            completion_tokens=usage.completion_tokens,
+            reasoning_present=bool(reasoning),
+            reasoning_length=len(reasoning) if isinstance(reasoning, str) else 0,
+        )
+        logger.info("OpenRouter response metadata: %s", metadata)
+        return LLMResponse(
+            text=text,
+            usage=usage,
+            model=str(data.get("model") or self.model),
+            response_metadata=metadata,
+        )
