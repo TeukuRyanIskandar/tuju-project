@@ -17,10 +17,11 @@ reduce) goes through :func:`ask`. It owns:
   :class:`~tuju_ai.llm.cost.CostTracker`; :class:`CostCeilingExceeded`
   propagates unchanged for the caller to classify.
 
-Exhaustion raises :class:`MalformedModelOutput` when the last reply could not
-be parsed/validated, or :class:`OutputRejected` when it parsed but a validator
-rejected it. What either means for the job (terminal, or a facts-only
-degrade) is the caller's decision.
+Exhaustion raises :class:`MalformedModelOutput` when the last reply was empty,
+could not be parsed, or did not validate against the requested schema; it
+includes only allowlisted provider metadata for diagnosis. :class:`OutputRejected`
+means the reply parsed but a validator rejected it. What either means for the
+job (terminal, or a facts-only degrade) is the caller's decision.
 """
 
 from __future__ import annotations
@@ -30,7 +31,7 @@ from typing import Any, Callable, Sequence, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
-from .base import Message
+from .base import LLMResponse, Message
 from .runtime import LLMSession
 
 MAX_RAW_ECHO_CHARS = 2000  # how much of a bad reply is echoed back on retry
@@ -71,8 +72,16 @@ def extract_json(text: str) -> Any:
         return json.loads(stripped[start : end + 1])
 
 
-def _first_line(exc: Exception) -> str:
-    return str(exc).splitlines()[0][:300] if str(exc) else repr(exc)
+def _response_facts(response: LLMResponse) -> str:
+    """Return the allowlisted provider facts that make an unusable reply legible."""
+    metadata = response.response_metadata
+    finish_reason = metadata.finish_reason or "unknown"
+    return (
+        f"finish_reason={finish_reason}, "
+        f"completion_tokens={metadata.completion_tokens}, "
+        f"content_empty={str(metadata.content_empty).lower()}, "
+        f"reasoning_present={str(metadata.reasoning_present).lower()}"
+    )
 
 
 def ask(
@@ -97,15 +106,30 @@ def ask(
     failure: StructuredCallFailed | None = None
     for attempt in range(retries + 1):
         response = tracker.call(session.client, step, convo, max_tokens=max_tokens)
-        try:
-            output = schema.model_validate(extract_json(response.text))
-        except (ValueError, ValidationError) as exc:  # JSONDecodeError ⊂ ValueError
-            failure = MalformedModelOutput(_first_line(exc))
+        if not response.text.strip():
+            failure = MalformedModelOutput(
+                f"the model returned an empty reply ({_response_facts(response)})"
+            )
         else:
-            reason = next((r for v in validators if (r := v(output))), None)
-            if reason is None:
-                return output
-            failure = OutputRejected(reason)
+            try:
+                parsed = extract_json(response.text)
+            except ValueError:  # JSONDecodeError ⊂ ValueError
+                failure = MalformedModelOutput(
+                    f"the model returned an unparseable reply ({_response_facts(response)})"
+                )
+            else:
+                try:
+                    output = schema.model_validate(parsed)
+                except ValidationError:
+                    failure = MalformedModelOutput(
+                        "the model returned a schema-invalid reply "
+                        f"({_response_facts(response)})"
+                    )
+                else:
+                    reason = next((r for v in validators if (r := v(output))), None)
+                    if reason is None:
+                        return output
+                    failure = OutputRejected(reason)
         if attempt == retries:
             break
         convo = list(messages) + [

@@ -35,6 +35,7 @@ from tuju_ai.contracts_generated import (
 )
 from tuju_ai.errors import TerminalJobError
 from tuju_ai.llm import LLMResponse, Usage
+from tuju_ai.llm.base import ResponseMetadata
 from tuju_ai.llm.fake import FakeLLMClient
 
 pytestmark = pytest.mark.unit
@@ -512,6 +513,19 @@ class ScriptedNarration(FakeLLMClient):
         return LLMResponse(text=text, usage=resp.usage, model=resp.model)
 
 
+class EmptyNarration(FakeLLMClient):
+    """Returns no narration content while preserving the call's usage."""
+
+    def complete(self, messages, **kwargs):  # type: ignore[override]
+        resp = super().complete(messages, **kwargs)
+        return LLMResponse(
+            text="",
+            usage=resp.usage,
+            model=resp.model,
+            response_metadata=ResponseMetadata(content_empty=True),
+        )
+
+
 def _expensive() -> FakeLLMClient:
     return FakeLLMClient(
         model="google/gemini-2.5-flash",
@@ -525,6 +539,14 @@ def test_malformed_narration_on_both_attempts_is_terminal(runner) -> None:
     with pytest.raises(TerminalJobError, match="invalid"):
         runner(llm=llm)
     assert llm.steps == ["narrate", "narrate"]  # one corrective retry, no more
+
+
+@pytest.mark.parametrize("runner", [_run_ta, _run_fa])
+def test_empty_narration_is_terminal_not_facts_only(runner) -> None:
+    llm = EmptyNarration(model="google/gemini-2.5-flash")
+    with pytest.raises(TerminalJobError, match="empty reply"):
+        runner(llm=llm)
+    assert llm.steps == ["narrate", "narrate"]  # corrective retry, never a degrade
 
 
 @pytest.mark.parametrize("runner", [_run_ta, _run_fa])

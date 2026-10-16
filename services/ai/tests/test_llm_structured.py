@@ -23,10 +23,12 @@ from tuju_ai.llm import (
     MalformedModelOutput,
     Message,
     OutputRejected,
+    LLMResponse,
     Usage,
     ask,
     extract_json,
 )
+from tuju_ai.llm.base import ResponseMetadata
 from tuju_ai.llm.grounding import advice_term, ungrounded_number
 
 pytestmark = pytest.mark.unit
@@ -113,6 +115,67 @@ def test_schema_violation_counts_as_malformed() -> None:
 
     with pytest.raises(MalformedModelOutput):
         _ask(Empty(model=PAID))
+
+
+class ScriptedReply(FakeLLMClient):
+    """Returns one response shape repeatedly to exercise terminal classification."""
+
+    def __init__(self, text: str, metadata: ResponseMetadata) -> None:
+        super().__init__(model=PAID)
+        self._text = text
+        self._metadata = metadata
+
+    def complete(self, messages, **kw):  # type: ignore[override]
+        response = super().complete(messages, **kw)
+        return LLMResponse(
+            text=self._text,
+            usage=response.usage,
+            model=response.model,
+            response_metadata=self._metadata,
+        )
+
+
+def test_empty_reply_reports_provider_metadata_not_a_json_shape_failure() -> None:
+    client = ScriptedReply(
+        "   ",
+        ResponseMetadata(
+            finish_reason="length",
+            content_empty=True,
+            completion_tokens=300,
+            reasoning_present=True,
+            reasoning_length=42,
+        ),
+    )
+
+    with pytest.raises(
+        MalformedModelOutput,
+        match=(
+            "model returned an empty reply.*finish_reason=length.*"
+            "completion_tokens=300.*content_empty=true.*reasoning_present=true"
+        ),
+    ):
+        _ask(client)
+    assert client.steps == ["narrate", "narrate"]
+
+
+def test_unparseable_reply_reports_its_distinct_terminal_reason() -> None:
+    client = ScriptedReply(
+        "not JSON",
+        ResponseMetadata(finish_reason="stop", completion_tokens=12),
+    )
+
+    with pytest.raises(MalformedModelOutput, match="model returned an unparseable reply"):
+        _ask(client)
+
+
+def test_schema_invalid_reply_reports_its_distinct_terminal_reason() -> None:
+    client = ScriptedReply(
+        '{"narrative": 123}',
+        ResponseMetadata(finish_reason="stop", completion_tokens=12),
+    )
+
+    with pytest.raises(MalformedModelOutput, match="model returned a schema-invalid reply"):
+        _ask(client)
 
 
 # --- validators -------------------------------------------------------------------
