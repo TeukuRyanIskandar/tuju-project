@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
-import { ProvenanceBadge, ProvenanceContainer, type ProvenanceKind } from './provenance'
+import type { ProvenanceClass } from '@tuju/contracts'
+import { ProvenanceBadge, ProvenanceContainer, ProvenanceSource, type ProvenanceKind } from './provenance'
 
 describe('ProvenanceBadge', () => {
   it.each<[ProvenanceKind, string]>([
@@ -73,5 +74,37 @@ describe('ProvenanceContainer', () => {
     )
     expect(screen.getByRole('group', { name: 'AI-generated' })).toBeInTheDocument()
     expect(screen.getByRole('group', { name: 'Demo only' })).toBeInTheDocument()
+  })
+})
+
+// Production `apiGet` skips response validation, so anything the backend sends
+// arrives typed as ProvenanceClass whatever it actually is.
+const received = (value: unknown) => value as ProvenanceClass
+
+describe('ProvenanceSource', () => {
+  it('badges synthetic data', () => {
+    render(<ProvenanceSource value="synthetic" />)
+    expect(screen.getByText('Synthetic data')).toHaveAttribute('data-provenance', 'synthetic')
+  })
+
+  it('qualifies a real source as not a live quote', () => {
+    render(<ProvenanceSource value="real" />)
+    expect(screen.getByText('Real source · not a live quote guarantee')).toBeVisible()
+  })
+
+  it('marks an aggregator source as private demo and non-redistributable', () => {
+    render(<ProvenanceSource value="aggregator" />)
+    expect(screen.getByText('Aggregator · private demo / non-redistributable')).toBeVisible()
+  })
+
+  it.each([
+    ['unknown', 'vendor-daily'],
+    ['absent', undefined],
+    ['null', null],
+  ])('never presents an %s provenance class as a real source', (_case, value) => {
+    render(<ProvenanceSource value={received(value)} />)
+    expect(screen.getByText('Source unavailable')).toBeVisible()
+    expect(screen.queryByText(/Real source/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Aggregator/)).not.toBeInTheDocument()
   })
 })

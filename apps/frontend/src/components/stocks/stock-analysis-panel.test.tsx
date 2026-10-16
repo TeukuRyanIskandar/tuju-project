@@ -77,6 +77,15 @@ it.each(['idle', 'loading', 'unavailable', 'mismatch', 'error'] as const)('label
   expect(retained).not.toHaveTextContent('New summary')
   expect(document.body).not.toHaveTextContent('private-bucket stack cost')
 })
+it('announces one detail-unavailable alert when an errored read keeps a malformed retained pair', () => {
+  // apiGet skips runtime validation in production, so previousPair can hold an
+  // identity-matched but malformed artifact while the detail read errors.
+  const malformed = { ...structuredClone(technical), facts: null } as unknown as StockTechnicalAnalysisArtifact
+  show({ previousPair: { summary: technicalSummary, artifact: malformed }, detail: { status: 'error', error: Error('private-bucket stack cost') } })
+  expect(screen.getAllByRole('alert')).toHaveLength(1)
+  expect(screen.getByRole('alert')).toHaveTextContent('Analysis detail unavailable. Retry with refresh.')
+  expect(document.body).not.toHaveTextContent('private-bucket stack cost')
+})
 it('shows safe 404 and refresh errors without private diagnostics, with retained output', () => {
   show({ summaryError: new ApiError(404, { stack: 'secret' }, '/private'), previousPair: matched(), detail: { status: 'idle' } })
   expect(screen.getByRole('alert')).toHaveTextContent('Analysis is not available')

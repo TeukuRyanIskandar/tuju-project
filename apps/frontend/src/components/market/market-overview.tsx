@@ -1,11 +1,11 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import type { IndexSeriesPoint, IndexSeriesRange, MoversBoardType, ProvenanceClass } from '@tuju/contracts'
+import type { IndexSeriesPoint, IndexSeriesRange, MoversBoardType } from '@tuju/contracts'
 import { indicesQuery, indexSeriesQuery, moversQuery, sectorsQuery } from '#/api/market'
 import { ChangeChip } from '#/components/change-chip'
 import { Panel } from '#/components/panel'
-import { ProvenanceBadge } from '#/components/provenance'
+import { ProvenanceSource } from '#/components/provenance'
 import { EmptyState, ErrorState, LoadingState } from '#/components/states'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableSymbol } from '#/components/table'
 import { formatDate, formatDateTime, formatNumber, formatRm, formatVolume } from '#/lib/format'
@@ -20,12 +20,6 @@ export function marketNumber(value: unknown): number | null {
 }
 
 const control = 'h-7 rounded-md border border-control-border bg-surface-2 px-2 text-xs hover:bg-surface-3 aria-pressed:border-primary aria-pressed:bg-accent-soft aria-pressed:text-primary'
-
-function Source({ value }: { value: ProvenanceClass }) {
-  return value === 'synthetic'
-    ? <ProvenanceBadge kind="synthetic" />
-    : <span className="text-xs text-fg-3">{value === 'aggregator' ? 'Aggregator · private demo / non-redistributable' : 'Real source · not a live quote guarantee'}</span>
-}
 
 function ReadState<T>({ query, empty, children }: { query: UseQueryResult<T>; empty: boolean; children: ReactNode }) {
   if (query.data === undefined) {
@@ -82,7 +76,7 @@ function HistoryPanel({ id }: { id?: string }) {
     {!id ? <EmptyState title="History unavailable without a headline index" /> : <ReadState query={history} empty={!history.data?.points.length}>
       {history.data && <>
         <p className="mb-1 break-words text-xs">{history.data.name} · {history.data.range}</p>
-        <Source value={history.data.provenance} />
+        <ProvenanceSource value={history.data.provenance} />
         <p className="mt-1 text-xs text-fg-3">History dates are stored calendar dates, not current quote times.</p>
         <HistoryChart points={history.data.points} />
       </>}
@@ -105,7 +99,7 @@ function MoversPanel() {
           <TableCell numeric>{formatRm(marketNumber(row.price), { decimals: 3 })}</TableCell>
           <TableCell numeric><ChangeChip value={marketNumber(row.pctChange)} /></TableCell>
           <TableCell numeric>{formatVolume(marketNumber(row.volume))}</TableCell>
-          <TableCell><Source value={row.provenance} /></TableCell>
+          <TableCell><ProvenanceSource value={row.provenance} /></TableCell>
         </TableRow>)}</TableBody>
       </Table>
     </ReadState>
@@ -120,7 +114,7 @@ function SectorsPanel() {
         <TableHeader><TableRow><TableHead>Sector</TableHead><TableHead numeric>Level</TableHead><TableHead numeric>Change</TableHead><TableHead>Source</TableHead></TableRow></TableHeader>
         <TableBody>{sectors.data?.sectors.map((sector) => <TableRow key={sector.indexId}>
           <TableCell>{sector.sectorName}</TableCell><TableCell numeric>{formatNumber(marketNumber(sector.level))}</TableCell>
-          <TableCell numeric><ChangeChip value={marketNumber(sector.pctChange)} /></TableCell><TableCell><Source value={sector.provenance} /></TableCell>
+          <TableCell numeric><ChangeChip value={marketNumber(sector.pctChange)} /></TableCell><TableCell><ProvenanceSource value={sector.provenance} /></TableCell>
         </TableRow>)}</TableBody>
       </Table>
     </ReadState>
@@ -139,7 +133,7 @@ export function MarketOverview() {
             <h2 className="break-words text-base font-semibold">{headline.name}</h2>
             <p className="num my-2 text-2xl">{formatNumber(marketNumber(headline.level))}</p>
             <ChangeChip value={marketNumber(headline.pctChange)} />
-            <div className="mt-2"><Source value={headline.provenance} /></div>
+            <div className="mt-2"><ProvenanceSource value={headline.provenance} /></div>
           </>}
         </ReadState>
       </Panel>

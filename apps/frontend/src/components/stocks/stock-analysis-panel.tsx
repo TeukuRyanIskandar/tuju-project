@@ -32,6 +32,10 @@ export function AnalysisPanel<S extends Summary, A extends Artifact>({ title, co
     : lastRenderable?.identity === state.identity ? lastRenderable.pair : undefined
   const pair = validShape && candidate ? candidate : fallback
   const retained = !!pair && (state.detail.status !== 'matched' || !validShape)
+  // A failed detail read and a candidate that fails the browser schema are two
+  // routes to the same outcome, and a retained malformed pair makes them
+  // co-occur. One flag keeps the message a single announcement.
+  const detailUnavailable = state.detail.status === 'error' || !validShape
   const busy = state.refreshingSummary || state.detail.status === 'loading'
   const factsOnly = pair && isFactsOnly(pair.summary, pair.artifact.narrative.text)
   return <Panel title={title} className="min-w-0">
@@ -50,8 +54,7 @@ export function AnalysisPanel<S extends Summary, A extends Artifact>({ title, co
         {summary.status === 'stale' && <p>Stale result — not current.</p>}
         {(summary.status === 'pending' || summary.status === 'running') && <p>Analysis {summary.status}. Refresh to check again; no automatic polling.</p>}
       </div>}
-      {state.detail.status === 'error' && <p role="alert">Analysis detail unavailable. Retry with refresh.</p>}
-      {!validShape && <p role="alert">Analysis detail unavailable. Retry with refresh.</p>}
+      {detailUnavailable && <p role="alert">Analysis detail unavailable. Retry with refresh.</p>}
       {state.detail.status === 'mismatch' && <p role="alert">Analysis detail does not match the summary after one reread. No current verified pair.</p>}
       {state.detail.status === 'unavailable' && <p>No matching analysis detail available.</p>}
       {pair && <section aria-label={retained ? 'Retained analysis result' : 'Matched analysis result'} className="border-t border-border pt-2">

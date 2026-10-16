@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import type { ProvenanceClass } from '@tuju/contracts'
 import { stockCoreQuery, stockSeriesQuery } from '#/api/stocks'
 import { Panel } from '#/components/panel'
-import { ProvenanceBadge } from '#/components/provenance'
+import { ProvenanceSource } from '#/components/provenance'
 import { EmptyState, ErrorState, LoadingState } from '#/components/states'
 import { formatDate, formatDateTime, formatRm } from '#/lib/format'
 import { historyWindow, parseHistory, type HistoryRange } from './stock-history'
@@ -12,11 +11,6 @@ import { StockHistoryChart } from './stock-history-chart'
 import { TechnicalAnalysisPanel, FundamentalAnalysisPanel } from './stock-analysis-panel'
 
 const control = 'h-7 rounded-md border border-control-border bg-surface-2 px-2 text-xs hover:bg-surface-3 aria-pressed:border-primary aria-pressed:bg-accent-soft aria-pressed:text-primary'
-
-function Source({ value }: { value: ProvenanceClass }) {
-  return value === 'synthetic' ? <ProvenanceBadge kind="synthetic" />
-    : <span className="text-xs text-fg-3">{value === 'real' ? 'Real source' : value === 'aggregator' ? 'Aggregator source' : 'Source unavailable'}</span>
-}
 
 function ReadState<T>({ query, children }: { query: UseQueryResult<T>; children: ReactNode }) {
   if (query.data === undefined) return query.isError
@@ -56,7 +50,7 @@ export function StockDetail({ code }: { code: string }) {
           <p className="break-words">{core.data.identity.fullName}</p>
           <p className="break-words text-xs text-fg-2">Issuer: {core.data.identity.companyName}</p>
           <p className="my-2 break-words text-xs text-fg-2">{core.data.identity.board} · {core.data.identity.sector}</p>
-          <Source value={core.data.identity.provenance} />
+          <ProvenanceSource value={core.data.identity.provenance} />
           <p className="mt-1 text-xs text-fg-3">Identity snapshot · source effective time unavailable</p>
         </>}
       </ReadState>
@@ -67,7 +61,7 @@ export function StockDetail({ code }: { code: string }) {
       </div>
       <ReadState query={series}>
         {series.data && <>
-          <div className="flex flex-wrap items-center gap-2"><Source value={series.data.provenance} /><span className="text-xs text-fg-3">Private demo · non-redistributable · daily snapshot, not live</span></div>
+          <div className="flex flex-wrap items-center gap-2"><ProvenanceSource value={series.data.provenance} /><span className="text-xs text-fg-3">Private demo · non-redistributable · daily snapshot, not live</span></div>
           <p className="num my-2 break-words">Latest stored EOD: {latest ? formatDate(latest.date) : '—'} · Close {formatRm(latest?.close, { decimals: 3 })}</p>
           <p className="text-xs text-fg-3">Calendar windows end at the latest stored trading day. Missing or duplicate values are gaps; no calendar days are invented.</p>
           {points.length ? <StockHistoryChart key={range} points={visible} /> : <EmptyState title="No daily history available" />}

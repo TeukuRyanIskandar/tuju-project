@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from 'react'
+import type { ProvenanceClass } from '@tuju/contracts'
 import { cn } from '#/lib/utils'
 
 /**
@@ -89,4 +90,21 @@ export function ProvenanceContainer({ kind, label, caption, children, className 
       {caption ? <p className="mt-1 text-xs text-fg-3">{caption}</p> : null}
     </div>
   )
+}
+
+/**
+ * Provenance label for one data block or row, for sources that carry no
+ * synthetic/demo badge of their own. Production `apiGet` skips response
+ * validation, so an unrecognised class reaches here unchanged and gets its own
+ * wording: falling through to the `real` label would present unknown data as a
+ * real market source.
+ */
+export function ProvenanceSource({ value }: { value: ProvenanceClass }) {
+  if (value === 'synthetic') return <ProvenanceBadge kind="synthetic" />
+  const label = value === 'real'
+    ? 'Real source · not a live quote guarantee'
+    : value === 'aggregator'
+      ? 'Aggregator · private demo / non-redistributable'
+      : 'Source unavailable'
+  return <span className="text-xs text-fg-3">{label}</span>
 }
