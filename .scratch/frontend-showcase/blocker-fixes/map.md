@@ -20,14 +20,14 @@ no demoable data, and the frontend work plus the tracker record need cleanup. Se
 
 ## Overall status
 
-**Nothing is done.** Every ticket below is open. The uncommitted working tree
-holds all parent-ticket 02-05 implementation; this effort adds remediation on top
-of it, and none of it is checkpointed in git.
+**Track 1's producer half is done; nothing else is.** The uncommitted working
+tree still holds all parent-ticket 02-05 implementation; this effort adds
+remediation on top of it.
 
 | Track | Tickets | State |
 | --- | --- | --- |
-| Contract scale | 01-04 | 01 awaiting one answer; 02-04 ready, sequenced |
-| Timestamp conformance | 05 | Ready, blocked on 01 |
+| Contract scale | 01-04 | 01, 02 resolved; 03 core landed (2 of 4 items open); 04 ready |
+| Timestamp conformance | 05 | Ready — its fix is already in the working tree |
 | Narration diagnosis | 06-08 | 06 and 07 ready; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
 | Frontend cleanup | 10-15 | All ready, all unblocked |
@@ -72,9 +72,34 @@ of it, and none of it is checkpointed in git.
 | [14](issues/14-fixture-module-boundary.md) | Fixture module boundary | medium | `apps/frontend` |
 | [15](issues/15-doc-drift-and-dead-code.md) | Doc drift and dead code | low | `apps/frontend` |
 
-Ticket [01](issues/01-contract-percent-scale.md) joins this list once its open
-question is answered. Tickets 10-15 touch files no other ticket edits, so they can
-run concurrently with the contract track and with each other.
+Tickets 10-15 touch files no other ticket edits, so they can run concurrently with
+the contract track and with each other. Ticket
+[04](issues/04-frontend-scale-presentation.md) is now unblocked too, but it should
+not start until a real `fundamental-analysis-2` artifact exists to verify against —
+that is [09](issues/09-bounded-rerun-readiness-reaudit.md), which is
+operator-gated.
+
+## Verification record — 2026-10-16, for 01, 02 and 03's core
+
+Full suite run in one pass after all three landed together:
+
+```bash
+pnpm --filter contracts build          # OK
+pnpm --filter contracts test           # 4 files, 74 passed, 3 skipped
+pnpm --filter contracts check          # OK - no contract drift (ADR-0008)
+pnpm --filter frontend typecheck       # OK
+pnpm --filter frontend test            # 23 files, 336 passed
+pnpm --filter frontend build           # OK
+pnpm --filter frontend test:e2e        # 6 passed
+pnpm --filter backend typecheck        # OK
+pnpm --filter backend test             # 42 suites, 443 passed (was 432)
+pnpm --filter backend test:int         # 18 suites, 191 passed
+uv run --project services/ai pytest    # 212 passed
+```
+
+Nothing skipped for a reason other than the three opt-in captured-timestamp tests
+in `contracts`, which are gated on an environment variable and belong to ticket
+05. No failure or unexplained skip.
 
 ## Track 1 — Contract scale (01-04)
 
@@ -85,19 +110,25 @@ every future consumer, so this is contract-first.
 
 | Ticket | Title | Blocked by | Status | Severity |
 | --- | --- | --- | --- | --- |
-| [01](issues/01-contract-percent-scale.md) | Add explicit scale to `FundamentalMetric` | — | `needs-info` | high |
-| [02](issues/02-backend-fa-scale-producer.md) | Emit honest scale from the FA producer | 01 | `ready-for-agent` | high |
-| [03](issues/03-ai-worker-scale-passthrough.md) | Pass scale through worker assembly | 01, 02 | `ready-for-agent` | high |
+| [01](issues/01-contract-percent-scale.md) | Add explicit scale to `FundamentalMetric` | — | `resolved` | high |
+| [02](issues/02-backend-fa-scale-producer.md) | Emit honest scale from the FA producer | 01 | `resolved` | high |
+| [03](issues/03-ai-worker-scale-passthrough.md) | Pass scale through worker assembly | 01, 02 | `ready-for-agent` (fix item 1 landed) | high |
 | [04](issues/04-frontend-scale-presentation.md) | Drive presentation off scale, not id | 01 | `ready-for-agent` | high |
 
-**Ticket 01 needs one answer:** bump `fundamental-analysis-1` to `-2`, or accept
-that stored artifacts without `scale` stop parsing. Safe locally —
-[`../readiness.md:55`](../readiness.md) confirms zero FA analyses exist — but
-unverified in any environment this audit could not see.
+**Ticket 01's open question is answered: Option A**, with the caveat the audit
+got wrong. `map.md` previously justified it by claiming `readiness.md:55` showed
+zero FA analyses; that line's zero is *prospectus* analyses. It reads "FA: 24
+pending / 4 failed / **2 facts_only**", so Option A strands 2 local `facts_only`
+FA artifacts, which now fail the browser schema and render as "Analysis detail
+unavailable". Ticket 09's re-run replaces them. Other environments were never
+inspectable.
 
-**Order matters beyond the graph:** after 01 lands, **no FA job may be run** until
-03 lands. A required `scale` field the worker does not pass fails contract
-validation terminally for every FA job, burning queue attempts for nothing.
+**Order mattered, and it held.** 01, 02 and 03's core landed together in four
+commits, so no window existed in which a FA job could run against a contract the
+worker could not satisfy.
+
+**Still true:** the frontend's per-metric-id scaling table at
+`components/stocks/analysis-presentation.ts:22-24` is untouched. [04] removes it.
 
 ## Track 2 — Timestamp conformance (05)
 

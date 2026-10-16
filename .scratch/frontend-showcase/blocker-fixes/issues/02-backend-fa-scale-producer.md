@@ -1,7 +1,7 @@
 # 02 — Emit honest metric scale from the FA reference producer
 
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 Severity: high
 Component: `apps/backend`
@@ -91,3 +91,21 @@ asserting a `dividend_yield` of `0.045` is still emitted as `0.045` with
 - Does not touch the stored artifact. [03](03-ai-worker-scale-passthrough.md)
   must land before the next FA generation, or the worker's contract validation
   will reject every artifact for a missing `scale`.
+## Comments
+
+**Resolved 2026-10-16 — commit `cca6386`.**
+
+All nine metrics carry the scale in the ticket's table. No value, `unit`, label
+or row order changed.
+
+- New pure unit spec `analysis-reference.spec.ts` (11 tests, no Docker): the nine
+  `(id, unit, scale)` triples, `dividend_yield` 0.045 still emitted as 0.045, and
+  growth exactly `10` for revenue 100 -> 110. The negative case is asserted at its
+  true value, `-9.09` for 110 -> 100, because `analysis-reference.ts:147` divides
+  by the **prior** quarter, not symmetrically.
+- `stocks.int-spec.ts` asserts the same table at the HTTP edge. Docker was
+  available; `test:int` ran (18 suites, 191 passed).
+
+`operating_cash_flow` is untouched and still unconverted, as the ticket requires.
+The unit spec now pins `4200000000` as fixture-only data; the backend always emits
+`null` for that metric.

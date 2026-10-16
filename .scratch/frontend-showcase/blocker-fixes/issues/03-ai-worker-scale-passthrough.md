@@ -92,3 +92,34 @@ model regeneration.
   the terminal error either way.
 - Until this lands, **do not run any FA generation.** Every FA job would fail
   terminally and consume queue attempts for no diagnostic value.
+## Comments
+
+**Partially implemented 2026-10-16 — commit `c181bd2` (fix item 1 only).**
+Status deliberately left `ready-for-agent`: items 2-4 are not done.
+
+Landed: `scale=m.get("scale")` at `ta_fa_analysis.py:351`; the reference-shape
+docstring in `backend_client.py`; the canned 9-metric reference in
+`test_ta_fa_analysis.py` now carries the scale the backend declares; and the
+artifact version assertion reads `SCHEMA_VERSIONS["fundamental"]` from the
+generated module instead of a literal. Full AI suite green (212 passed).
+
+Still open:
+
+- **Item 2 — fail loudly on a missing scale.** A scale-less reference currently
+  produces a raw pydantic validation traceback, not the
+  `TerminalJobError`-naming-symbol-and-metric-id the ticket asks for. This is now
+  the *only* thing standing between a deploy-ordering mistake and an opaque
+  failure: a worker with this passthrough against a backend that has not yet
+  shipped `scale` receives `None` and fails terminally.
+- **Item 3 — the headline lies, and this is user-visible.**
+  `generate_fa_headline` (`:95-103`) prints the raw value with the unit, so a
+  `dividend_yield` fraction of `0.045` produces the summary headline
+  `"Dividend yield 0.045%"`. Wrong by a factor of 100. The audit did not catch
+  this; the ticket did. It is now the third known leak of the same ambiguity,
+  after the contract's `unit` and the frontend's per-id table, and it cannot be
+  fixed until [04](04-frontend-scale-presentation.md) settles the presentation
+  rule — otherwise the headline and the panel would disagree.
+- **Item 4 — tests** for both of the above.
+
+Deployment note: producer and worker must ship together, in either order's
+absence being the failure mode described above.

@@ -1,7 +1,7 @@
 # 01 — Add an explicit percentage scale to FundamentalMetric
 
 Type: task
-Status: needs-info
+Status: resolved
 Blocked by: none
 Severity: high
 Component: `packages/contracts`
@@ -109,3 +109,32 @@ against HEAD, which is the ADR-0008 drift signal.
 - The Python model's regenerated shape is consumed by
   [03](03-ai-worker-scale-passthrough.md); that ticket must land before any
   worker run, or every FA job will fail contract validation terminally.
+## Comments
+
+**Resolved 2026-10-16 — Option A, commit `047d362`.**
+
+`FundamentalMetricScale` (`fraction` / `percentage_point` / `absolute`) is
+required on `FundamentalMetric`; `SCHEMA_VERSIONS.fundamental` is now
+`fundamental-analysis-2`. Registered codegen output regenerated, never hand-edited;
+`pnpm --filter contracts check` passes.
+
+Deviations from the ticket as written, both deliberate:
+
+- **The fixture was realigned to the producer, not just annotated.** The ticket
+  said "all 8 metric rows carry `scale`". There are nine, and the fixture was the
+  third source of the ambiguity: it used `percent`/`ratio`/`myr` where the backend
+  emits `%`/`x`/`RM bn`, and stored growth as fractions where the backend emits
+  percentage points. Annotating it would have left the golden file encoding a
+  shape no producer emits. Values were multiplied by 100 for the four growth rows
+  to match; no other value changed. Rendered output is identical, because the old
+  fraction values under the old unit cancelled out.
+- **`packages/contracts/test/fixtures.test.ts` carried unrelated work into the
+  commit** — the opt-in captured-timestamp tests from ticket 05 were already
+  uncommitted in that file. Disclosed in the commit body.
+
+On the open question's safety claim: `readiness.md:55` does **not** show zero FA
+analyses. It reads "FA: 24 pending / 4 failed / 2 facts_only"; the zero on that
+line is prospectus analyses. Option A therefore strands 2 local `facts_only` FA
+artifacts, which now fail `StockFundamentalAnalysisArtifact.safeParse` and render
+as "Analysis detail unavailable". Ticket 09's re-run replaces them. No other
+environment was inspectable.
