@@ -16,15 +16,22 @@ export function factValue(value: number | string | boolean | null | undefined) {
   if (value == null || (typeof value === 'number' && !Number.isFinite(value))) return 'Unavailable'
   return typeof value === 'number' ? new Intl.NumberFormat('en-MY', { maximumFractionDigits: 4 }).format(value) : String(value)
 }
+// `scale` picks the number, `unit` stays the suffix: a `fraction` metric is
+// stored as a fraction of its unit (0.045 with unit `%` is 4.5%), while a
+// `percentage_point` or `absolute` one already is in whole units. This is the
+// rule the worker's `generate_fa_headline` uses (`ta_fa_analysis.py`), and both
+// sides derive the number from `scale` alone so the headline cannot disagree
+// with this panel about a value. Nothing here may branch on the metric's id:
+// ids are labels, not numeric conventions.
 export function metricValue(metric: FundamentalMetric) {
-  const { id, value, unit } = metric
+  const { value, unit, scale } = metric
   if (value == null || !Number.isFinite(value)) return `Unavailable · unit: ${unit}`
-  const percentage = unit === 'percent' || (unit === '%' && (id === 'dividend_yield' || id === 'roe'))
-  if (percentage) return `${factValue(value * 100)}%`
-  if (unit === '%' && id.includes('_growth_')) return `${factValue(value)}%`
-  if (unit === 'ratio' || unit === 'x') return `${factValue(value)} ${unit}`
-  if (unit === 'MYR' || unit === 'myr' || unit === 'RM') return `${unit} ${factValue(value)}`
-  return `${factValue(value)} · unit: ${unit} (unconverted)`
+  const shown = scale === 'fraction' ? value * 100 : value
+  if (unit === '%') return `${factValue(shown)}%`
+  if (unit === 'x') return `${factValue(shown)} ${unit}`
+  // No rendering rule for this unit, so show the number rather than guess one:
+  // "unconverted" refers to the unit, not to the scale applied above.
+  return `${factValue(shown)} · unit: ${unit} (unconverted)`
 }
 export function isFactsOnly(summary: { status: string; headline: string | null }, narrative?: string) {
   return summary.status === 'facts_only' || summary.headline?.startsWith('facts-only: ') === true

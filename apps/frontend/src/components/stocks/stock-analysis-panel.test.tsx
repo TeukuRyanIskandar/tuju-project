@@ -51,6 +51,15 @@ it('renders every FA metric in canonical order, dates/units and missing/duplicat
   expect(screen.getAllByText(/Metric date:/)).toHaveLength(9)
   expect(screen.getByText(/revenue_growth_qoq · Unit:/)).toHaveTextContent('2026-06-30')
 })
+it('renders each FA value from the metric scale, so a re-scaled metric reads differently under the same id', () => {
+  const a = structuredClone(fundamental)
+  const growth = a.metrics.find(m => m.id === 'revenue_growth_qoq')!
+  growth.scale = 'fraction'
+  growth.value = 0.021
+  render(<FundamentalAnalysis artifact={a} />)
+  expect(screen.getByText('2.1%')).toBeInTheDocument()
+  expect(screen.queryByText('0.021%')).not.toBeInTheDocument()
+})
 it.each(['pending', 'running', 'ready', 'facts_only', 'stale', 'failed'] as const)('presents %s explicitly without a rich result', status => {
   show({ summary: { ...technicalSummary, status, artifact: null }, detail: { status: 'unavailable' } })
   expect(screen.getByLabelText('Latest analysis summary')).toHaveTextContent(status === 'facts_only' ? 'Facts only' : status)
