@@ -68,6 +68,12 @@ describe('YFinanceMarketDataAdapter', () => {
       },
     ]);
     expect(historical).toHaveBeenCalledTimes(universeSize);
+    expect(historical).toHaveBeenCalledWith('1155.KL', {
+      period1: expect.any(String),
+      period2: expect.any(Date),
+      interval: '1d',
+      events: 'history',
+    });
     expect(result.failures).toEqual([]);
     expect(adapter.provenanceClass).toBe(ProvenanceClass.Real);
     expect(adapter.adapterName).toBe('YFinanceMarketDataAdapter');
@@ -172,6 +178,17 @@ describe('YFinanceFundamentalsAdapter', () => {
 
     const result = await adapter.fetchFundamentals();
     const maybank = result.rows.find((r) => r.stockCode === '1155');
+    expect(historical).toHaveBeenCalledWith('1155.KL', {
+      period1: expect.any(String),
+      period2: expect.any(Date),
+      events: 'dividends',
+    });
+    expect(fundamentalsTimeSeries).toHaveBeenCalledWith('1155.KL', {
+      period1: expect.any(String),
+      period2: expect.any(Date),
+      type: 'quarterly',
+      module: 'financials',
+    });
     expect(maybank).toEqual({
       stockCode: '1155',
       sharesOutstanding: 12_000_000_000,

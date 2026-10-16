@@ -122,6 +122,7 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
     const failures: string[] = [];
     const vendorDividends: DividendDto[] = [];
     const out: FundamentalsDto[] = [];
+    const period2 = new Date();
     const period1Date = new Date();
     period1Date.setUTCFullYear(period1Date.getUTCFullYear() - 3);
     const period1 = toIsoDate(period1Date);
@@ -159,6 +160,7 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
           this.throttle.run(() =>
             this.client.fundamentalsTimeSeries(company.yahooSymbol, {
               period1,
+              period2,
               type: 'quarterly',
               module: 'financials',
             }),
@@ -166,6 +168,7 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
           this.throttle.run(() =>
             this.client.fundamentalsTimeSeries(company.yahooSymbol, {
               period1,
+              period2,
               type: 'quarterly',
               module: 'balance-sheet',
             }),
@@ -173,6 +176,8 @@ export class YFinanceFundamentalsAdapter implements FundamentalsAdapter {
           this.throttle.run(() =>
             this.client.historical(company.yahooSymbol, {
               period1,
+              // Required explicitly by yahoo-finance2's historical→chart path.
+              period2,
               events: 'dividends',
             }),
           ) as Promise<YahooDividendRow[]>,

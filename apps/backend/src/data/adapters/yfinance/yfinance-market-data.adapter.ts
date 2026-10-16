@@ -39,6 +39,9 @@ export class YFinanceMarketDataAdapter implements MarketDataAdapter {
   async fetchDailyBars(): Promise<SourceFetch<PriceBarDto>> {
     const failures: string[] = [];
     const bars: PriceBarDto[] = [];
+    // yahoo-finance2 4.0.3 forwards an omitted period2 as undefined to chart
+    // validation, rather than applying its documented default of "now".
+    const period2 = new Date();
     const period1Date = new Date();
     period1Date.setUTCFullYear(period1Date.getUTCFullYear() - 3);
     const period1 = toIsoDate(period1Date);
@@ -58,6 +61,7 @@ export class YFinanceMarketDataAdapter implements MarketDataAdapter {
         const history = (await this.throttle.run(() =>
           this.client.historical(company.yahooSymbol, {
             period1,
+            period2,
             interval: '1d',
             events: 'history',
           }),
