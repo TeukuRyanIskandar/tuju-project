@@ -348,6 +348,7 @@ def _fundamental_work(envelope: FundamentalJobEnvelope, ctx: JobContext) -> JobO
             label=m.get("label", ""),
             value=m.get("value"),
             unit=m.get("unit", ""),
+            scale=m.get("scale"),
             asOf=m.get("asOf"),
         )
         for m in metrics_raw

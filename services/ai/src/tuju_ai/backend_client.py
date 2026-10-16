@@ -113,6 +113,7 @@ class HttpBackendClient:
                     "label": "<string>",
                     "value": float | null,
                     "unit": "<string>",
+                    "scale": "<fraction|percentage_point|absolute>",
                     "asOf": "<ISO date string>"
                   }, ...
                 ]

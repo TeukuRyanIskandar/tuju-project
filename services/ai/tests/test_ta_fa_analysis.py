@@ -4,20 +4,31 @@ Per-job behaviour: the reference read, fact/metric assembly, the narration
 outcomes (clean, corrective retry, facts-only degrade, terminal) and the
 artifact. Envelope/progress/claim-check invariants live in
 ``test_job_pipeline.py``. The LLM is ``FakeLLMClient`` injected via
-``LLMRuntime`` — no monkeypatching, no env.
+``LLMRuntime``. The serialization reproduction additionally observes validation
+and storage, fixes the clock, and guards external I/O with monkeypatches.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import socket
+import subprocess
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
+import boto3.session
+import botocore.session
 import httpx
 import pytest
 
 from job_helpers import load, run
+from tuju_ai.artifacts import ArtifactStore
 from tuju_ai.config import JOB_ANALYZE_FUNDAMENTAL, JOB_ANALYZE_TECHNICAL
 from tuju_ai.contracts_generated import (
+    SCHEMA_VERSIONS,
     FundamentalAnalysisArtifact,
     JobResult,
     TechnicalAnalysisArtifact,
@@ -89,6 +100,7 @@ def _make_fa_reference() -> dict:
                     "label": "P/E ratio (trailing)",
                     "value": 12.5,
                     "unit": "x",
+                    "scale": "absolute",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -96,6 +108,7 @@ def _make_fa_reference() -> dict:
                     "label": "Dividend yield",
                     "value": 3.2,
                     "unit": "%",
+                    "scale": "fraction",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -103,6 +116,7 @@ def _make_fa_reference() -> dict:
                     "label": "Return on Equity",
                     "value": 15.0,
                     "unit": "%",
+                    "scale": "fraction",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -110,6 +124,7 @@ def _make_fa_reference() -> dict:
                     "label": "Revenue growth (QoQ)",
                     "value": 5.0,
                     "unit": "%",
+                    "scale": "percentage_point",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -117,6 +132,7 @@ def _make_fa_reference() -> dict:
                     "label": "Revenue growth (YoY)",
                     "value": 20.0,
                     "unit": "%",
+                    "scale": "percentage_point",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -124,6 +140,7 @@ def _make_fa_reference() -> dict:
                     "label": "Profit growth (QoQ)",
                     "value": 8.0,
                     "unit": "%",
+                    "scale": "percentage_point",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -131,6 +148,7 @@ def _make_fa_reference() -> dict:
                     "label": "Profit growth (YoY)",
                     "value": 25.0,
                     "unit": "%",
+                    "scale": "percentage_point",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -138,6 +156,7 @@ def _make_fa_reference() -> dict:
                     "label": "Debt-to-Equity",
                     "value": 0.5,
                     "unit": "x",
+                    "scale": "absolute",
                     "asOf": "2026-10-08",
                 },
                 {
@@ -145,6 +164,7 @@ def _make_fa_reference() -> dict:
                     "label": "Operating cash flow",
                     "value": 150.0,
                     "unit": "RM m",
+                    "scale": "absolute",
                     "asOf": "2026-10-08",
                 },
             ]
@@ -214,8 +234,129 @@ def test_fa_happy_path() -> None:
 
     artifact = s3.artifact(result.pointer.key)
     FundamentalAnalysisArtifact.model_validate(artifact)
-    assert artifact["schemaVersion"] == "fundamental-analysis-1"
+    assert artifact["schemaVersion"] == SCHEMA_VERSIONS["fundamental"]
     assert len(artifact["metrics"]) == 9
+    # The producer declares scale per metric; the worker must pass it through.
+    assert [m["scale"] for m in artifact["metrics"]] == [
+        "absolute",  # trailing_pe (x)
+        "fraction",  # dividend_yield (%)
+        "fraction",  # roe (%)
+        "percentage_point",  # revenue_growth_qoq (%)
+        "percentage_point",  # revenue_growth_yoy (%)
+        "percentage_point",  # profit_growth_qoq (%)
+        "percentage_point",  # profit_growth_yoy (%)
+        "absolute",  # debt_to_equity (x)
+        "absolute",  # operating_cash_flow (RM m)
+    ]
+
+
+def test_ta_fa_captured_timestamp_bytes_against_source_ts_contracts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Exact final bytes from real producers/validation/storage, with offline fakes.
+
+    The optional Vitest handoff consumes BOTH exact S3 bodies, never golden
+    fixtures or repaired artifacts. Only its in-memory controls change timestamps.
+    Installed Node/Vitest dependencies are required; nothing is downloaded.
+    """
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offline reproduction attempted network/cloud/credentials")
+
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
+    monkeypatch.setattr(socket, "getaddrinfo", forbidden)
+    monkeypatch.setattr(httpx.Client, "send", forbidden)
+    monkeypatch.setattr(httpx.AsyncClient, "send", forbidden)
+    monkeypatch.setattr(boto3, "client", forbidden)
+    monkeypatch.setattr(boto3.session.Session, "client", forbidden)
+    monkeypatch.setattr(botocore.session.Session, "create_client", forbidden)
+    monkeypatch.setattr(botocore.session.Session, "get_credentials", forbidden)
+    monkeypatch.setattr(boto3.session.Session, "get_credentials", forbidden)
+
+    as_of = datetime.fromisoformat("2026-10-08T18:02:03.123456+08:00")
+    generated = datetime.fromisoformat("2026-10-08T10:04:05.654321+00:00")
+    monkeypatch.setattr("tuju_ai.ta_fa_analysis.now", lambda: generated)
+    monkeypatch.setattr("tuju_ai.jobs.pipeline.now", lambda: generated)
+
+    for kind, runner, contract in [
+        ("technical", _run_ta, TechnicalAnalysisArtifact),
+        ("fundamental", _run_fa, FundamentalAnalysisArtifact),
+    ]:
+        envelope = load(f"{kind}-job-envelope.json")
+        envelope["asOf"] = as_of.isoformat()
+        validated: list[dict] = []
+        original_validate = contract.model_validate
+        original_put = ArtifactStore.put_artifact
+
+        def validate(artifact, **kwargs):
+            assert artifact["asOf"] == as_of
+            assert isinstance(artifact["asOf"], datetime)
+            assert artifact["provenance"]["generatedAt"] is generated
+            parsed = original_validate(artifact, **kwargs)
+            validated.append(artifact)
+            return parsed
+
+        def put(store, suffix, artifact):
+            # Observe without replacing the real producer, validator or serializer.
+            assert len(validated) == 1 and validated[0] is not artifact
+            assert validated[0]["asOf"] == as_of
+            assert isinstance(validated[0]["asOf"], datetime)
+            assert validated[0]["provenance"]["generatedAt"] is generated
+            assert isinstance(artifact["asOf"], str)
+            return original_put(store, suffix, artifact)
+
+        llm = FakeLLMClient()
+        reference = None
+        if kind == "fundamental":
+            reference = _make_fa_reference()
+            reference["fundamental"]["metrics"][-1]["value"] = None
+        with monkeypatch.context() as observe:
+            observe.setattr(contract, "model_validate", validate)
+            observe.setattr(ArtifactStore, "put_artifact", put)
+            result, progress, s3, backend = runner(
+                envelope=envelope, llm=llm, reference=reference,
+            )
+
+        assert backend.calls == ["MAYBANK"]
+        assert llm.steps == ["narrate"]
+        assert progress[-1].phase == "done"
+        assert len(s3.calls) == 1
+        call = s3.calls[0]
+        body = call["Body"]
+        assert isinstance(body, bytes)
+        assert body is s3.objects[(call["Bucket"], call["Key"])]
+        assert call["Key"] == f"analysis/{kind}/MAYBANK/2026-10-08T10.json"
+        assert call["Bucket"] == result.pointer.bucket == "tuju-artifacts"
+        assert call["Key"] == result.pointer.key
+        assert call["ContentType"] == result.pointer.contentType == "application/json"
+        assert result.pointer.bytes == len(body)
+        assert result.pointer.sha256 == hashlib.sha256(body).hexdigest()
+        captured = json.loads(body)
+        assert captured["asOf"] == "2026-10-08T18:02:03.123456+08:00"
+        assert captured["provenance"]["generatedAt"] == "2026-10-08T10:04:05.654321Z"
+        if kind == "fundamental":
+            assert captured["metrics"][-1]["value"] is None
+        (tmp_path / f"{kind}.json").write_bytes(body)
+
+    contracts = Path(__file__).resolve().parents[3] / "packages" / "contracts"
+    vitest = contracts / "node_modules" / "vitest" / "vitest.mjs"
+    assert vitest.is_file(), "installed contracts Vitest required (no auto-install)"
+    # A direct installed runner avoids package-manager sync/downloads. No provider
+    # or credential environment is handed to the source-schema-only subprocess.
+    env = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR") if key in os.environ}
+    env["TUJU_TA_FA_CAPTURE_DIR"] = str(tmp_path)
+    try:
+        checked = subprocess.run(
+            ["node", str(vitest), "run", "test/fixtures.test.ts",
+             "-t", "captured TA/FA timestamp serialization", "--maxWorkers=1", "--minWorkers=1"],
+            cwd=contracts, env=env, capture_output=True, text=True, timeout=60,
+        )
+    finally:
+        for kind in ("technical", "fundamental"):
+            (tmp_path / f"{kind}.json").unlink()
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    # Keep actual cross-language evidence visible with pytest -rP / -s.
+    print(checked.stdout)
 
 
 def test_ta_without_fired_events_falls_back_to_the_unavailable_headline() -> None:
@@ -336,5 +477,3 @@ def test_grounding_recovered_on_second_attempt() -> None:
     # the retry fed the rejection back to the model
     assert "banned term 'buy'" in llm.calls[1][-1].content
     assert s3.artifact(result.pointer.key)["cost"]["calls"] == 2
-
-
