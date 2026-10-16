@@ -8,8 +8,17 @@ a counted stand-in for Docling, and the LLM is ``FakeLLMClient``.
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+import socket
+import subprocess
 import time
+from datetime import datetime
+from functools import partial
+from pathlib import Path
 
+import boto3.session
+import botocore.session
 import httpx
 import pytest
 
@@ -37,6 +46,7 @@ from tuju_ai.errors import TerminalJobError
 from tuju_ai.handler import handle_job
 from tuju_ai.jobs.pipeline import JobDeps
 from tuju_ai.llm import FakeLLMClient, LLMRuntime, Usage
+from tuju_ai.prospectus.analysis import AnalysisDeps
 
 pytestmark = pytest.mark.unit
 
@@ -138,6 +148,75 @@ def test_progress_is_step_based_monotonic_with_known_phases() -> None:
     assert labels[3:11] == [s.label for s in STEPS]  # one event per analysis step
     for p in progress:
         JobProgress.model_validate(p.model_dump(mode="json"))
+
+
+def test_prospectus_final_bytes_against_source_ts_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    def forbidden(*args, **kwargs):
+        raise AssertionError("offline capture attempted network/cloud/credentials")
+
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket.socket, "connect_ex", forbidden)
+    monkeypatch.setattr(socket, "getaddrinfo", forbidden)
+    monkeypatch.setattr(httpx.Client, "send", forbidden)
+    monkeypatch.setattr(httpx.AsyncClient, "send", forbidden)
+    monkeypatch.setattr(boto3, "client", forbidden)
+    monkeypatch.setattr(boto3.session.Session, "client", forbidden)
+    monkeypatch.setattr(botocore.session.Session, "create_client", forbidden)
+    monkeypatch.setattr(botocore.session.Session, "get_credentials", forbidden)
+    monkeypatch.setattr(boto3.session.Session, "get_credentials", forbidden)
+    generated = datetime.fromisoformat("2026-10-08T18:02:03.123456+08:00")
+    monkeypatch.setattr(
+        "tuju_ai.prospectus.job.AnalysisDeps", partial(AnalysisDeps, now=lambda: generated),
+    )
+
+    class RecordingS3(MemoryS3):
+        def __init__(self):
+            super().__init__()
+            self.calls = []
+
+        def put_object(self, **kwargs):
+            self.calls.append(kwargs)
+            return super().put_object(**kwargs)
+
+    runtime, parse, llm = _runtime()
+    result, progress, fake, backend = _run(runtime=runtime, fake=RecordingS3())
+    final = [call for call in fake.calls if call["Key"] == result.pointer.key]
+    assert len(final) == 1
+    assert len(fake.calls) == 2  # separate parse-cache write, not the final artifact
+    assert any(call["Key"].endswith("/parse.json") for call in fake.calls)
+    call = final[0]
+    body = call["Body"]
+    assert isinstance(body, bytes)
+    assert body is fake.objects[(call["Bucket"], call["Key"])]
+    assert call["Bucket"] == result.pointer.bucket == BUCKET
+    assert call["Key"] == f"analysis/prospectus/{PROSPECTUS_ID}/at-a-glance.json"
+    assert call["ContentType"] == result.pointer.contentType == "application/json"
+    assert result.pointer.bytes == len(body)
+    assert result.pointer.sha256 == hashlib.sha256(body).hexdigest()
+    assert json.loads(body)["provenance"]["generatedAt"] == generated.isoformat()
+    assert progress[-1].phase == "done"
+    assert backend.reference_calls == [PROSPECTUS_ID]
+    assert parse.calls == 1 and "what-to-watch" in llm.steps
+
+    captured = tmp_path / "prospectus.json"
+    captured.write_bytes(body)
+    contracts = Path(__file__).resolve().parents[3] / "packages" / "contracts"
+    vitest = contracts / "node_modules" / "vitest" / "vitest.mjs"
+    assert vitest.is_file(), "installed contracts Vitest required (no auto-install)"
+    env = {key: os.environ[key] for key in ("PATH", "HOME", "TMPDIR") if key in os.environ}
+    env["TUJU_PROSPECTUS_CAPTURE_DIR"] = str(tmp_path)
+    try:
+        checked = subprocess.run(
+            ["node", str(vitest), "run", "test/fixtures.test.ts",
+             "-t", "captured prospectus timestamp serialization", "--maxWorkers=1", "--minWorkers=1"],
+            cwd=contracts, env=env, capture_output=True, text=True, timeout=60,
+        )
+    finally:
+        captured.unlink()
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    print(checked.stdout)
 
 
 def test_rerun_reuses_the_persisted_parse() -> None:

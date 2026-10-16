@@ -273,16 +273,20 @@ def run_job(
     # ADR-0014 §3: strict pre-write validation against the generated contract
     # model. A malformed artifact is caught here, not in the browser, and
     # nothing is written to S3 on failure.
+    artifact = output.artifact
     if definition.artifact_contract is not None:
         try:
-            definition.artifact_contract.model_validate(output.artifact)
+            validated = definition.artifact_contract.model_validate(output.artifact)
         except ValidationError as exc:
             raise TerminalJobError(
                 f"{definition.artifact_contract.__name__} failed contract "
                 f"validation: {exc}"
             ) from exc
+        # Serialize the validated contract's wire representation, without adding
+        # omitted defaults or dropping explicitly supplied nulls.
+        artifact = validated.model_dump(mode="json", by_alias=True, exclude_unset=True)
 
-    pointer = deps.artifact_store.put_artifact(output.artifact_key, output.artifact)
+    pointer = deps.artifact_store.put_artifact(output.artifact_key, artifact)
     ctx._emit(len(plan) - 2)  # persisting-artifact
     cost = output.artifact.get("cost")
     log.info(

@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import hashlib
 import time
+from copy import deepcopy
+from datetime import datetime
 from typing import Callable
 
 import httpx
 import pytest
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from job_helpers import BUCKET, deps, load
 from tuju_ai.config import JOB_GENERATE_MARKET_BRIEF
@@ -205,12 +207,45 @@ def test_contract_violation_is_terminal_and_writes_nothing() -> None:
 
 
 def test_no_contract_means_no_pre_write_check() -> None:
+    at = datetime.fromisoformat("2026-10-08T18:02:03.123456+08:00")
+    artifact = {"anything": 1, "at": at, "explicitNull": None}
+
     def loose(envelope, ctx):
-        return JobOutput(artifact_key="t.json", artifact={"anything": 1}, headline="h")
+        return JobOutput(artifact_key="t.json", artifact=artifact, headline="h")
 
     result, _p, s3 = _run(_definition(loose, contract=None))
-    assert s3.artifact("analysis/t.json") == {"anything": 1}
+    assert s3.artifact("analysis/t.json") == {
+        "anything": 1, "at": str(at), "explicitNull": None,
+    }
+    assert artifact["at"] is at
     assert result.summary.headline == "h"
+
+
+def test_contract_serialization_uses_aliases_omits_unset_and_keeps_explicit_nulls() -> None:
+    class Nested(BaseModel):
+        timestamp: datetime = Field(alias="generatedAt")
+        omitted: str | None = None
+        explicit_null: str | None = Field(default=None, alias="explicitNull")
+
+    class WireArtifact(BaseModel):
+        nested: Nested = Field(alias="provenance")
+        omitted_default: int = Field(default=42, alias="omittedDefault")
+
+    artifact = {"provenance": {
+        "generatedAt": datetime.fromisoformat("2026-10-08T18:02:03.123456+08:00"),
+        "explicitNull": None,
+    }}
+    before = deepcopy(artifact)
+
+    def work(envelope, ctx):
+        return JobOutput(artifact_key="wire.json", artifact=artifact, headline="h")
+
+    _result, _p, s3 = _run(_definition(work, contract=WireArtifact))
+    assert s3.artifact("analysis/wire.json") == {"provenance": {
+        "generatedAt": "2026-10-08T18:02:03.123456+08:00", "explicitNull": None,
+    }}
+    assert artifact == before
+    assert isinstance(artifact["provenance"]["generatedAt"], datetime)
 
 
 @pytest.mark.parametrize(
