@@ -5,7 +5,9 @@ fact payload, and must not read as investment advice.
 
 * :func:`ungrounded_number` — raw string containment: every numeral in the text
   (``70%``, ``RM1.23``, ``0.85``; commas/spaces stripped, also checked by its
-  integer part) must appear among the numbers of the given sources.
+  integer part) must appear among the numbers of the given sources. A source
+  metric declared ``scale: "fraction"`` also contributes its whole-unit
+  rendering, so a percentage metric can be narrated honestly.
 * :func:`advice_term` — case-insensitive substring scan for :data:`BAN_WORDS`.
 
 Both return a rejection reason (fed back to the model on the corrective retry)
@@ -52,18 +54,32 @@ def _text_numbers(text: str) -> set[str]:
 def _source_numbers(source: Any) -> set[str]:
     numbers: set[str] = set()
 
+    def add(value: int | float) -> None:
+        s = str(value)
+        numbers.add(s)
+        if "." in s:
+            numbers.add(s.split(".")[0])
+
     def visit(obj: Any) -> None:
         if isinstance(obj, dict):
             for v in obj.values():
                 visit(v)
+            # A `fraction` metric is stored as a fraction of its unit, so the
+            # multiplied value is its honest rendering. Without this the check
+            # rejects a correct 5.67% for a 0.045 dividend yield while accepting
+            # the wrong "0.045%" — the narrative is then pushed toward saying
+            # something false in order to stay grounded. Scaled to the same 4
+            # fraction digits the headline uses, so float noise is not accepted
+            # in place of the real number.
+            if obj.get("scale") == "fraction":
+                raw = obj.get("value")
+                if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                    add(round(raw * 100, 4))
         elif isinstance(obj, (list, tuple)):
             for item in obj:
                 visit(item)
         elif isinstance(obj, (int, float)) and not isinstance(obj, bool):
-            s = str(obj)
-            numbers.add(s)
-            if "." in s:
-                numbers.add(s.split(".")[0])
+            add(obj)
 
     visit(source)
     return numbers

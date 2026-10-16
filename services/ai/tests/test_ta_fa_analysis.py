@@ -87,7 +87,13 @@ def _make_ta_reference() -> dict:
 
 
 def _make_fa_reference() -> dict:
-    """Canned fundamental reference matching the spec contract (9 metrics)."""
+    """Canned fundamental reference matching the producer's real convention.
+
+    ``dividend_yield`` and ``roe`` are fractions as the backend emits them
+    (``dps / close`` and ``profit / equity`` raw, so 0.045 means 4.5%), the four
+    growth rows are percentage points already multiplied by 100, and
+    ``operating_cash_flow`` is null because the backend never ingests it.
+    """
     return {
         "code": "1155",
         "shortName": "MAYBANK",
@@ -106,7 +112,7 @@ def _make_fa_reference() -> dict:
                 {
                     "id": "dividend_yield",
                     "label": "Dividend yield",
-                    "value": 3.2,
+                    "value": 0.045,
                     "unit": "%",
                     "scale": "fraction",
                     "asOf": "2026-10-08",
@@ -114,7 +120,7 @@ def _make_fa_reference() -> dict:
                 {
                     "id": "roe",
                     "label": "Return on Equity",
-                    "value": 15.0,
+                    "value": 0.124,
                     "unit": "%",
                     "scale": "fraction",
                     "asOf": "2026-10-08",
@@ -162,8 +168,8 @@ def _make_fa_reference() -> dict:
                 {
                     "id": "operating_cash_flow",
                     "label": "Operating cash flow",
-                    "value": 150.0,
-                    "unit": "RM m",
+                    "value": None,
+                    "unit": "RM bn",
                     "scale": "absolute",
                     "asOf": "2026-10-08",
                 },
@@ -197,6 +203,23 @@ def _run_fa(reference: Any = None, llm: Any = True, envelope: dict | None = None
 def _not_found() -> httpx.HTTPStatusError:
     req = httpx.Request("GET", "http://backend/stocks/X/analysis/reference")
     return httpx.HTTPStatusError("nf", request=req, response=httpx.Response(404, request=req))
+
+
+def _single_metric_reference(
+    metric_id: str, value: float | None, unit: str, scale: str,
+) -> dict:
+    """The canned reference with every metric nulled but the named one.
+
+    The headline takes the first non-null metric and the backend always fills
+    ``trailing_pe`` first, so this is how a fraction or percentage point
+    actually reaches the headline path.
+    """
+    ref = _make_fa_reference()
+    for metric in ref["fundamental"]["metrics"]:
+        metric["value"] = None
+    target = next(m for m in ref["fundamental"]["metrics"] if m["id"] == metric_id)
+    target.update(value=value, unit=unit, scale=scale)
+    return ref
 
 
 # --- happy paths --------------------------------------------------------------
@@ -246,7 +269,7 @@ def test_fa_happy_path() -> None:
         "percentage_point",  # profit_growth_qoq (%)
         "percentage_point",  # profit_growth_yoy (%)
         "absolute",  # debt_to_equity (x)
-        "absolute",  # operating_cash_flow (RM m)
+        "absolute",  # operating_cash_flow (RM bn)
     ]
 
 
@@ -366,6 +389,40 @@ def test_ta_without_fired_events_falls_back_to_the_unavailable_headline() -> Non
     assert result.summary.headline == "Data unavailable for analysis"
 
 
+@pytest.mark.parametrize(
+    ("metric_id", "value", "unit", "scale", "headline"),
+    [
+        # A fraction is never printed with a bare %: 0.045 of '%' is 4.5%.
+        ("dividend_yield", 0.045, "%", "fraction", "Dividend yield 4.5%"),
+        # 0.29 * 100 is 28.999999999999996 in binary floating point.
+        ("roe", 0.29, "%", "fraction", "Return on Equity 29%"),
+        # A percentage point is already in whole units; no conversion.
+        ("revenue_growth_qoq", -9.09, "%", "percentage_point", "Revenue growth (QoQ) -9.09%"),
+        # Absolute keeps the producer's own unit verbatim, unconverted.
+        ("trailing_pe", 12.5, "x", "absolute", "P/E ratio (trailing) 12.5x"),
+        # A large absolute value must not fall into %g exponent form.
+        (
+            "operating_cash_flow", 4200000000.0, "RM bn", "absolute",
+            "Operating cash flow 4200000000RM bn",
+        ),
+    ],
+)
+def test_fa_headline_follows_scale_and_keeps_the_producer_unit(
+    metric_id: str, value: float, unit: str, scale: str, headline: str,
+) -> None:
+    ref = _single_metric_reference(metric_id, value, unit, scale)
+    result, *_ = _run_fa(ref)
+    assert result.summary.headline == headline
+
+
+def test_fa_headline_falls_back_when_no_metric_has_a_value() -> None:
+    ref = _make_fa_reference()
+    for metric in ref["fundamental"]["metrics"]:
+        metric["value"] = None
+    result, *_ = _run_fa(ref)
+    assert result.summary.headline == "Data unavailable for analysis"
+
+
 # --- terminal inputs --------------------------------------------------------------
 
 
@@ -393,6 +450,34 @@ def test_fa_wrong_metric_count_is_terminal() -> None:
     ref = _make_fa_reference()
     ref["fundamental"]["metrics"].pop()
     with pytest.raises(TerminalJobError, match="Expected 9"):
+        _run_fa(ref)
+
+
+@pytest.mark.parametrize("as_null", [False, True], ids=["absent", "explicit_null"])
+def test_fa_missing_scale_is_terminal_naming_symbol_and_metric(as_null: bool) -> None:
+    """An absent key and an explicit null are the same producer bug."""
+    ref = _make_fa_reference()
+    metric = ref["fundamental"]["metrics"][1]
+    if as_null:
+        metric["scale"] = None
+    else:
+        del metric["scale"]
+    with pytest.raises(TerminalJobError, match=r"MAYBANK.*'dividend_yield'"):
+        _run_fa(ref)
+
+
+def test_fa_unknown_scale_is_terminal() -> None:
+    ref = _make_fa_reference()
+    ref["fundamental"]["metrics"][0]["scale"] = "percent"
+    with pytest.raises(TerminalJobError, match="failed contract validation"):
+        _run_fa(ref)
+
+
+def test_fa_unbuildable_metric_is_terminal_not_retried() -> None:
+    """`run_job` maps LLM errors only, so a raw ValidationError would be retried."""
+    ref = _make_fa_reference()
+    ref["fundamental"]["metrics"][3]["asOf"] = "yesterday"
+    with pytest.raises(TerminalJobError, match="failed contract validation"):
         _run_fa(ref)
 
 
@@ -469,7 +554,7 @@ def test_cost_ceiling_degrades_to_facts_only(runner) -> None:
 def test_grounding_recovered_on_second_attempt() -> None:
     """First narration has a ban word; corrective retry returns clean text."""
     llm = ScriptedNarration("Should buy this stock now")
-    result, _progress, s3, _b = _run_ta(llm=llm)
+    result, progress, s3, _b = _run_ta(llm=llm)
 
     assert result.summary.headline == "SMA-20 crossed above SMA-50"
     assert len(s3.calls) == 1
@@ -477,3 +562,36 @@ def test_grounding_recovered_on_second_attempt() -> None:
     # the retry fed the rejection back to the model
     assert "banned term 'buy'" in llm.calls[1][-1].content
     assert s3.artifact(result.pointer.key)["cost"]["calls"] == 2
+
+
+def test_fa_narration_may_render_a_fraction_in_whole_units() -> None:
+    """A correct 4.5% for a 0.045 fraction is grounded, not pushed to facts-only."""
+    llm = ScriptedNarration("Dividend yield stands at 4.5% on the latest close")
+    result, _progress, s3, _b = _run_fa(llm=llm)
+
+    assert llm.steps == ["narrate"]  # grounded on the first attempt, no retry
+    assert result.summary.headline != "facts-only: Grounding check failed."
+    assert s3.artifact(result.pointer.key)["narrative"]["text"] == (
+        "Dividend yield stands at 4.5% on the latest close"
+    )
+
+
+def test_fa_narration_still_rejects_a_number_the_facts_do_not_support() -> None:
+    """Widening the known set for the scaled rendering must not widen it generally."""
+    bad = "Dividend yield stands at 47% on the latest close"
+    llm = ScriptedNarration(bad, bad)
+    result, _progress, _s3, _b = _run_fa(llm=llm)
+
+    assert result.summary.headline == "facts-only: Grounding check failed."
+    assert llm.steps == ["narrate", "narrate"]  # corrective retry, still rejected
+    assert "number '47' is not in the facts" in llm.calls[1][-1].content
+
+
+def test_fa_narration_does_not_accept_float_noise_in_place_of_the_number() -> None:
+    """`0.29 * 100` is 28.999999999999996; the noise is not the number."""
+    bad = "Return on equity stands at 28.999999999999996%"
+    llm = ScriptedNarration(bad, bad)
+    result, _progress, _s3, _b = _run_fa(llm=llm)
+
+    assert result.summary.headline == "facts-only: Grounding check failed."
+    assert llm.steps == ["narrate", "narrate"]

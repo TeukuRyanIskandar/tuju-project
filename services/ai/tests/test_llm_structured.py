@@ -152,6 +152,31 @@ def test_grounding_validators() -> None:
     assert advice_term("Price is above all moving averages") is None
 
 
+def test_grounding_accepts_a_fraction_rendered_in_whole_units() -> None:
+    """A `fraction` metric's honest rendering must not read as an ungrounded number."""
+    metrics = [{"id": "dividend_yield", "value": 0.045, "unit": "%", "scale": "fraction"}]
+
+    assert ungrounded_number("Dividend yield is 4.5%", metrics) is None
+    assert ungrounded_number("Dividend yield is 4.5", metrics) is None
+    assert ungrounded_number("Dividend yield is 0.045", metrics) is None  # the raw ratio
+    # the integer part of the scaled rendering is grounded too
+    assert ungrounded_number("Dividend yield is 4%", metrics) is None
+    # but a mis-placed decimal, a wrong figure, or float noise is not
+    assert "47" in ungrounded_number("Dividend yield is 47%", metrics)
+    assert "4.57" in ungrounded_number("Dividend yield is 4.57%", metrics)
+    assert ungrounded_number("Dividend yield is 28.999999999999996%", [
+        {"value": 0.29, "unit": "%", "scale": "fraction"},
+    ])
+
+
+def test_grounding_leaves_a_non_fraction_scale_alone() -> None:
+    """Only `fraction` gains a converted rendering; the others have nothing to convert."""
+    for scale in ("percentage_point", "absolute"):
+        metrics = [{"value": 8.4, "unit": "%", "scale": scale}]
+        assert ungrounded_number("The reading is 8.4%", metrics) is None
+        assert "840" in ungrounded_number("The reading is 840%", metrics)
+
+
 # --- cost --------------------------------------------------------------------------
 
 

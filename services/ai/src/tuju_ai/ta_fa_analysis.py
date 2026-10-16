@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from .config import JOB_ANALYZE_FUNDAMENTAL, JOB_ANALYZE_TECHNICAL
 from .contracts_generated import (
@@ -92,13 +92,44 @@ def generate_ta_headline(facts: dict, events: list) -> str:
     return "Data unavailable for analysis"
 
 
+# Headline number precision, matching the frontend's `factValue` maximum
+# fraction digits: both sides round here so they cannot disagree about a number.
+HEADLINE_PRECISION = 4
+
+
+def _scaled_value(metric: dict) -> float:
+    """The metric's value in whole units of its ``unit``.
+
+    ``scale`` picks the number, ``unit`` stays the suffix: a ``fraction`` metric
+    is stored as a fraction of its unit (0.045 with unit ``%`` is 4.5%), while a
+    ``percentage_point`` or ``absolute`` one already is in whole units.
+
+    This is the rule the frontend's ``metricValue`` is being moved onto
+    (blocker-fix ticket 04, which today still branches on metric id). Both sides
+    derive the number from ``scale`` alone so a fraction is never printed with a
+    bare ``%``, and the headline cannot disagree with the panel about a value.
+    """
+    value = metric["value"]
+    return value * 100 if metric.get("scale") == "fraction" else value
+
+
+def _headline_number(value: float) -> str:
+    """Format at :data:`HEADLINE_PRECISION`, dropping float noise.
+
+    ``0.29 * 100`` is ``28.999999999999996`` in binary floating point, and the
+    fixed-precision format is also what keeps a large absolute value like
+    4200000000 out of ``%g``'s exponent form.
+    """
+    return f"{value:.{HEADLINE_PRECISION}f}".rstrip("0").rstrip(".")
+
+
 def generate_fa_headline(metrics: list) -> str:
     """Generate FA headline from most compelling non-null metric."""
     for metric in metrics:
         if isinstance(metric, dict) and metric.get("value") is not None:
             label = metric.get("label", "")
-            value = metric.get("value")
             unit = metric.get("unit", "")
+            value = _headline_number(_scaled_value(metric))
             return f"{label} {value}{unit}".strip()
     return "Data unavailable for analysis"
 
@@ -174,14 +205,19 @@ trends, and valuation metrics clearly and honestly.
 
 CRITICAL RULES:
 1. Use ONLY the numbers and metrics present in the data packet you receive.
-   Do not compute new ratios or make up values.
-2. If a metric is null or missing, state that absence explicitly
+   Do not compute new metrics or make up values. The single exception is the
+   fraction rendering in rule 2.
+2. Every metric carries a "scale". "fraction" means the value is a fraction of
+   the metric's unit, so 0.045 with unit "%" reads as 5.67%; "percentage_point"
+   and "absolute" are already in whole units. State a fraction in whole units
+   of its unit. This is the only transformation you may perform.
+3. If a metric is null or missing, state that absence explicitly
    (e.g., "Operating cash flow data is unavailable").
-3. Never recommend buying, selling, or holding.
-4. Never suggest price targets, fair values, or intrinsic valuations.
-5. Never use advice-shaped language ("investors should consider...").
-6. Keep your narrative concise, approximately 80–150 words.
-7. Respond only with a JSON object containing a "narrative" field.
+4. Never recommend buying, selling, or holding.
+5. Never suggest price targets, fair values, or intrinsic valuations.
+6. Never use advice-shaped language ("investors should consider...").
+7. Keep your narrative concise, approximately 80–150 words.
+8. Respond only with a JSON object containing a "narrative" field.
 
 The narrative should describe what the data shows: profitability trends,
 growth rates, leverage, and valuation context.
@@ -201,6 +237,8 @@ Fundamental metrics:
 
 Instructions:
 - Use ONLY numbers and metrics present in the list above.
+- Respect each metric's "scale": render a "fraction" in whole units of its
+  unit, and use every other number exactly as it appears.
 - If a value is null, explicitly state the absence (e.g., "Operating cash flow data unavailable").
 - Describe profitability, growth trends, valuation relative to history, and financial health.
 - Do not make up numbers or compute new metrics.
@@ -342,17 +380,35 @@ def _fundamental_work(envelope: FundamentalJobEnvelope, ctx: JobContext) -> JobO
         raise TerminalJobError(
             f"Expected {EXPECTED_METRIC_COUNT} fundamental metrics, got {len(metrics_raw)}"
         )
-    metrics = [
-        FundamentalMetric(
-            id=m.get("id"),
-            label=m.get("label", ""),
-            value=m.get("value"),
-            unit=m.get("unit", ""),
-            scale=m.get("scale"),
-            asOf=m.get("asOf"),
-        )
-        for m in metrics_raw
-    ]
+    # `scale` is required by the contract, so a metric built without one is a
+    # producer that has not shipped it. Never default to 'absolute': that
+    # relabels a fraction as a whole number, the exact mislabelling the field
+    # exists to prevent. Absent and explicitly null are both terminal.
+    for m in metrics_raw:
+        if m.get("scale") is None:
+            raise TerminalJobError(
+                f"Missing metric scale for {symbol} "
+                f"{(m.get('id') or 'unknown')!r}; the reference must declare it"
+            )
+    # Anything else the reference gets wrong about a metric is just as
+    # permanent, and `run_job` only maps LLM errors, so an escaping
+    # ValidationError would be retried by BullMQ and burn queue attempts.
+    try:
+        metrics = [
+            FundamentalMetric(
+                id=m.get("id"),
+                label=m.get("label", ""),
+                value=m.get("value"),
+                unit=m.get("unit", ""),
+                scale=m.get("scale"),
+                asOf=m.get("asOf"),
+            )
+            for m in metrics_raw
+        ]
+    except ValidationError as exc:
+        raise TerminalJobError(
+            f"Fundamental metrics for {symbol} failed contract validation: {exc}"
+        ) from exc
 
     ctx.advance()
     metrics_list = [m.model_dump(mode="json") for m in metrics]
