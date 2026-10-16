@@ -21,6 +21,16 @@ the working tree on 2026-10-16.
 
 ## Everything under audit is uncommitted
 
+> **Superseded 2026-10-16.** This section is a snapshot taken at audit time.
+> A checkpoint commit has since landed (`8a42dc1`), and tickets
+> [01](issues/01-contract-percent-scale.md),
+> [02](issues/02-backend-fa-scale-producer.md),
+> [03](issues/03-ai-worker-scale-passthrough.md) and
+> [05](issues/05-artifact-timestamp-conformance.md) are resolved, so most of
+> what is listed below is now committed. Reconciling the whole tracker against
+> the tree is
+> [16](issues/16-showcase-tracker-reconciliation.md)'s job, not this audit's.
+
 `git log --oneline` shows no showcase commit. `git status --short` at audit time:
 
 - Modified (tracked): `apps/backend/src/data/adapters/yfinance/*`,
@@ -108,6 +118,34 @@ path. The added regression in `services/ai/tests/test_job_pipeline.py` asserts
 this against a **toy** `Nested`/`WireArtifact` Pydantic model, not the generated
 `TechnicalAnalysisArtifact` / `FundamentalAnalysisArtifact`. Ticket 14's
 acceptance criterion "timestamps pass **actual** contracts" is therefore not met.
+
+> **Correction — 2026-10-16, ticket
+> [05](issues/05-artifact-timestamp-conformance.md) resolved.** The finding
+> above was accurate when written and is preserved as the historical audit, but
+> two parts of it are no longer current.
+>
+> 1. **The toy-model regression was not the only one.** `c181bd2` (ticket 03,
+>    committed) added
+>    `test_ta_fa_analysis.py::test_ta_fa_captured_timestamp_bytes_against_source_ts_contracts`,
+>    which runs real TA and FA artifacts through the full `JobDefinition` →
+>    `put_artifact` → read-stored-bytes path with the **generated**
+>    `TechnicalAnalysisArtifact` / `FundamentalAnalysisArtifact` as the contract,
+>    then hands the exact stored bytes to the source TS schemas. It landed after
+>    this section was written.
+> 2. **One gap in that regression was real, and is now closed.** The captured
+>    bytes were only ever validated against the *stored* schemas.
+>    `browser-artifacts.test.ts` checks the cost-stripped browser shape against
+>    golden fixtures, never against bytes the pipeline actually wrote — so
+>    nothing proved the two shapes agree on a real artifact, which is exactly the
+>    schema the live 200-but-fails failure hit. `fixtures.test.ts` now asserts
+>    both against the captured bytes.
+>
+> Narrower than stated above, too: the defect only ever affected `asOf` and
+> `provenance.generatedAt`, the two fields written as native Python values.
+> `TechnicalEvent.at` and `FundamentalMetric.asOf` arrive from the backend as
+> strings, and the prospectus artifact pre-writes `isoformat()`, so
+> `json.dumps(default=str)` was a no-op on both. The prospectus path never had
+> this defect.
 
 ### 1c. Blockers that are not technical
 

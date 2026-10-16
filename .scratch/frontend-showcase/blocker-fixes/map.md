@@ -27,7 +27,7 @@ this effort adds remediation on top of it.
 | Track | Tickets | State |
 | --- | --- | --- |
 | Contract scale | 01-04 | 01, 02, 03 resolved; 04 ready |
-| Timestamp conformance | 05 | Ready — its fix is already in the working tree |
+| Timestamp conformance | 05 | Resolved |
 | Narration diagnosis | 06-08 | 06 and 07 ready; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
 | Frontend cleanup | 10-15 | All ready, all unblocked |
@@ -54,7 +54,7 @@ this effort adds remediation on top of it.
         |                              |
 09 bounded re-run  <-------------------+
    needs-info
-   (also needs 05 + operator approval)
+   (05 satisfied; still needs 08 + operator approval)
 
 16 tracker reconciliation
    blocked by 04, 05, 07, 10-15
@@ -113,6 +113,35 @@ uv run --project services/ai pytest    # 227 passed (was 212)
 (testcontainers `wait_for_logs`, PyMuPDF's SWIG types). `test_prospectus_job.py`
 and `test_job_pipeline.py` did not regress from the [01] model regeneration.
 
+## Verification record — 2026-10-16, for 05
+
+One test file changed in `packages/contracts`; no published type moved, so the
+`check` drift gate and the contracts suite are the only contract-side gates
+that can have moved. `spec.md`'s full cross-workspace suite was narrowed to the
+affected lanes by explicit decision.
+
+```bash
+pnpm --filter contracts check          # OK - no contract drift
+pnpm --filter contracts test           # 4 files, 74 passed, 3 skipped
+uv run --project services/ai pytest    # 227 passed - identical to the 03 baseline
+```
+
+The 3 skips are the opt-in captured-bytes tests in `contracts`, gated on
+`TUJU_TA_FA_CAPTURE_DIR` / `TUJU_PROSPECTUS_CAPTURE_DIR`. They are not dead
+weight: the AI suite's two capture tests set those vars and drive them, which is
+how [05] verifies the browser shape. The AI suite's warnings are all
+pre-existing — `PytestUnknownMarkWarning` on the unregistered `unit` /
+`integration` marks, plus PyMuPDF SWIG deprecations.
+
+**[05] proved the regression bites.** With `jobs/pipeline.py` reverted to
+`put_artifact(output.artifact_key, output.artifact)`, the TA/FA captured-bytes
+regression and the toy-model regression both fail; restoring the file
+(sha256-verified) returns them to green. The **prospectus** captured-bytes
+regression passes either way, because `prospectus/analysis.py:471` pre-writes
+`isoformat()` — the prospectus path never had the defect. Details and the
+second-serialization-path finding are in
+[05](issues/05-artifact-timestamp-conformance.md).
+
 ## Track 1 — Contract scale (01-04)
 
 The frontend currently branches on metric id to decide scaling, because the
@@ -158,11 +187,13 @@ than by code.
 
 | Ticket | Title | Blocked by | Status | Severity |
 | --- | --- | --- | --- | --- |
-| [05](issues/05-artifact-timestamp-conformance.md) | Prove timestamps against real contracts | 01 | `ready-for-agent` | high |
+| [05](issues/05-artifact-timestamp-conformance.md) | Prove timestamps against real contracts | 01 | `resolved` | high |
 
-The fix is already in the working tree; the regression tests a toy Pydantic model
-instead of the generated TA/FA models whose ISO datetime fields rejected the real
-payload. Closes parent ticket 14's first technical criterion.
+The fix and the real-model regression were both already committed by the time
+this ticket was written — `c181bd2` (ticket 03) landed the regression that
+tickets 05 and the audit both recorded as missing. What [05] added was the
+cost-stripped **browser** schema assertion against the captured stored bytes,
+plus the revert proof. Closes parent ticket 14's first technical criterion.
 
 ## Track 3 — Narration diagnosis (06-08)
 
