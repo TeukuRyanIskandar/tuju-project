@@ -142,7 +142,7 @@
       "properties": {
         "schemaVersion": {
           "type": "string",
-          "const": "fundamental-analysis-1"
+          "const": "fundamental-analysis-2"
         },
         "symbol": {
           "type": "string",
@@ -264,6 +264,14 @@
           "type": "string",
           "minLength": 1
         },
+        "scale": {
+          "type": "string",
+          "enum": [
+            "fraction",
+            "percentage_point",
+            "absolute"
+          ]
+        },
         "asOf": {
           "type": "string",
           "format": "date",
@@ -275,6 +283,7 @@
         "label",
         "value",
         "unit",
+        "scale",
         "asOf"
       ],
       "additionalProperties": false

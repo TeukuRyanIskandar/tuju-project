@@ -464,12 +464,20 @@ export const FundamentalMetricId = z.enum([
 ]);
 export type FundamentalMetricId = z.infer<typeof FundamentalMetricId>;
 
+export const FundamentalMetricScale = z.enum([
+  'fraction',
+  'percentage_point',
+  'absolute',
+]);
+export type FundamentalMetricScale = z.infer<typeof FundamentalMetricScale>;
+
 export const FundamentalMetric = z
   .strictObject({
     id: FundamentalMetricId,
     label: z.string().min(1),
     value: NullableNumber,
     unit: z.string().min(1),
+    scale: FundamentalMetricScale,
     asOf: z.iso.date(),
   })
   .meta({ id: 'FundamentalMetric' });

@@ -55,6 +55,7 @@ class FundamentalMetric(BaseModel):
     label: constr(min_length=1)
     value: float | None
     unit: constr(min_length=1)
+    scale: Literal['fraction', 'percentage_point', 'absolute']
     asOf: date
 
 
@@ -355,7 +356,7 @@ class FundamentalAnalysisArtifact(BaseModel):
     model_config = ConfigDict(
         extra='forbid',
     )
-    schemaVersion: Literal['fundamental-analysis-1']
+    schemaVersion: Literal['fundamental-analysis-2']
     symbol: constr(min_length=1)
     jobName: Literal['analyze-fundamental']
     asOf: AwareDatetime

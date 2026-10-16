@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "fundamental-analysis-1",
+  "schemaVersion": "fundamental-analysis-2",
   "symbol": "1155",
   "jobName": "analyze-fundamental",
   "asOf": "2026-10-08T18:00:00+00:00",
@@ -9,63 +9,72 @@
       "id": "trailing_pe",
       "label": "Trailing P/E",
       "value": 18.3,
-      "unit": "ratio",
+      "unit": "x",
+      "scale": "absolute",
       "asOf": "2026-10-08"
     },
     {
       "id": "dividend_yield",
       "label": "Dividend yield",
       "value": 0.0567,
-      "unit": "percent",
+      "unit": "%",
+      "scale": "fraction",
       "asOf": "2026-10-08"
     },
     {
       "id": "roe",
       "label": "ROE",
       "value": 0.1134,
-      "unit": "percent",
+      "unit": "%",
+      "scale": "fraction",
       "asOf": "2026-10-08"
     },
     {
       "id": "revenue_growth_qoq",
       "label": "Revenue growth QoQ",
-      "value": 0.021,
-      "unit": "percent",
+      "value": 2.1,
+      "unit": "%",
+      "scale": "percentage_point",
       "asOf": "2026-06-30"
     },
     {
       "id": "revenue_growth_yoy",
       "label": "Revenue growth YoY",
-      "value": 0.084,
-      "unit": "percent",
+      "value": 8.4,
+      "unit": "%",
+      "scale": "percentage_point",
       "asOf": "2026-06-30"
     },
     {
       "id": "profit_growth_qoq",
       "label": "Profit growth QoQ",
-      "value": 0.015,
-      "unit": "percent",
+      "value": 1.5,
+      "unit": "%",
+      "scale": "percentage_point",
       "asOf": "2026-06-30"
     },
     {
       "id": "profit_growth_yoy",
       "label": "Profit growth YoY",
-      "value": 0.062,
-      "unit": "percent",
+      "value": 6.2,
+      "unit": "%",
+      "scale": "percentage_point",
       "asOf": "2026-06-30"
     },
     {
       "id": "debt_to_equity",
       "label": "Debt / equity",
       "value": null,
-      "unit": "ratio",
+      "unit": "x",
+      "scale": "absolute",
       "asOf": "2026-10-08"
     },
     {
       "id": "operating_cash_flow",
       "label": "Operating cash flow",
       "value": 4200000000,
-      "unit": "myr",
+      "unit": "RM bn",
+      "scale": "absolute",
       "asOf": "2026-06-30"
     }
   ],

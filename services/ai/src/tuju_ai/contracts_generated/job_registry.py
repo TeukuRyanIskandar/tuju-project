@@ -50,7 +50,7 @@ JOBS: dict[str, JobSpec] = {
             "done",
         ),
         result_id_prefix="fundamental:",
-        schema_version="fundamental-analysis-1",
+        schema_version="fundamental-analysis-2",
     ),
     JOB_GENERATE_MARKET_BRIEF: JobSpec(
         name=JOB_GENERATE_MARKET_BRIEF,

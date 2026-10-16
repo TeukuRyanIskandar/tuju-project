@@ -26,6 +26,65 @@ const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixture
 const load = (name: string): unknown =>
   JSON.parse(readFileSync(join(fixturesDir, name), 'utf8'));
 
+// Opt-in handoffs contain exact final S3 bodies in pytest-owned directories.
+// Missing samples MUST fail when opted in; normal contracts-only runs skip them.
+const captureDir = process.env.TUJU_TA_FA_CAPTURE_DIR;
+for (const [kind, schema, directory] of [
+  ['technical', TechnicalAnalysisArtifact, captureDir],
+  ['fundamental', FundamentalAnalysisArtifact, captureDir],
+  ['prospectus', ProspectusArtifact, process.env.TUJU_PROSPECTUS_CAPTURE_DIR],
+] as const) {
+  describe.skipIf(!directory)(`captured ${kind === 'prospectus' ? 'prospectus' : 'TA/FA'} timestamp serialization`, () => {
+    it(`${kind}: exact stored bytes pass; old-format timestamp controls fail`, () => {
+      const captured = JSON.parse(readFileSync(join(directory!, `${kind}.json`), 'utf8'));
+      expect(schema.safeParse(captured).success).toBe(true);
+      expect(captured.provenance.generatedAt).toBe(
+        kind === 'prospectus'
+          ? '2026-10-08T18:02:03.123456+08:00'
+          : '2026-10-08T10:04:05.654321Z',
+      );
+      if (kind !== 'prospectus') {
+        expect(captured.asOf).toBe('2026-10-08T18:02:03.123456+08:00');
+        if (kind === 'fundamental') {
+          expect(captured.metrics.at(-1)).toMatchObject({ value: null });
+        }
+      } else {
+        expect(Object.keys(captured.timing).sort()).toEqual(['analysisMs', 'parseMs']);
+      }
+
+      // Only in-memory negative controls, never repair or rewrite captured bytes.
+      const old = structuredClone(captured);
+      old.provenance.generatedAt = captured.provenance.generatedAt.replace('T', ' ');
+      if (kind !== 'prospectus') old.asOf = captured.asOf.replace('T', ' ');
+      const rejected = schema.safeParse(old);
+      expect(rejected.success).toBe(false);
+      if (rejected.success) throw new Error('expected old timestamp rejection');
+      const expected = [
+        ...(kind === 'prospectus' ? [] : [{ path: ['asOf'], code: 'invalid_format' }]),
+        { path: ['provenance', 'generatedAt'], code: 'invalid_format' },
+      ];
+      expect(rejected.error.issues.map(({ path, code }) => ({ path, code }))).toEqual(expected);
+      for (const issue of rejected.error.issues) {
+        expect(issue).toMatchObject({ format: 'datetime' });
+      }
+
+      // Each timestamp independently rejects the old space-separated format.
+      for (const [singleBad, expectedPath] of [
+        ...(kind === 'prospectus' ? [] : [[{ ...captured, asOf: old.asOf }, ['asOf']]]),
+        [{ ...captured, provenance: old.provenance }, ['provenance', 'generatedAt']],
+      ]) {
+        const singleRejected = schema.safeParse(singleBad);
+        expect(singleRejected.success).toBe(false);
+        if (singleRejected.success) throw new Error('expected single timestamp rejection');
+        expect(singleRejected.error.issues).toHaveLength(1);
+        expect(singleRejected.error.issues[0]).toMatchObject({
+          path: expectedPath, code: 'invalid_format', format: 'datetime',
+        });
+      }
+    });
+  });
+}
+
 describe('golden fixtures conform to the Zod contract', () => {
   it('technical-job-envelope.json', () => {
     expect(() => TechnicalJobEnvelope.parse(load('technical-job-envelope.json'))).not.toThrow();
@@ -223,6 +282,22 @@ describe('the fundamental analysis artifact', () => {
       metrics: unknown[];
     };
     a.metrics = a.metrics.slice(0, 8);
+    expect(() => FundamentalAnalysisArtifact.parse(a)).toThrow();
+  });
+
+  it('rejects a metric that omits its scale', () => {
+    const a = load('fundamental-analysis-artifact.json') as {
+      metrics: Record<string, unknown>[];
+    };
+    delete a.metrics[0].scale;
+    expect(() => FundamentalAnalysisArtifact.parse(a)).toThrow();
+  });
+
+  it('rejects an out-of-enum metric scale', () => {
+    const a = load('fundamental-analysis-artifact.json') as {
+      metrics: Record<string, unknown>[];
+    };
+    a.metrics[0].scale = 'points';
     expect(() => FundamentalAnalysisArtifact.parse(a)).toThrow();
   });
 });

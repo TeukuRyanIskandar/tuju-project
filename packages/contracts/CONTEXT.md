@@ -52,6 +52,9 @@ package emits (ADR-0008).
 - **FundamentalAnalysisArtifact** — claim-checked S3 JSON for a system
   `analyze-fundamental` run: closed metric set with first-class nulls, shared
   narrative/provenance/cost. News is not in this artifact.
+- **FundamentalMetricScale** — `fraction` / `percentage_point` / `absolute`: the
+  numeric convention of a `FundamentalMetric.value`, so a consumer can present a
+  metric without knowing its id. `unit` stays a display string only.
 - **AnalysisNarrative** — `{ language, text }` envelope shared by TA/FA
   artifacts. PoC always writes `language: en` (Bahasa Malaysia is out of PoC).
 - **AnalysisProvenance** — `{ source: real, adapter, model, generatedAt }` on
