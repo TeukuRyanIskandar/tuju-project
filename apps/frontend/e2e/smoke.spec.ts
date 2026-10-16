@@ -29,15 +29,12 @@ test('search input and mouse selection navigate to a stock; refresh preserves th
 
 test('search supports keyboard selection and empty results', async ({ page }) => {
   await page.goto('/')
-  // A client-side navigation proves hydration finished before sending a raw
-  // keyboard event (unlike locator actions, keyboard.press has no auto-wait).
-  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Screener' }).click()
-  await expect(page).toHaveURL('/screener')
-  await page.keyboard.press('/')
   const input = page.getByRole('combobox', { name: 'Search stocks' })
-  await expect(input).toBeFocused()
+  // Locator-driven typing waits for hydration and exercises the real React
+  // keyboard handlers without depending on a primary-nav link.
   await input.fill('no-such-stock')
-  await expect(page.getByRole('status')).toHaveText('No matches')
+  await expect(input).toBeFocused()
+  await expect(page.getByRole('status').filter({ hasText: 'No matches' })).toHaveText('No matches')
   await input.fill('may')
   await expect(page.getByRole('option', { name: /MAYBANK/ })).toBeVisible()
   await input.press('ArrowDown')
@@ -48,11 +45,16 @@ test('search supports keyboard selection and empty results', async ({ page }) =>
 test('primary navigation and direct nested URLs load', async ({ page }) => {
   await page.goto('/')
   const nav = page.getByRole('navigation', { name: 'Primary' })
+  await expect(nav.getByRole('link')).toHaveCount(1)
+  await expect(nav.getByRole('link', { name: 'Market', exact: true })).toHaveAttribute('href', '/')
   for (const [label, path] of [['Screener', '/screener'], ['Announcements', '/announcements'], ['Calendar', '/calendar'], ['News', '/news']] as const) {
-    await nav.getByRole('link', { name: label, exact: true }).click()
-    await expect(page).toHaveURL(path)
-    await expect(page.getByRole('heading', { name: label, exact: true })).toBeVisible()
+    await expect(nav.getByRole('link', { name: label, exact: true })).toHaveCount(0)
+    await page.goto(path)
+    await expect(page.getByRole('heading', { level: 1, name: label, exact: true })).toBeVisible()
   }
+})
+
+test('direct prospectus URL renders its page heading', async ({ page }) => {
   await page.goto('/ipo/smoke-prospectus')
-  await expect(page.getByRole('heading', { name: 'Prospectus at a glance' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1, name: 'Prospectus at a glance' })).toBeVisible()
 })

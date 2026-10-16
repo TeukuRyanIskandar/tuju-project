@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import { stockCoreQuery, stockSeriesQuery } from '#/api/stocks'
+import { newsQuery } from '#/api/news'
 import { Panel } from '#/components/panel'
 import { ProvenanceSource } from '#/components/provenance'
 import { EmptyState, ErrorState, LoadingState } from '#/components/states'
@@ -20,7 +21,7 @@ function ReadState<T>({ query, children, showMeta = true }: { query: UseQueryRes
     {query.isFetching && <p role="status" className="text-xs text-fg-3">Refreshing…</p>}
     {children}
     {showMeta && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-fg-3">
-      <span>Retrieved {formatDateTime(new Date(query.dataUpdatedAt))} · not a quote timestamp</span>
+      <span>Retrieved {formatDateTime(new Date(query.dataUpdatedAt))} · Quote time unavailable</span>
       <button type="button" className={control} disabled={query.isFetching} onClick={() => void query.refetch()}>Refresh</button>
     </div>}
   </>
@@ -36,6 +37,7 @@ export function StockDetail({ code }: { code: string }) {
     if (data?.code !== code || data.interval !== '1d' || data.range !== '2y') throw new Error('Stock series identity mismatch')
     return data
   } })
+  const news = useQuery(newsQuery({ companyCode: code, limit: 5 }))
   const points = parseHistory(series.data?.points)
   const latest = points.at(-1)
   const visible = historyWindow(points, range)
@@ -78,6 +80,34 @@ export function StockDetail({ code }: { code: string }) {
       <TechnicalAnalysisPanel code={code} />
       <FundamentalAnalysisPanel code={code} />
     </div>
-    <Panel title="Stock news" className="min-w-0"><p className="text-xs text-fg-3">Reserved for a later ticket · not loaded on this screen yet.</p></Panel>
+    <Panel title="Stock news" className="min-w-0">
+      <div className="mb-2 border border-dashed border-synthetic bg-synthetic-bg p-2 text-xs text-fg">
+        <strong className="text-synthetic">DEMO NEWS</strong> · Illustrative headlines only; Demo Wire and example.test are not real news sources.
+      </div>
+      {news.data === undefined ? news.isError
+        ? <ErrorState title="News unavailable" onRetry={() => void news.refetch()} />
+        : <LoadingState label="Loading stock news…" />
+        : <>
+          {news.isError && <ErrorState title="News refresh failed — showing retained headlines" onRetry={() => void news.refetch()} />}
+          {news.isFetching && <p role="status" className="text-xs text-fg-3">Refreshing news…</p>}
+          {news.data.items.length === 0 ? <EmptyState title="No stock news available" /> : <ul className="divide-y divide-border">
+            {news.data.items.slice(0, 5).map((item, index) => {
+              let safeUrl: string | undefined
+              try {
+                const parsed = new URL(item.url)
+                if (parsed.protocol === 'http:' || parsed.protocol === 'https:') safeUrl = parsed.href
+              } catch { /* unsafe or malformed source URLs render as plain text */ }
+              return <li key={`${item.url}-${index}`} className="min-w-0 py-2 first:pt-0">
+                {safeUrl ? <a href={safeUrl} target="_blank" rel="noopener noreferrer" className="break-words font-medium hover:text-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{item.headline}<span className="sr-only"> (opens in a new tab)</span></a> : <span className="break-words font-medium">{item.headline}</span>}
+                <p className="m-0 mt-1 text-xs text-fg-3">{item.source} · {formatDateTime(new Date(item.publishedAt))}</p>
+              </li>
+            })}
+          </ul>}
+        </>}
+      <div className="mt-3 border-t border-border pt-2 text-xs text-fg-3">
+        <span>News is separate from AI analysis.</span>{news.data && <span> · Retrieved {formatDateTime(new Date(news.dataUpdatedAt))}</span>}
+        <button type="button" className={`${control} ml-2`} disabled={news.isFetching} onClick={() => void news.refetch()}>Refresh news</button>
+      </div>
+    </Panel>
   </div>
 }

@@ -7,12 +7,19 @@ import { createQueryClient } from '#/lib/query-client'
 const provenance = { provenance: 'real' }
 let failCore = false
 let failSeries = false
+let failNews = false
+let newsItems: Array<{ provenance: 'synthetic'; headline: string; url: string; source: string; publishedAt: string; matchedAlias: string }> = []
 let mismatch = false
 let fetchMock: ReturnType<typeof vi.fn<(input: string) => Promise<Response>>>
 beforeEach(() => {
-  failCore = failSeries = mismatch = false
+  failCore = failSeries = failNews = mismatch = false
+  newsItems = [
+    { provenance: 'synthetic', headline: 'Illustrative results headline', url: 'https://example.test/results', source: 'Demo Wire', publishedAt: '2026-10-07T03:00:00.000Z', matchedAlias: 'Company' },
+    { provenance: 'synthetic', headline: 'Unsafe link headline', url: 'javascript:alert(1)', source: 'Demo Wire', publishedAt: '2026-10-06T03:00:00.000Z', matchedAlias: 'Company' },
+  ]
   fetchMock = vi.fn(async (input: string) => {
     const url = new URL(input, 'http://test')
+    if (url.pathname.endsWith('/news')) return failNews ? new Response('{}', { status: 503 }) : Response.json({ items: newsItems, total: newsItems.length, limit: Number(url.searchParams.get('limit')), offset: 0 })
     const code = url.pathname.split('/stocks/')[1]?.split('/')[0]
     if (!code) return new Response('{}', { status: 401 })
     if (url.pathname.includes('/analysis/')) return new Response('{}', { status: 404 })
@@ -35,13 +42,54 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 const panel = (name: string) => within(screen.getByRole('region', { name }))
 
+it('shows stock-scoped demo news with a prominent warning and only safe source links', async () => {
+  newsItems = Array.from({ length: 7 }, (_, index) => ({ provenance: 'synthetic' as const, headline: index === 0 ? 'Illustrative results headline' : `Demo headline ${index}`, url: index === 1 ? 'javascript:alert(1)' : `https://example.test/${index}`, source: 'Demo Wire', publishedAt: '2026-10-07T03:00:00.000Z', matchedAlias: 'Company' }))
+  await renderApp('/stocks/1155')
+  const news = panel('Stock news')
+  expect(await news.findByText(/Illustrative headlines only; Demo Wire and example\.test are not real news sources/)).toBeInTheDocument()
+  expect(await news.findByRole('link', { name: /Illustrative results headline/ })).toHaveAttribute('href', 'https://example.test/0')
+  expect(news.getByText('Demo headline 1')).toBeInTheDocument()
+  expect(news.queryByRole('link', { name: 'Demo headline 1' })).not.toBeInTheDocument()
+  await waitFor(() => expect(news.getAllByRole('listitem')).toHaveLength(5))
+  expect(news.queryByText('Demo headline 5')).not.toBeInTheDocument()
+  expect(news.queryByText('Demo headline 6')).not.toBeInTheDocument()
+  expect(news.getByText(/News is separate from AI analysis/)).toBeInTheDocument()
+  const request = fetchMock.mock.calls.find(([input]) => String(input).includes('/news'))?.[0]
+  expect(String(request)).toContain('companyCode=1155')
+  expect(String(request)).toContain('limit=5')
+})
+
+it('keeps news failure isolated from stock chart and analysis', async () => {
+  failNews = true
+  await renderApp('/stocks/1155')
+  expect(await panel('Stock news').findByRole('alert')).toHaveTextContent('News unavailable')
+  expect(await screen.findByRole('img', { name: /Daily EOD close/ })).toBeInTheDocument()
+  expect(panel('Technical analysis').getByText('Analysis is not available for this stock.')).toBeInTheDocument()
+})
+
+it('shows an honest empty news state', async () => {
+  newsItems = []
+  await renderApp('/stocks/1155')
+  expect(await panel('Stock news').findByText('No stock news available')).toBeInTheDocument()
+})
+
+it('keeps cached headlines labeled when a news refresh fails', async () => {
+  await renderApp('/stocks/1155')
+  const news = panel('Stock news')
+  expect(await news.findByText('Illustrative results headline')).toBeInTheDocument()
+  failNews = true
+  await userEvent.click(news.getByRole('button', { name: 'Refresh news' }))
+  expect(await news.findByRole('alert')).toHaveTextContent('News refresh failed — showing retained headlines')
+  expect(news.getByText('Illustrative results headline')).toBeInTheDocument()
+})
+
 it('loads a direct stock link, shows EOD vs retrieval provenance and filters without another series read', async () => {
   await renderApp('/stocks/1155')
   expect(await screen.findByRole('heading', { name: '1155 · Company 1155' })).toBeInTheDocument()
   await screen.findByRole('img', { name: /Daily EOD close/ })
   expect(screen.getByRole('button', { name: '1Y' })).toHaveAttribute('aria-pressed', 'true')
   expect(panel('Daily EOD history').getByText(/Latest stored EOD: 3 Oct 2026/)).toBeInTheDocument()
-  expect(panel('Daily EOD history').getByText(/Retrieved .*not a quote timestamp/)).toBeInTheDocument()
+  expect(panel('Daily EOD history').getByText(/Retrieved .*Quote time unavailable/)).toBeInTheDocument()
   expect(panel('Daily EOD history').getByText(/Private demo/)).toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: '2Y' }))
   await userEvent.click(screen.getByText('Inspect daily data table'))

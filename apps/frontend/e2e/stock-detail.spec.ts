@@ -52,7 +52,10 @@ test('core and chart failures stay independent in the built SPA', async ({ page 
   await expect(page.getByRole('region', { name: 'Stock identity' }).getByRole('alert')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Daily EOD history' })).toContainText('No daily history available')
   await expect(page.getByRole('region', { name: 'Daily EOD history' })).toContainText('Synthetic data')
-  await expect(page.getByRole('region', { name: 'Stock news' })).toContainText('Reserved')
+  const news = page.getByRole('region', { name: 'Stock news' })
+  await expect(news).toContainText('DEMO NEWS')
+  await expect(news).toContainText('Demo Wire and example.test are not real news sources')
+  await expect(news.getByRole('alert')).toContainText('News unavailable')
 })
 
 test('analysis facts, independent errors and read-only keyboard refresh fit a 390px viewport', async ({ page }) => {
