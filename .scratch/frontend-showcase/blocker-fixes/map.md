@@ -20,13 +20,13 @@ no demoable data, and the frontend work plus the tracker record need cleanup. Se
 
 ## Overall status
 
-**Track 1's contract and worker halves are done; the frontend half is not.**
-The uncommitted working tree still holds all parent-ticket 02-05 implementation;
+**Track 1 is done on all four tickets — contract, backend, worker and frontend.**
+The uncommitted working tree still holds the parent-ticket 02-05 implementation;
 this effort adds remediation on top of it.
 
 | Track | Tickets | State |
 | --- | --- | --- |
-| Contract scale | 01-04 | 01, 02, 03 resolved; 04 ready |
+| Contract scale | 01-04 | All four resolved |
 | Timestamp conformance | 05 | Resolved |
 | Narration diagnosis | 06-08 | 06 and 07 resolved; 08 evidence-gated |
 | Execution | 09 | Awaiting operator approval |
@@ -62,18 +62,18 @@ this effort adds remediation on top of it.
 
 ## Frontier — claimable now, no blockers
 
+**Nothing is claimable.** Every unblocked ticket has landed; 11 and 13 await
+human review and the rest are blocked on the operator-gated [09].
+
 | Ticket | Title | Severity | Workspace |
 | --- | --- | --- | --- |
-| [06](issues/06-openrouter-response-diagnostics.md) | Sanitized response metadata at the OpenRouter boundary | high | `services/ai` |
-| [10](issues/10-market-provenance-honesty.md) | Market provenance fallback | high | `apps/frontend` |
-| [12](issues/12-stock-detail-panel-honesty.md) | Stock detail header honesty | medium | `apps/frontend` |
-| [14](issues/14-fixture-module-boundary.md) | Fixture module boundary | medium | `apps/frontend` |
+| [08](issues/08-narration-empty-content-remedy.md) | Narration remedy — needs an approved diagnostic run | high | `services/ai` |
+| [16](issues/16-showcase-tracker-reconciliation.md) | Reconcile the showcase tracker — unblocked once 11 and 13 are reviewed | medium | `.scratch` |
 
-11, 13 and 15 landed in one round and now await human review. Ticket
-[04](issues/04-frontend-scale-presentation.md) is now unblocked too, but it should
-not start until a real `fundamental-analysis-2` artifact exists to verify against —
-that is [09](issues/09-bounded-rerun-readiness-reaudit.md), which is
-operator-gated.
+11 and 13 landed in one round and now await human review. Ticket
+[04](issues/04-frontend-scale-presentation.md) landed on 2026-10-16 and is no
+longer waiting on [09](issues/09-bounded-rerun-readiness-reaudit.md) for its code;
+what 09 still owns is its live-artifact confirmation.
 
 ## Verification record — 2026-10-16, for 01, 02 and 03's core
 
@@ -138,6 +138,28 @@ regression passes either way, because `prospectus/analysis.py:471` pre-writes
 second-serialization-path finding are in
 [05](issues/05-artifact-timestamp-conformance.md).
 
+## Verification record — 2026-10-16, for 04
+
+Frontend-only change, so the lane was narrowed the same way 05's was. No
+contract, backend or worker file moved; no published type changed.
+
+```bash
+pnpm --filter frontend typecheck   # OK
+pnpm --filter frontend test        # 23 files, 351 passed (was 336)
+pnpm --filter frontend build       # OK
+pnpm --filter frontend test:e2e    # 6 passed
+TZ=America/Los_Angeles pnpm --filter frontend test   # 23 files, 351 passed
+TZ=Pacific/Kiritimati  pnpm --filter frontend test   # 23 files, 351 passed
+```
+
++15 tests, no skips. The timezone pair is 04's own Limit: date handling shares
+`analysis-presentation.ts`.
+
+**Revert proof.** With `analysis-presentation.ts` restored from `HEAD` and the new
+tests kept, exactly **11 fail** — the panel case, the `x` + `fraction` row, and
+one per-id guard case for all nine ids. The guard is per-id precisely so a
+reinstated id branch fails on the id it special-cased.
+
 ## Track 1 — Contract scale (01-04)
 
 The frontend currently branches on metric id to decide scaling, because the
@@ -150,7 +172,7 @@ every future consumer, so this is contract-first.
 | [01](issues/01-contract-percent-scale.md) | Add explicit scale to `FundamentalMetric` | — | `resolved` | high |
 | [02](issues/02-backend-fa-scale-producer.md) | Emit honest scale from the FA producer | 01 | `resolved` | high |
 | [03](issues/03-ai-worker-scale-passthrough.md) | Pass scale through worker assembly | 01, 02 | `resolved` | high |
-| [04](issues/04-frontend-scale-presentation.md) | Drive presentation off scale, not id | 01 | `ready-for-agent` | high |
+| [04](issues/04-frontend-scale-presentation.md) | Drive presentation off scale, not id | 01 | `resolved` | high |
 
 **Ticket 01's open question is answered: Option A**, with the caveat the audit
 got wrong. `map.md` previously justified it by claiming `readiness.md:55` showed
@@ -172,12 +194,16 @@ when its `unit` is not `%`, which would print "1250%" for a fraction measured in
 accepted only numbers literally in the facts, so a correct "5.67%" was rejected
 while "0.0567%" passed, actively pushing the narrative toward the false
 statement. `llm/grounding.py` now adds the whole-unit rendering for a `fraction`
-source. [04] should carry the same rule.
+source. [04] carries the same rule.
 
-**Still true:** the frontend's per-metric-id scaling table at
-`components/stocks/analysis-presentation.ts:22-24` is untouched. [04] removes it.
-Until it does, the worker headline and the panel agree by construction rather
-than by code.
+**[04] landed 2026-10-16 and took the rule literally: `fraction` gets ×100 for
+any unit, `unit` supplies only the suffix.** That is a conscious choice, not an
+oversight — gating the conversion on `unit === '%'` would make this panel and
+the worker's headline disagree for a `fraction` whose unit is not `%`, which is
+the drift the whole track removed. The per-metric-id table at
+`components/stocks/analysis-presentation.ts:22-24` is gone, replaced by a rule
+that reads `scale` and `unit` and a guard that fails per id if an id-based branch
+ever returns. The headline and the panel now agree by code.
 
 ## Track 2 — Timestamp conformance (05)
 
