@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { renderApp } from '#/test/render-app'
+import { createQueryClient } from '#/lib/query-client'
 
 const provenance = { provenance: 'real' }
 let failCore = false
@@ -59,16 +60,40 @@ it.each(['core', 'series'] as const)('keeps a %s failure local', async failure =
   expect(await panel(failCore ? 'Stock identity' : 'Daily EOD history').findByRole('alert')).toBeInTheDocument()
   if (failCore) expect(await screen.findByRole('img', { name: /Daily EOD close/ })).toBeInTheDocument()
   else expect(await screen.findByRole('heading', { name: '1155 · Company 1155' })).toBeInTheDocument()
+  if (failure === 'series') expect(panel('Stock identity').getByText(/Series EOD close unavailable/)).toBeInTheDocument()
    expect(await panel('Technical analysis').findByRole('alert')).toHaveTextContent('Analysis is not available')
 })
 
 it('rejects mismatched identities instead of showing another stock', async () => {
   mismatch = true
-  await renderApp('/stocks/1155')
-  await waitFor(() => expect(panel('Stock identity').getByRole('alert')).toBeInTheDocument())
+  const queryClient = createQueryClient()
+  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retryDelay: 0 } })
+  await renderApp('/stocks/1155', queryClient)
+  await waitFor(() => expect(panel('Stock identity').getAllByRole('alert')).toHaveLength(2))
   await waitFor(() => expect(panel('Daily EOD history').getByRole('alert')).toBeInTheDocument())
   expect(screen.queryByText(/Company WRONG/)).not.toBeInTheDocument()
   expect(screen.queryByRole('img')).not.toBeInTheDocument()
+  await waitFor(() => {
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/series'))).toHaveLength(1)
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/stocks/1155'))).toHaveLength(1)
+  })
+})
+
+it('retries a transient 503 using the production retry policy', async () => {
+  const original = fetchMock.getMockImplementation()!
+  let failed = false
+  fetchMock.mockImplementation((input: string) => {
+    if (!failed && input.includes('/series')) {
+      failed = true
+      return Promise.resolve(new Response('{}', { status: 503 }))
+    }
+    return original(input)
+  })
+  const queryClient = createQueryClient()
+  queryClient.setDefaultOptions({ queries: { ...queryClient.getDefaultOptions().queries, retryDelay: 0 } })
+  await renderApp('/stocks/1155', queryClient)
+  await screen.findByRole('img', { name: /Daily EOD close/ })
+  expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/series'))).toHaveLength(2)
 })
 
 it('never carries a previous stock across route changes, including pending or failed reads', async () => {
@@ -106,6 +131,7 @@ it.each(['core', 'series'] as const)('does not let pending %s gate the other rea
   if (pending === 'core') expect(await screen.findByRole('img', { name: /Daily EOD close/ })).toBeInTheDocument()
   else expect(await screen.findByRole('heading', { name: '1155 · Company 1155' })).toBeInTheDocument()
   expect(panel(pending === 'core' ? 'Stock identity' : 'Daily EOD history').getByRole('status')).toHaveTextContent('Loading')
+  if (pending === 'series') expect(panel('Stock identity').getByRole('status')).toHaveTextContent('Loading')
 })
 
 it('labels a same-code retained snapshot after refresh failure, preserves its retrieval time and recovers locally', async () => {
@@ -115,10 +141,22 @@ it('labels a same-code retained snapshot after refresh failure, preserves its re
   failSeries = true
   await userEvent.click(panel('Daily EOD history').getByRole('button', { name: 'Refresh' }))
   expect(await panel('Daily EOD history').findByRole('alert')).toHaveTextContent('Refresh failed — showing retained snapshot')
+  expect(panel('Stock identity').getByText(/Series EOD close: RM 11\.000/)).toBeInTheDocument()
   expect(screen.getByRole('img')).toBeInTheDocument()
   expect(panel('Daily EOD history').getByText(/Retrieved/).textContent).toBe(timestamp)
-  expect(panel('Stock identity').queryByRole('alert')).not.toBeInTheDocument()
+  expect(panel('Stock identity').queryByText('Panel unavailable')).not.toBeInTheDocument()
   failSeries = false
   await userEvent.click(panel('Daily EOD history').getByRole('button', { name: 'Try again' }))
   await waitFor(() => expect(panel('Daily EOD history').queryByRole('alert')).not.toBeInTheDocument())
+})
+
+it('labels an empty series in the header instead of showing a missing-value dash', async () => {
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation(async (input: string) => {
+    if (input.includes('/series')) return Response.json({ code: '1155', interval: '1d', range: '2y', provenance: 'real', demoLabel: 'private-demo', points: [] })
+    return original(input)
+  })
+  await renderApp('/stocks/1155')
+  expect(await panel('Stock identity').findByText(/Series EOD close: No stored EOD data · Trading date: —/)).toBeInTheDocument()
+  expect(await panel('Daily EOD history').findByText('No daily history available')).toBeInTheDocument()
 })

@@ -4,8 +4,7 @@ import { render } from '@testing-library/react'
 import { routeTree } from '#/routeTree.gen'
 
 /** Mounts the real route tree on an in-memory history at `path`. */
-export async function renderApp(path = '/') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+export async function renderApp(path = '/', queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   const router = createRouter({
     routeTree,
     context: { queryClient },
