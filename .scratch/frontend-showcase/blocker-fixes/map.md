@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-16
 **Scope:** Remediation for the blockers found auditing parent tickets 01-05
-**Total tickets:** 16
+**Total tickets:** 19
 
 | Document | Purpose |
 | --- | --- |
@@ -21,17 +21,19 @@ no demoable data, and the frontend work plus the tracker record need cleanup. Se
 ## Overall status
 
 **Track 1 is done on all four tickets — contract, backend, worker and frontend.**
-The uncommitted working tree still holds the parent-ticket 02-05 implementation;
-this effort adds remediation on top of it.
+The original audit snapshot preceded checkpoint and remediation commits. Parent
+tickets 02-05 now have reconciled implementation records; this effort records
+their current acceptance state without treating historical working-tree evidence
+as the current state.
 
 | Track | Tickets | State |
 | --- | --- | --- |
 | Contract scale | 01-04 | All four resolved |
 | Timestamp conformance | 05 | Resolved |
-| Narration diagnosis | 06-08 | 06 and 07 resolved; 08 evidence-gated |
-| Execution | 09 | Awaiting operator approval |
-| Frontend cleanup | 10-15 | 10, 12, 14, 15 resolved; 11, 13 ready for human |
-| Tracker | 16 | Ready, blocked on the work it describes |
+| Narration diagnosis | 06-08, 17-19 | 06, 07, 08, 17 and 19 resolved; 18 is marked `done`; free-route reliability remains a human product decision |
+| Execution | 09 | Resolved: fresh 1155 TA/FA + Insights Analytics canary |
+| Frontend cleanup | 10-15 | All six tickets resolved |
+| Tracker | 16 | Resolved: parent records reconciled |
 
 ## Dependency graph
 
@@ -45,35 +47,35 @@ this effort adds remediation on top of it.
               03 worker  |
                     |
 06 openrouter diagnostics            10  market provenance honesty
-        |                              11  duplicate alert
-        07 empty vs malformed          12  stock detail honesty
-        |                              13  chart design conformance
-        08 narration remedy            14  fixture module boundary
-        |                              15  doc drift and dead code
-   needs-triage                        |
-        |                              |
-09 bounded re-run  <-------------------+
-   needs-info
-   (05 satisfied; still needs 08 + operator approval)
-
-16 tracker reconciliation
-   blocked by 04, 05, 07, 10-15
+         |                              11  duplicate alert
+ 07 empty vs malformed                12  stock detail honesty
+         |                              13  chart design conformance
+ 08 narration remedy                  14  fixture module boundary
+   RESOLVED (Outcome A)                 15  doc drift and dead code
+         |
+  17 free-route verification            16  tracker reconciliation
+    RESOLVED (found 18, 19)              RESOLVED
+          |
+   18 grounding rejects truth
+     DONE (offline fix + regressions)
+          |
+  19 reasoning token budget
+    RESOLVED (4096 cap; free routing remains variable)
+         |
+  09 bounded re-run
+    RESOLVED (3 fresh jobs; one complete stock + one prospectus)
 ```
 
-## Frontier — claimable now, no blockers
+## Frontier — reconciliation complete
 
-**Nothing is claimable.** Every unblocked ticket has landed; 11 and 13 await
-human review and the rest are blocked on the operator-gated [09].
+No blocker-fix tickets remain open.
 
-| Ticket | Title | Severity | Workspace |
-| --- | --- | --- | --- |
-| [08](issues/08-narration-empty-content-remedy.md) | Narration remedy — needs an approved diagnostic run | high | `services/ai` |
-| [16](issues/16-showcase-tracker-reconciliation.md) | Reconcile the showcase tracker — unblocked once 11 and 13 are reviewed | medium | `.scratch` |
-
-11 and 13 landed in one round and now await human review. Ticket
-[04](issues/04-frontend-scale-presentation.md) landed on 2026-10-16 and is no
-longer waiting on [09](issues/09-bounded-rerun-readiness-reaudit.md) for its code;
-what 09 still owns is its live-artifact confirmation.
+Tickets [08](issues/08-narration-empty-content-remedy.md),
+[17](issues/17-free-route-narration-verification.md) and
+[19](issues/19-free-route-reasoning-token-budget.md) are resolved; [18](issues/18-grounding-rejects-grounded-narrative.md)
+is marked `done` in its own record. Tickets 11 and 13 landed in one round and
+both passed human review on 2026-10-16. Ticket 09 has since supplied the live
+artifact canary that was previously pending.
 
 ## Verification record — 2026-10-16, for 01, 02 and 03's core
 
@@ -223,12 +225,45 @@ plus the revert proof. Closes parent ticket 14's first technical criterion.
 | --- | --- | --- | --- | --- |
 | [06](issues/06-openrouter-response-diagnostics.md) | Sanitized response metadata | — | `resolved` | high |
 | [07](issues/07-empty-vs-malformed-reply.md) | Empty vs malformed reply | 06 | `resolved` | medium |
-| [08](issues/08-narration-empty-content-remedy.md) | Resolve the narration cause | 07 | `needs-triage` | high |
+| [08](issues/08-narration-empty-content-remedy.md) | Resolve the narration cause | 07 | `resolved` (Outcome A: token exhaustion) | high |
+| [17](issues/17-free-route-narration-verification.md) | Verify the remedy on the free route | — | `resolved` (found 18, 19) | high |
+| [18](issues/18-grounding-rejects-grounded-narrative.md) | Grounding rejects true narratives | — | `done` | high |
+| [19](issues/19-free-route-reasoning-token-budget.md) | Free-route reasoning budget still short | — | `resolved` | high |
 
 06 and 07 are worth doing on their own merits: an accurate terminal reason and
 non-discarding transport diagnostics are improvements whether or not a remedy
-follows. 08 is a decision tree with four outcomes — **`wontfix` is a legitimate
-result** if the evidence shows free-only provider behaviour.
+follows.
+
+**08 resolved as Outcome A — token exhaustion.** A bounded probe on
+`openrouter/free` (live 1155 reference, production request builder, 300 tokens)
+returned `finish_reason=length`, `completion_tokens=300`, empty content and
+reasoning present (893 chars) from `poolside/laguna-s-2.1:free` — the §1a
+prediction, measured rather than inferred. Remedy raised `NARRATE_MAX_TOKENS`
+to 1024. `wontfix` was **not** required: the free router can be given more
+budget.
+
+**But 08's remedy turned out to be necessary and not sufficient.**
+[17](issues/17-free-route-narration-verification.md) ran the two planned probes
+and found two more defects, both of which independently prevent narration:
+
+- **[18](issues/18-grounding-rejects-grounded-narrative.md)** — the grounding
+  check rejects **true** statements. `_source_numbers` harvests numeric values
+  only, never dict keys or label strings, so `p20`/`p50`/`p200`/`week52` and
+  `"SMA-20 crossed above SMA-50"` contribute nothing and a correct narrative
+  saying "the 20-day SMA of 10.0555" is refused. It also has no rounding
+  tolerance, so a faithful `18.9%` rendering of a stored
+  `pctFromHigh = -18.90145395799678` is refused. This explains the 4
+  `facts_only` landings in `readiness.md`, which were never token exhaustion.
+- **[19](issues/19-free-route-reasoning-token-budget.md)** — 1024 is still too
+  small for the free route: 3 of 4 attempts exhausted it in reasoning, and one
+  attempt reported `completion_tokens=2074` against `max_tokens=1024`, so the
+  provider's reported completion count appears to include reasoning the cap does
+  not bound. Any new budget must be chosen from measurement, not assumption.
+
+18 and 19 are both offline-first. 18 needs no provider at all; 19 needs a
+two-cap measurement. **Neither is [09](issues/09-bounded-rerun-readiness-reaudit.md)
+approval** — but 09 should not be requested until both are resolved, because
+nothing has yet produced a grounded narrative through the free route.
 
 ### Verification record — 2026-10-16, for 07
 
@@ -245,11 +280,13 @@ pytest-marker and third-party deprecations.
 
 | Ticket | Title | Blocked by | Status |
 | --- | --- | --- | --- |
-| [09](issues/09-bounded-rerun-readiness-reaudit.md) | Bounded re-run and re-audit | 05, 08, operator approval | `needs-info` |
+| [09](issues/09-bounded-rerun-readiness-reaudit.md) | Bounded re-run and re-audit | 05, 08, 18, 19, operator approval | `resolved` |
 
-Consumes 49 preserved waiting jobs. Requires explicit operator approval for scope,
-model routing and ordering, including where the two prospectus jobs sit. The 9
-failed jobs are **not** force-retried.
+Purged the old dev/test queue after operator approval, preserving Postgres and
+LocalStack volumes. Rebuilt/recreated backend and AI images; ran only fresh 1155
+TA, 1155 FA and Insights Analytics prospectus jobs in sequence. All passed
+contract and readiness checks. See [the ticket's answer](issues/09-bounded-rerun-readiness-reaudit.md)
+and the [timestamped readiness record](../readiness.md#fresh-three-job-ai-canary--2026-10-16-08420846-utc).
 
 ## Track 5 — Frontend cleanup (10-15)
 
@@ -258,9 +295,9 @@ All unblocked, all independently verifiable, none touching another ticket's file
 | Ticket | Title | Area | Status | Severity |
 | --- | --- | --- | --- | --- |
 | [10](issues/10-market-provenance-honesty.md) | Provenance fallback says "Real source" for unknown | honesty | `resolved` | high |
-| [11](issues/11-analysis-panel-duplicate-alert.md) | Duplicate `role="alert"` | a11y | `ready-for-human` | low |
+| [11](issues/11-analysis-panel-duplicate-alert.md) | Duplicate `role="alert"` | a11y | `resolved` | low |
 | [12](issues/12-stock-detail-panel-honesty.md) | Stock detail header honesty | honesty | `resolved` | medium |
-| [13](issues/13-chart-design-conformance.md) | Volume colour vs `DESIGN.md` | design | `ready-for-human` | low |
+| [13](issues/13-chart-design-conformance.md) | Volume colour vs `DESIGN.md` | design | `resolved` | low |
 | [14](issues/14-fixture-module-boundary.md) | `?raw` fixture import in production src | structure | `resolved` | medium |
 | [15](issues/15-doc-drift-and-dead-code.md) | False `CONTEXT.md` convention; dead code | hygiene | `resolved` | low |
 
@@ -271,11 +308,17 @@ the recommendation to file a separate refactor ticket.
 
 | Ticket | Title | Blocked by | Status | Severity |
 | --- | --- | --- | --- | --- |
-| [16](issues/16-showcase-tracker-reconciliation.md) | Reconcile the showcase tracker | 04, 05, 07, 10-15 | `ready-for-agent` | medium |
+| [16](issues/16-showcase-tracker-reconciliation.md) | Reconcile the showcase tracker | 04, 05, 07, 10, 12, 14, 15 | `resolved` | medium |
 
 Corrects parent ticket 04's false "no analysis requests" claim, writes parent
 ticket 03's missing record, and answers parent ticket 02's open completion
 question rather than deferring it again.
+
+**Decision, 2026-10-16:** [16](issues/16-showcase-tracker-reconciliation.md)
+reconciled the parent tracker. Parent 02 is complete at its data-layer boundary;
+parent tickets 15 and 16 record the remaining identity-error and lifecycle-copy
+implementation gaps. The successful bounded canary is historical execution
+evidence, not a current runtime or free-route reliability claim.
 
 ## Before any commit
 
@@ -291,18 +334,20 @@ pnpm --filter backend test
 ```
 
 Commit in separate commits: contracts, backend, AI worker, frontend, tracker.
-The working tree also holds unrelated uncommitted backend, AI, docs and OpenCode
-changes — **do not sweep them in.**
+That is how this effort landed: every area in its own commit, and the backend,
+AI, ops and docs work that shared the working tree is in per-area commits of its
+own rather than folded into a tracker commit. Keep it that way — a tracker
+commit that carries code makes the record unverifiable.
 
 ## What completing this effort does not achieve
 
 The showcase remains **not demonstrable**. Still open:
 
-- [09](issues/09-bounded-rerun-readiness-reaudit.md) execution approval
 - Parent tickets 11 (market cold-start) and 13 (news policy), both
   `ready-for-human`
 - Private hosting and non-redistribution rights review
 - Part-1-only prospectus inputs — absent sections must never be described as
   absent in the issuer's complete prospectus
-- Parent tickets 06, 07, 08, 09 (prospectus, discovery, news/a11y, rehearsal)
+- Parent tickets 06, 08, 09 (prospectus reader, news/a11y, rehearsal). Parent 07
+  resolved: discovery publishes the one-stock/one-prospectus canary only
 - No human screen-reader or assistive-technology audit anywhere in this effort

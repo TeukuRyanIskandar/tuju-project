@@ -1,5 +1,11 @@
 # Frontend showcase — local data readiness
 
+> **Current summary (2026-10-16):** the approved fresh three-job canary below
+> met the minimum one-complete-stock/one-prospectus milestone. Earlier zero-data
+> and queue observations remain historical. This is not a current runtime probe
+> or full showcase approval: coverage, market/news policy, rights review and the
+> Part-1-only prospectus limitation remain open.
+
 ## Latest outcome — approved free-model execution, 2026-10-15 06:42–06:57 UTC
 
 **Incomplete / blocked. No complete stock or prospectus selected (0/3 and 0/2;
@@ -397,3 +403,62 @@ execution snapshot above.
   as a continuing state. Only the current queue state remains unknown.
 - No files, runtime, queue, or artifacts were modified during this audit. No
   ticket was marked passed.
+
+## Fresh three-job AI canary — 2026-10-16 08:42–08:46 UTC
+
+This is the approved local dev/test execution for blocker-fixes ticket 09. The
+older `analysis` queue was purged after confirming 0 active jobs and 0 workers;
+its snapshot immediately before purge was 49 waiting, 9 failed, 59 completed,
+0 active and 0 delayed. Postgres and LocalStack volumes were preserved. The
+backend and AI worker images were rebuilt from the current tree; the backend was
+recreated and passed `/health` with database and Redis up. Ingestion stayed off.
+The fresh queue contained only one approved job at a time, and each stage was
+validated before the next was enqueued.
+
+### Completed stock: MAYBANK (1155)
+
+- Stock core passed `StockCorePayload`; all four provenance classes were `real`.
+- `/stocks/1155/series?interval=1d&range=2y` passed `StockSeriesResponse` with
+  **490** points from **2024-10-15 through 2026-10-15**, provenance `real`.
+- TA and FA envelopes both returned `ready`, with matching newly stored artifacts
+  generated 2026-10-16 by `google/gemini-2.5-flash`, adapter `yfinance`.
+- Both stored artifacts passed their generated Pydantic contracts. Both
+  cost-stripped API artifact bodies passed the browser Zod schemas. TA has a
+  non-placeholder grounded narrative (2 calls, 2,748 prompt / 429 completion
+  tokens, estimated `$0.001897`). FA has a non-placeholder grounded narrative,
+  all 9 metric scales present (`absolute`, `fraction`, `percentage_point`)
+  (1 call, 1,181 prompt / 124 completion tokens, estimated `$0.000664`).
+
+### Completed prospectus: Insights Analytics Berhad
+
+- Listing `094fd734-c812-4bcf-921d-72dea6f21fb6` returned a new at-a-glance
+  summary and stored artifact. Both `ProspectusAtAGlanceResponse` and
+  `ProspectusArtifact` passed Zod validation; the stored artifact also passed its
+  generated Pydantic contract.
+- Artifact provenance is `real`, model `google/gemini-2.5-flash`; parse completed
+  from the stored PDF and the artifact headline is non-empty. 7 calls, 33,081
+  prompt / 2,710 completion tokens, estimated `$0.016699`.
+- **Input limitation:** the stored PDF is Part 1 only. The report does not
+  establish that sections not located in that input are absent from the issuer's
+  complete prospectus. In particular, related-party content was not located in
+  this input.
+
+### Execution and remaining state
+
+- Three jobs completed: 1155 TA, 1155 FA, then the Insights Analytics prospectus.
+  Final queue: 3 completed, 0 waiting, 0 active, 0 delayed, 0 failed; no worker
+  remains running. Other prospectus and unrelated jobs were not enqueued or run.
+- Temporary routing was `google/gemini-2.5-flash`; shipping default remains
+  `openrouter/free`. Per-job ceilings were `$0.05` for each stock narration and
+  `$0.80` for the prospectus; configured ceilings total `$0.90`. Actual local
+  tracker estimate: **10 calls**, **37,010 prompt tokens**, **3,263 completion
+  tokens**, **$0.019260**. Reasoning-token usage and provider invoice data were not
+  captured. See [the sanitized LLM ledger](../llm-usage.md).
+- No database, artifact bucket, or service volume was reset. The old queue was
+  purged only under the operator's explicit dev/test authorization. The known
+  Redis `allkeys-lru` eviction-policy warning appeared during backend enqueue;
+  it did not prevent this run, but Redis was not reconfigured.
+- This meets ticket 09's minimum one-complete-stock / one-prospectus execution
+  criteria. It does not complete the showcase: the broader required coverage,
+  parent-ticket human reviews, data-rights review, market/news readiness and
+  Part-1-only prospectus limitation remain.

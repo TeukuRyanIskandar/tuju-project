@@ -1,8 +1,8 @@
 # 14 — Diagnose free-model output and artifact timestamp readiness blockers
 
-Status: needs-triage
+Status: ready-for-human
 Type: bug
-Blocked by: coordinator approval of scoped diagnosis/fix and further execution
+Blocked by: human acceptance of recorded diagnosis and bounded execution
 
 ## Evidence / impact
 
@@ -51,3 +51,21 @@ fix. No application files were changed in this run.
 - After separately approved execution, re-audit at least one complete stock and
   one prospectus, or record remaining shortfalls honestly. Tickets 11/13 are not
   resolved by this task; Part-1 PDF limitations must remain visible.
+
+## Comments
+
+### 2026-10-16 — Reconciliation: diagnosis, regression and canary recorded
+
+Blocker-fix 05 established and regression-tested timestamp conformance at the
+validated artifact serialization boundary. Blocker-fix 07 recorded sanitized
+empty, malformed and schema-invalid reply outcomes, with 08, 18 and 19 recording
+the subsequent token, grounding and free-route findings. Blocker-fix 09 then ran
+the separately approved canary: one complete 1155 stock and one Insights
+Analytics prospectus passed the recorded contracts. See
+[`../readiness.md`](../readiness.md#fresh-three-job-ai-canary--2026-10-16-08420846-utc).
+
+The canary used temporary `google/gemini-2.5-flash` routing; it is not evidence
+that the shipping `openrouter/free` default is reliable. Parent tickets 11 and
+13, rights review, broader coverage and the Part-1-only input limitation remain
+open. The technical/execution criteria have recorded evidence; this ticket awaits
+human acceptance rather than another diagnosis or approval gate.

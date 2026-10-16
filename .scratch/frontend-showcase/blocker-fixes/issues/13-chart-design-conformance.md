@@ -1,7 +1,7 @@
 # 13 — Conform chart volume colouring to DESIGN.md
 
 Type: task
-Status: ready-for-human
+Status: resolved
 Blocked by: none
 Severity: low
 Component: `apps/frontend`
@@ -107,3 +107,7 @@ decision. Same recommendation — separate ticket, not here.
   volume pane. Direction is text in the data table and slider value. Full frontend
   suite (339 tests), typecheck and production build pass. History parsing/chart
   tests also pass under `TZ=UTC` and `TZ=Pacific/Auckland` (32 tests each).
+- Human review — 2026-10-16: the user confirmed the chart is present, accepted
+  ticket 13, and noted that broader UI improvements are planned for a later
+  revamp. That future revamp does not block this ticket; shared chart primitives
+  remain explicitly deferred.

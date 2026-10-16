@@ -1,6 +1,6 @@
 # 07 — Integrate analysis discovery and focused navigation
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Blocked by: 01, 03, 05, 06
 
@@ -32,3 +32,19 @@ Connect the market and both analysis journeys without a separate demo landing.
 
 Component/navigation tests, request assertions and direct route checks. Confirm
 configured IDs against readiness evidence; no tokens/URLs/results in config.
+
+## Resolution — 2026-10-16
+
+Market discovery publishes only the verified local canary: MAYBANK (`1155`) and
+Insights Analytics Berhad (`094fd734-c812-4bcf-921d-72dea6f21fb6`). Their IDs are
+the only values in the frontend discovery configuration. The stock has readable
+identity and coherent ready TA/FA artifacts; the prospectus summary/artifact pair
+passed contract validation. The source is Part 1 only, so the reader must preserve
+the limitation recorded in the readiness evidence.
+
+This deliberately provides the verified one-stock/one-prospectus journey and does
+not claim the original target of three stocks and two prospectuses is met. The
+broader target and any additional example selection remain a readiness shortfall.
+Discovery previews read only stock identity, TA/FA envelopes, and the prospectus
+summary; rich artifacts remain on their detail pages. Primary navigation is
+Market-only; search and the hidden routes remain available.

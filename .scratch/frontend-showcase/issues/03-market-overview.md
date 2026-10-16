@@ -1,6 +1,6 @@
 # 03 — Build the market overview data panels
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: task
 Blocked by: None (03 → 02 explicitly waived; approved revision 2)
 
@@ -39,3 +39,19 @@ Replace `/` placeholder with the functional market home in [the spec](../spec.md
 
 Component/query tests for selections, numeric strings, nulls, mixed provenance
 and independent failures; typecheck/test. Live data is verified in tickets 01/09.
+
+## Comments
+
+### 2026-10-16 — Reconciliation: implementation record
+
+The home route now mounts `MarketOverview`, which independently reads the market
+snapshot, history, movers and sectors; selects the headline by returned kind;
+supports the documented history and movers controls; links movers to stock
+detail; and labels provenance and unavailable quote time. The component tests
+cover those controls, independent failures and the accessible table fallback.
+
+This reconciliation did not rerun tests. Earlier frontend verification is
+recorded in the tracker rather than re-claimed here. Discovery remains a reserved
+layout area for ticket 07, and blocker-fix 13 explicitly deferred shared chart
+primitives. Live market-data readiness and human review remain outside this
+ticket, so its status is `ready-for-human`.

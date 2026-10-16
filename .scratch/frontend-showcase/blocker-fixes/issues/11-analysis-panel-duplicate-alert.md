@@ -1,7 +1,7 @@
 # 11 — Remove the duplicate analysis detail alert
 
 Type: bug
-Status: ready-for-human
+Status: resolved
 Blocked by: none
 Severity: low
 Component: `apps/frontend`
@@ -90,3 +90,7 @@ pnpm --filter frontend typecheck
 - The single `detailUnavailable` condition and exact-count regression test were
   already present in the working tree before this implementation round. The full
   frontend suite passes (339 tests) and typecheck passes.
+- Human review — 2026-10-16: the user accepted ticket 11 after reviewing how the
+  malformed-retained-pair/error case is covered. The focused analysis-panel test
+  file passes (31 tests); the app's normal data does not reproduce this synthetic
+  edge case by browsing.

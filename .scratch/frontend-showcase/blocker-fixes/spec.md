@@ -134,3 +134,13 @@ tests pass while the suite above is red for an unexplained reason.
 - No live-backend, session, CORS or deployment rehearsal is in scope here.
 - No human screen-reader or assistive-technology audit. Automated Chromium
   keyboard checks do not replace it.
+
+## 2026-10-16 outcome note
+
+The original zero-data premise was superseded by separately approved blocker-fix
+09 execution: a fresh 1155 TA/FA and Insights Analytics canary met the minimum
+one-complete-stock/one-prospectus milestone. This does not authorize further
+generation, make the free route reliable, or complete the showcase. The remaining
+limits refer to parent tickets 11 and 13, not blocker-fix tickets with those
+numbers; rights review, broader coverage and Part-1-only prospectus limitations
+remain open.

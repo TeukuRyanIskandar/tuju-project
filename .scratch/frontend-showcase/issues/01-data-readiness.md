@@ -119,3 +119,18 @@ still owns acceptance. Its blockers are now named precisely — blocker-fix tick
 [09](../blocker-fixes/issues/09-bounded-rerun-readiness-reaudit.md), plus parent
 tickets 11, 13, the rights review and the Part-1-only prospectus inputs. No data
 changed and no generation ran during the audit.
+
+### 2026-10-16 — Reconciliation: bounded canary met the minimum execution milestone
+
+Blocker-fixes ticket 09 subsequently ran an approved, fresh three-job canary.
+MAYBANK (`1155`) now has coherent `ready` TA and FA artifacts, and Insights
+Analytics Berhad (`094fd734-c812-4bcf-921d-72dea6f21fb6`) has a summary and
+artifact that passed the recorded contracts. The timestamped evidence is in
+[`../readiness.md`](../readiness.md#fresh-three-job-ai-canary--2026-10-16-08420846-utc).
+
+This is a historical execution result, not a claim about the runtime state after
+2026-10-16. Status remains `needs-info`: the target is three stocks and two
+prospectuses; parent tickets 11 and 13 still need human policy decisions; private
+hosting/non-redistribution rights and final example selection remain operator
+work; and the prospectus input is Part 1 only. Blocker-fixes 05, 08 and 09 are
+no longer open technical or execution gates.

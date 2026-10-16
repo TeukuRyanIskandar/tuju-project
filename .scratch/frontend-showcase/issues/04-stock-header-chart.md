@@ -1,6 +1,6 @@
 # 04 — Build stock identity and EOD chart
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: task
 Blocked by: 02
 
@@ -95,4 +95,18 @@ empty/error states and table fallback; typecheck/test/build.
 - Limits: no live backend/data freshness, CORS/session or deployment rehearsal;
   no human screen-reader/assistive-technology audit. These offline tests do not
   certify all of ticket 02 or the wider showcase. Native slider key behavior is
-  verified in Chromium, not simulated by jsdom's unsupported range-key handling.
+   verified in Chromium, not simulated by jsdom's unsupported range-key handling.
+
+### 2026-10-16 — Reconciliation correction
+
+The original implementation record at line 77 was accurate for that revision but
+is no longer a current description: `stock-detail.tsx` now mounts the technical
+and fundamental analysis panels, which issue read-only GET requests. The news
+slot remains reserved, and browser refresh does not enqueue analysis jobs.
+
+The figures above are historical results for the original revision, not current
+suite totals. Later tracker records report subsequent frontend coverage and
+remediation. The dependency on ticket 02 is satisfied by its implemented
+data-layer seam, but both tickets await human acceptance; this correction does
+not turn a mutable-latest read into atomic provenance or complete broader stock
+screen follow-ups.

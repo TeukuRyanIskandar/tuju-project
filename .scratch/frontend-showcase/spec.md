@@ -47,6 +47,13 @@ are backed by actual APIs, failures remain local to panels, and freshness/source
 limitations are explicit. No recommendations, fabricated results or analysis jobs
 are required to complete the journey.
 
+> **Implementation/readiness note (2026-10-16):** the market home, stock detail
+> and IPO routes are implemented; the IPO route mounts the prospectus reader,
+> though parent 06 stays open for that reader's full acceptance criteria. A
+> recorded local canary proves selected backend/API artifacts, not browser
+> deployment, session or CORS rehearsal. Requirements below remain the acceptance
+> standard.
+
 ## Screen 1: Market overview
 
 ### Layout and content

@@ -167,3 +167,16 @@ warns only "not current", while the parent spec asks it to warn what the result
 
 **Status is unchanged at `ready-for-agent`**; this comment is evidence, not a
 completion claim. No test suite was executed during the audit.
+
+### 2026-10-16 — Reconciliation: implemented with lifecycle-copy follow-up
+
+Blocker-fixes 01-04 replaced the per-metric-id scaling table with contract-driven
+scale formatting; 11 removed the duplicate alert; and 14 moved raw contract
+fixtures out of production source. The implementation and its recorded offline
+verification therefore remain substantive.
+
+This ticket stays `ready-for-agent`, not because the implementation is absent,
+but because the stale-result copy does not say that it trails the latest stored
+EOD data and the analysis-unavailable wording differs from the parent spec. Those
+remaining requirements are scoped in [ticket 16](16-analysis-lifecycle-copy-conformance.md).
+No live availability, atomic provenance or human accessibility review is claimed.

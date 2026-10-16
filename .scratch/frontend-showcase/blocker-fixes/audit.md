@@ -31,6 +31,11 @@ the working tree on 2026-10-16.
 > the tree is
 > [16](issues/16-showcase-tracker-reconciliation.md)'s job, not this audit's.
 
+> **Further superseded 2026-10-16.** Ticket 09 recorded an approved fresh canary
+> with one complete stock and one prospectus. This audit remains a static snapshot:
+> later execution results are evidence in `../readiness.md`, not tests this audit
+> ran.
+
 `git log --oneline` shows no showcase commit. `git status --short` at audit time:
 
 - Modified (tracked): `apps/backend/src/data/adapters/yfinance/*`,

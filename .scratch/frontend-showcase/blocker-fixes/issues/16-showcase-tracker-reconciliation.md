@@ -1,8 +1,8 @@
 # 16 — Reconcile the showcase tracker with reality
 
 Type: task
-Status: ready-for-agent
-Blocked by: 04, 05, 07, 10, 11, 12, 13, 14, 15
+Status: resolved
+Blocked by: 04, 05, 07, 10, 12, 14, 15
 Severity: medium
 Component: `.scratch/frontend-showcase`
 
@@ -100,3 +100,35 @@ every `file:line` citation a parent ticket makes after editing it.
 - Preserve superseded content under `## Comments` per
   `docs/agents/issue-tracker.md`. Corrections are appended, not silently
   overwritten.
+
+## Comments
+
+### 2026-10-16 — Operative correction before reconciliation
+
+The problem statement is an audit-time snapshot. Blocker-fix 09 has since
+resolved with an approved one-stock/one-prospectus canary; blocker-fix 11 and 13
+are resolved after human review; and checkpoint/remediation commits supersede the
+claim that no showcase work is committed. Parent tickets 11 and 13 remain separate
+human policy work. Parent 14 was re-read during this ticket rather than presumed
+unchanged.
+
+## Answer
+
+Resolved 2026-10-16 as records-only reconciliation. Parent 01 remains
+`needs-info`; parent 02, 03, 04 and 14 are `ready-for-human`; parent 05 remains
+`ready-for-agent` with its implemented state and narrowly scoped lifecycle-copy
+gap made explicit. Parent 02 is complete at its data-layer boundary; prospectus
+consumer integration remains ticket 06 work.
+
+The original parent 04 reserved-slot statement and verification figures were
+preserved as historical and corrected by an appended dated note. Parent 03 now
+has its missing implementation record. Parent 01 and 14 link the approved canary
+without representing it as a current runtime probe or free-route certification.
+
+Filed parent tickets 15 (unknown-stock versus core failure) and 16 (analysis
+lifecycle copy) for the remaining implementation gaps. The blocker-fixes map,
+spec, audit, readiness record and parent spec now distinguish historical zero-data
+observations from the later canary. Verification was documentation-only: source
+records and cited locations were re-read, status lines cross-checked, and
+`git diff --check` passed. No application tests or runtime operations ran during
+this reconciliation.

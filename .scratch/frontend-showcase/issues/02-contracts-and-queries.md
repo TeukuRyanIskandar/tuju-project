@@ -1,6 +1,6 @@
 # 02 — Add browser analysis schemas and FE queries
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: task
 Blocked by: none
 
@@ -62,3 +62,17 @@ tickets 04 and 05 should not be re-derived.
 completion claim. Deciding whether this ticket is complete, and what "complete"
 means with ticket 06 outstanding, is owned by
 [`../blocker-fixes/issues/16-showcase-tracker-reconciliation.md`](../blocker-fixes/issues/16-showcase-tracker-reconciliation.md).
+
+### 2026-10-16 — Reconciliation: data-layer implementation complete
+
+The acceptance criteria are met at the data-layer boundary: browser artifact
+schemas omit cost while stored schemas retain it; stock/kind/series/result keys
+are isolated; result-pointer changes trigger bounded coherent reads with retained
+data on refresh failure; and shared transport preserves cancellation, failures
+and retry policy. The prior audit recorded the relevant code evidence above.
+
+`prospectusResults` deliberately has no production consumer: the prospectus page
+and its consumer-level lifecycle behaviour belong to [ticket 06](06-prospectus-page.md).
+That separation is scope, not a waiver. The mutable latest API can prove matching
+visible metadata after at most one retry, not atomic provenance. This ticket is
+implemented and awaits human acceptance; it does not claim ticket 06 is complete.
