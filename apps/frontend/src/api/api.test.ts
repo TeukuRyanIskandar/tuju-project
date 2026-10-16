@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { QueryFunctionContext } from '@tanstack/react-query'
-import { ContractParseError } from '@tuju/contracts'
+import { ContractParseError, ProspectusArtifact, type ProspectusAtAGlanceResponse } from '@tuju/contracts'
 import { apiUrl } from '../lib/api'
 import { announcementQuery, announcementsQuery } from './announcements'
 import { sessionQuery } from './auth'
@@ -122,13 +122,19 @@ describe('src/api query builders', () => {
   })
 
   it('prospectusArtifactQuery hits /ipo/:id/at-a-glance/artifact and parses the contract', async () => {
-    const q = prospectusArtifactQuery('p 1')
-    expect(q.queryKey).toEqual(['ipo', 'p 1', 'at-a-glance', 'artifact'])
+    const fixture = ProspectusArtifact.parse(JSON.parse(artifactFixture))
+    const summary: ProspectusAtAGlanceResponse = {
+      prospectusId: fixture.prospectusId, headline: fixture.headline,
+      companyName: fixture.company.name, board: null, listingDate: null, offerPrice: null,
+      asOf: fixture.provenance.generatedAt, source: 'real',
+      artifact: { bucket: 'private', key: 'artifact.json' }, artifactPath: '/ignored',
+    }
+    const q = prospectusArtifactQuery(fixture.prospectusId, summary)
+    expect(q.queryKey.slice(0, 4)).toEqual(['ipo', fixture.prospectusId, 'at-a-glance', 'artifact'])
     await expect(run(q, {})).rejects.toBeInstanceOf(ContractParseError)
-    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(apiUrl('/ipo/p%201/at-a-glance/artifact'))
-    const fixture: unknown = JSON.parse(artifactFixture)
+    expect(vi.mocked(fetch).mock.calls[0]![0]).toBe(apiUrl(`/ipo/${encodeURIComponent(fixture.prospectusId)}/at-a-glance/artifact`))
     const { result } = await run(q, fixture)
-    expect(result).toEqual(fixture)
+    expect(result).toEqual({ status: 'matched', artifact: fixture })
   })
 
   it('sessionQuery resolves null when anonymous', async () => {

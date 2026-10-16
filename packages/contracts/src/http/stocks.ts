@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { TechnicalAnalysisArtifact, FundamentalAnalysisArtifact } from '../artifact.js';
 import {
   AnnouncementCategory,
   CorporateActionType,
@@ -172,3 +173,9 @@ export const StockFundamentalAnalysisResponse = z.strictObject({
 export type StockFundamentalAnalysisResponse = z.infer<
   typeof StockFundamentalAnalysisResponse
 >;
+
+/** Browser proxy shapes: cost is private; stored/codegen schemas remain unchanged. */
+export const StockTechnicalAnalysisArtifact = TechnicalAnalysisArtifact.omit({ cost: true });
+export type StockTechnicalAnalysisArtifact = z.infer<typeof StockTechnicalAnalysisArtifact>;
+export const StockFundamentalAnalysisArtifact = FundamentalAnalysisArtifact.omit({ cost: true });
+export type StockFundamentalAnalysisArtifact = z.infer<typeof StockFundamentalAnalysisArtifact>;

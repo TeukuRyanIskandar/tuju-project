@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { PagePlaceholder } from '#/components/page-placeholder'
+import { StockDetail } from '#/components/stocks/stock-detail'
 
 export const Route = createFileRoute('/stocks/$code')({
-  component: StockPlaceholder,
+  component: StockPage,
 })
 
-function StockPlaceholder() {
+function StockPage() {
   const { code } = Route.useParams()
-  return <PagePlaceholder title={`Stock ${code}`} />
+  return <StockDetail key={code} code={code} />
 }

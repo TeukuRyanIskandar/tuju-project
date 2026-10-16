@@ -45,6 +45,36 @@ additive, not a rewrite.
   `staleTime` 60s; no retry on 4xx `ApiError` or `ContractParseError`, at most 2
   retries otherwise.
 
+### Analysis reads (stock TA/FA and IPO)
+
+- `stocks.ts` supplies the fixed `1d`/`2y` series, thin TA/FA envelopes and
+  cost-free rich reads; `ipo.ts` supplies the prospectus equivalents (IPO keeps
+  its existing artifact schema). Rich builders require expected thin metadata;
+  missing/wrong resource metadata disables them and imperative reads return
+  `unavailable`. Keys include resource/kind and expected date, pointer and path.
+- Pointer buckets/keys and `artifactPath` are **identity only**. Transport always
+  uses the fixed encoded backend API route through `apiGet`, never an S3 URL or
+  a response-provided URL.
+- `result-coherence.ts` returns `matched`, `mismatch` or `unavailable`. TA/FA
+  check symbol, kind and normalized exact `asOf` (preserving sub-ms precision).
+  IPO checks ID/headline and generation at-or-after thin `asOf`: that timestamp
+  is the job timestamp, not the artifact's `generatedAt`. A mismatch repeats the
+  artifact HTTP read once, then returns data rather than triggering Query retry.
+  HTTP/schema errors still throw normally; both reads use Query's abort signal.
+- `analysis-results.ts` provides fixed-resource lifecycles via
+  `stockTechnicalResults`, `stockFundamentalResults`, `prospectusResults`.
+  `refreshSummary()` loads thin data independently; `refreshDetail()` reads
+  against that summary; `refresh()` forces a summary-then-artifact refresh even
+  with fresh cached data. Inspect `getState()` for independent thin/detail errors,
+  mismatch/unavailable/loading and an explicitly labelled `previousPair` holding
+  its **own** summary and artifact. Never pair it with the new thin summary.
+  Create a new lifecycle on stock/kind/prospectus change; no previous pair crosses
+  identities. Superseded async completions cannot overwrite current state.
+  No polling or UI hooks are installed by this layer.
+- Latest-pointer reads are not atomic. These visible metadata checks cannot prove
+  artifact provenance when distinct runs have indistinguishable metadata; IPO
+  generation has only a lower bound, not an expected exact generation timestamp.
+
 ## Design
 
 Visual language, tokens and chart patterns live in [`DESIGN.md`](DESIGN.md).

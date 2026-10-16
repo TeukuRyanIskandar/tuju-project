@@ -59,6 +59,11 @@ package emits (ADR-0008).
 - **StockSeriesResponse** / **StockTechnicalAnalysisResponse** /
   **StockFundamentalAnalysisResponse** — HTTP Zod (no codegen) for PoC stock
   EOD series and latest analysis reads under `http/stocks.ts`.
+- **StockTechnicalAnalysisArtifact** / **StockFundamentalAnalysisArtifact** —
+  browser HTTP proxy schemas in `http/stocks.ts`, derived from stored TA/FA
+  artifacts with `cost` omitted (still strict). Stored artifacts continue to
+  require cost. These browser shapes have no registry IDs/modelOrder entries
+  and do not change Python codegen. Prospectus keeps its existing artifact shape.
 
 ## Commands
 
