@@ -166,6 +166,9 @@ services:
       # or an untracked .env (`OPENROUTER_API_KEY=... docker compose up`).
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       LLM_MODEL: ${LLM_MODEL:-openrouter/free}
+      # Per-TA/FA-narration spend cap. Not passed through previously, so the
+      # container silently used the 0.10 default even when .env set a value.
+      LLM_NARRATION_COST_CEILING_USD: ${LLM_NARRATION_COST_CEILING_USD:-0.10}
     depends_on:
       redis:
         condition: service_healthy
