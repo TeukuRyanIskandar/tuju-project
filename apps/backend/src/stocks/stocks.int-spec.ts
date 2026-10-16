@@ -835,6 +835,19 @@ describe('Stocks endpoints (integration — testcontainers)', () => {
        'operating_cash_flow',
      ]);
 
+      // FA metric scales: each metric declares its numeric convention (ticket 02)
+      expect(ref.fundamental.metrics.map((m) => [m.id, m.unit, m.scale])).toEqual([
+        ['trailing_pe', 'x', 'absolute'],
+        ['dividend_yield', '%', 'fraction'],
+        ['roe', '%', 'fraction'],
+        ['debt_to_equity', 'x', 'absolute'],
+        ['revenue_growth_qoq', '%', 'percentage_point'],
+        ['revenue_growth_yoy', '%', 'percentage_point'],
+        ['profit_growth_qoq', '%', 'percentage_point'],
+        ['profit_growth_yoy', '%', 'percentage_point'],
+        ['operating_cash_flow', 'RM bn', 'absolute'],
+      ]);
+
      // Note: FA metric values depend on successful FundamentalsSnapshot ingestion
      // which will be validated when the full ingestion pipeline is wired
    });

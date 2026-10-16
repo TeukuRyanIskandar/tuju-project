@@ -4,7 +4,7 @@ import type { Instrument } from '../data/entities/instrument.entity';
 import type { QuarterlyFinancials } from '../data/entities/quarterly-financials.entity';
 import type { TechnicalEvent } from './technical-events';
 import { toNumber } from './serialisation';
-import type { FundamentalMetricId } from '@tuju/contracts';
+import type { FundamentalMetricId, FundamentalMetricScale } from '@tuju/contracts';
 
 export interface TechnicalFacts {
   sma: {
@@ -33,6 +33,7 @@ export interface FundamentalMetric {
   label: string;
   value: number | null;
   unit: string;
+  scale: FundamentalMetricScale;
   asOf: string;
 }
 
@@ -108,6 +109,7 @@ export function toAnalysisReference(
     label: 'P/E ratio (trailing)',
     value: fundSnap ? toNumber(fundSnap.peRatio) : null,
     unit: 'x',
+    scale: 'absolute',
     asOf: latestCloseDay,
   });
 
@@ -116,6 +118,7 @@ export function toAnalysisReference(
     label: 'Dividend yield',
     value: fundSnap ? toNumber(fundSnap.dividendYield) : null,
     unit: '%',
+    scale: 'fraction',
     asOf: latestCloseDay,
   });
 
@@ -124,6 +127,7 @@ export function toAnalysisReference(
     label: 'Return on equity',
     value: fundSnap ? toNumber(fundSnap.roe) : null,
     unit: '%',
+    scale: 'fraction',
     asOf: latestCloseDay,
   });
 
@@ -132,6 +136,7 @@ export function toAnalysisReference(
     label: 'Debt to equity',
     value: fundSnap ? toNumber(fundSnap.debtToEquity) : null,
     unit: 'x',
+    scale: 'absolute',
     asOf: latestCloseDay,
   });
 
@@ -152,6 +157,7 @@ export function toAnalysisReference(
     label: 'Revenue growth (QoQ)',
     value: revGrowthQoQ,
     unit: '%',
+    scale: 'percentage_point',
     asOf: q0PeriodEnd,
   });
 
@@ -163,6 +169,7 @@ export function toAnalysisReference(
     label: 'Revenue growth (YoY)',
     value: null,
     unit: '%',
+    scale: 'percentage_point',
     asOf: q0PeriodEnd,
   });
 
@@ -180,6 +187,7 @@ export function toAnalysisReference(
     label: 'Profit growth (QoQ)',
     value: profitGrowthQoQ,
     unit: '%',
+    scale: 'percentage_point',
     asOf: q0PeriodEnd,
   });
 
@@ -189,6 +197,7 @@ export function toAnalysisReference(
     label: 'Profit growth (YoY)',
     value: null,
     unit: '%',
+    scale: 'percentage_point',
     asOf: q0PeriodEnd,
   });
 
@@ -198,6 +207,7 @@ export function toAnalysisReference(
     label: 'Operating cash flow',
     value: null,
     unit: 'RM bn',
+    scale: 'absolute',
     asOf: latestCloseDay,
   });
 
